@@ -1,0 +1,29 @@
+{
+	"name": "qvac-test-consumer-desktop",
+	"version": "1.0.0",
+	"type": "module",
+	"scripts": {
+		"dev": "bun run index.ts"
+	},
+	"dependencies": {
+		"@tetherto/qvac-sdk": "file:../../../forked/qvac-sdk-forked/dist/tetherto-qvac-sdk-0.10.1.tgz",
+		"bare-buffer": "^3.4.0",
+		"bare-crypto": "^1.11.6",
+		"bare-process": "^4.2.1",
+		"bare-rpc": "^0.2.13",
+		"bare-runtime": "^1.23.4",
+		"bare-stream": "^2.7.0",
+		"bare-subprocess": "^5.1.4",
+		"corestore": "^7.5.0",
+		"hyperdrive": "^13.0.2",
+		"hyperswarm": "^4.14.2",
+		"mqtt": "^5.14.1"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.2.4",
+		"@types/bun": "latest"
+	},
+	"overrides": {
+		"@tetherto/qvac-lib-logging": "2.0.3"
+	}
+}
