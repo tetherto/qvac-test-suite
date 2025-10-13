@@ -3,10 +3,11 @@
 	"version": "1.0.0",
 	"type": "module",
 	"scripts": {
-		"dev": "bun run index.ts"
+		"dev": "bun run index.ts",
+		"batch": "bun run batch-consumer.ts"
 	},
 	"dependencies": {
-		"@tetherto/qvac-sdk": "file:../../../forked/qvac-sdk-forked/dist/tetherto-qvac-sdk-0.10.1.tgz",
+		"@tetherto/qvac-sdk": "0.10.1-dev.1760039169.603b48c",
 		"bare-buffer": "^3.4.0",
 		"bare-crypto": "^1.11.6",
 		"bare-process": "^4.2.1",

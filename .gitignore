@@ -1,39 +1,7 @@
-# Dependencies
 node_modules/
+.npmrc
+.env
 bun.lock
 package-lock.json
-
-# Build outputs
-dist/
-*.tgz
-
-# Temp/comparison directories
-sdk-comparison/
-bug-verification-test/
-
-# Logs
-*.log
-output.*
-error.*
-
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-
-# Environment
-.env
-.env.local
-
-# Python
-__pycache__/
-*.py[cod]
-*.pyc
-
-# Test outputs
-coverage/
-.nyc_output/
+reports/
 

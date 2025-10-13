@@ -4,7 +4,8 @@
 	"type": "module",
 	"private": true,
 	"scripts": {
-		"dev": "bun run index.ts"
+		"dev": "bun run index.ts",
+		"batch": "bun run batch-orchestrator.ts"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",
