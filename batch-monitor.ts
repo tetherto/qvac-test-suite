@@ -689,8 +689,10 @@ function generateHtmlReport() {
 </html>`;
 
 	try {
+		const path = require('path');
+		const absolutePath = path.resolve(filename);
 		require('fs').writeFileSync(filename, html);
-		console.log(`\n✅ HTML report generated: ${filename}\n`);
+		console.log(`\n✅ HTML report generated: ${absolutePath}\n`);
 	} catch (error) {
 		console.error(`\n❌ Failed to generate HTML report:`, error);
 	}
