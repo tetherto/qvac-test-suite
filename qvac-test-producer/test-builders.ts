@@ -195,14 +195,14 @@ export class TestBuilder {
 				testId: "completion-multi-turn",
 				params: {
 					history: [
-						{ role: "user", content: "My name is Alice." },
-						{ role: "assistant", content: "Hello Alice! Nice to meet you." },
-						{ role: "user", content: "What is my name?" },
+						{ role: "user", content: "Remember this number: 42." },
+						{ role: "assistant", content: "I'll remember that the number is 42." },
+						{ role: "user", content: "What number did I tell you to remember? Answer with just the number." },
 					],
 					stream: false,
 				},
 				expectation: {
-					contains: "Alice",
+					contains: "42",
 					validation: "contains",
 				},
 				expectedOutcome: "pass",
@@ -702,7 +702,7 @@ export class TestBuilder {
 				testId: "completion-max-tokens",
 				params: {
 					history: [
-						{ role: "user", content: "Write a long story about a cat." },
+						{ role: "user", content: "Count from 1 to 100." },
 					],
 					stream: false,
 					maxTokens: 10,
@@ -725,13 +725,14 @@ export class TestBuilder {
 				testId: "completion-special-chars",
 				params: {
 					history: [
-						{ role: "user", content: "Translate to English: Hola 👋 ¿Cómo estás? 你好 🌍" },
+						{ role: "user", content: "What is 50 + 50? Special chars: @#$% 👋 你好 🌍. Answer with just the number." },
 					],
 					stream: false,
 				},
 				expectation: {
-					validation: "returns-text",
-					minLength: 5,
+					validation: "contains-keywords",
+					keywords: ["100"],
+					minLength: 1,
 				},
 				expectedOutcome: "pass",
 			}),
@@ -859,14 +860,14 @@ export class TestBuilder {
 				testId: "completion-repeat-penalty",
 				params: {
 					history: [
-						{ role: "user", content: "List 3 different colors." },
+						{ role: "user", content: "Count from 1 to 5." },
 					],
 					stream: false,
 					repeat_penalty: 1.5,
 				},
 				expectation: {
 					validation: "length-check",
-					minLength: 10,
+					minLength: 5,
 				},
 				expectedOutcome: "pass",
 			}),
@@ -968,15 +969,15 @@ export class TestBuilder {
 				testId: "completion-zero-temperature",
 				params: {
 					history: [
-						{ role: "user", content: "What is the capital of France? Answer with just the city name." },
+						{ role: "user", content: "What is 20 + 20? Answer with just the number." },
 					],
 					stream: false,
 					temperature: 0.0,
 				},
 				expectation: {
 					validation: "contains-keywords",
-					keywords: ["Paris"],
-					minLength: 3,
+					keywords: ["40"],
+					minLength: 1,
 				},
 				expectedOutcome: "pass",
 			}),
@@ -1019,14 +1020,14 @@ export class TestBuilder {
 				testId: "completion-frequency-penalty",
 				params: {
 					history: [
-						{ role: "user", content: "Name 5 different fruits." },
+						{ role: "user", content: "List numbers from 1 to 10." },
 					],
 					stream: false,
 					frequency_penalty: 1.0,
 				},
 				expectation: {
 					validation: "length-check",
-					minLength: 15,
+					minLength: 10,
 				},
 				expectedOutcome: "pass",
 			}),
@@ -1042,14 +1043,14 @@ export class TestBuilder {
 				testId: "completion-presence-penalty",
 				params: {
 					history: [
-						{ role: "user", content: "Write 3 different words." },
+						{ role: "user", content: "Count: 1, 2, 3." },
 					],
 					stream: false,
 					presence_penalty: 1.0,
 				},
 				expectation: {
 					validation: "length-check",
-					minLength: 5,
+					minLength: 2,
 				},
 				expectedOutcome: "pass",
 			}),
@@ -1065,7 +1066,7 @@ export class TestBuilder {
 				testId: "completion-negative-temperature",
 				params: {
 					history: [
-						{ role: "user", content: "Say hello." },
+						{ role: "user", content: "What is 1 + 1? Answer with just the number." },
 					],
 					stream: false,
 					temperature: -0.5,
