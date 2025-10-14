@@ -834,7 +834,7 @@ export class TestBuilder {
 				testId: "completion-top-p",
 				params: {
 					history: [
-						{ role: "user", content: "Say 'hello' in one word." },
+						{ role: "user", content: "What is 7 + 8? Answer with just the number." },
 					],
 					stream: false,
 					top_p: 0.1,
@@ -842,8 +842,8 @@ export class TestBuilder {
 				},
 				expectation: {
 					validation: "contains-keywords",
-					keywords: ["hello"],
-					minLength: 3,
+					keywords: ["15"],
+					minLength: 1,
 				},
 				expectedOutcome: "pass",
 			}),

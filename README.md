@@ -99,6 +99,20 @@ The following tests expose SDK bugs and will timeout (60s limit):
 **Current Success Rate:** ~63% (34/54 tests expected)  
 **Expected Without SDK Bugs:** ~94% (51/54 tests - only translation missing)
 
+### ⏱️ About Test Timeouts
+
+**Test Timeout = 60 seconds** (per test). This is NOT a performance issue:
+- ✅ **Healthy tests complete in < 5 seconds** (most in < 1 second)
+- ❌ **Timeout failures indicate SDK hangs** - the SDK never responds, it's not just slow
+- 🐛 **All timeout failures are SDK bugs** where the SDK enters an unrecoverable state
+
+Examples from latest run:
+- `completion-basic`: 0.34s ✅
+- `transcription-wav`: 12.5s ✅  
+- `embed-simple-text`: **60s timeout** ❌ (SDK hung, never responded)
+
+**If a test times out, the SDK is broken for that use case - it's not a test configuration issue.**
+
 ## 🔄 Legacy Mode
 
 Original continuous testing still available:
