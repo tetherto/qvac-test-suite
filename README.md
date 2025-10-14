@@ -33,12 +33,13 @@ Add more consumers for parallel execution - each pulls unique tests from the que
 
 ## 📊 Test Coverage
 
-**25 tests organized by dependency:**
+**54 tests organized by dependency:**
 
-- **Model Loading** (3 tests): LLM, Embeddings, Error handling
-- **LLM Completion** (8 tests): Streaming, context sizes, temperatures, edge cases
-- **Transcription** (10 tests): WAV, MP3, AAC, M4A, OGG, silence, music, long audio, errors
-- **Embeddings** (4 tests): Simple, long text, empty text, similarity
+- **Model Loading** (6 tests): LLM, Embeddings, Concurrent loading, Unload, Reload, Error handling
+- **LLM Completion** (22 tests): Streaming, context sizes, temperatures, edge cases, invalid model error, system messages, max tokens, special characters, stop sequences, top-p, repeat penalty, min-p, very long context, zero temperature, top-k, frequency penalty, presence penalty, negative temperature
+- **Transcription** (12 tests): WAV, MP3, AAC, M4A, OGG, silence, music, long audio, streaming, very short audio, corrupted files
+- **Embeddings** (11 tests): Simple, long text, empty text, similarity, batch, unicode, very short, code snippets, multilingual, special characters, numbers-only
+- **Translation** (3 tests): EN→ES, ES→EN, Error handling (SDK limitation)
 
 ## 🎯 Key Features
 
@@ -46,9 +47,10 @@ Add more consumers for parallel execution - each pulls unique tests from the que
 ✅ Pull-based - consumers request tests from queue  
 ✅ Each test runs exactly once  
 ✅ Parallel execution across multiple consumers  
-✅ Timeout enforcement (2min standard, 10min long audio)  
-✅ Real-time monitoring dashboard  
-✅ Platform tracking and result grouping
+✅ Timeout enforcement (60 seconds max for all tests)  
+✅ Real-time monitoring dashboard with HTML reports  
+✅ Platform tracking and result grouping  
+✅ Beautiful tabbed HTML reports with per-consumer breakdown
 
 ## 📁 Structure
 
@@ -71,6 +73,31 @@ shared-test-data/audio/        # Test audio files
 ## ⚙️ Configuration
 
 Update `env.ts` in producer/consumer for custom MQTT settings.
+
+## ⚠️ Known SDK Issues
+
+The following tests expose SDK bugs and will timeout (60s limit):
+
+**Transcription Issues:**
+- `transcription-corrupted` / `transcription-corrupted-wav` - SDK hangs on corrupted files instead of throwing errors
+- `transcription-only-music` - SDK hangs on music-only audio
+- `transcription-long-audio` - May timeout on very long audio files
+
+**Embedding Issues:**
+- `embed-batch` - SDK hangs when processing batch embeddings with Promise.all
+
+**Model Management Issues:**
+- `model-unload` - Unload functionality not fully implemented
+- `completion-invalid-model` - SDK doesn't validate model IDs before attempting completion
+
+**Translation Issues:**
+- `translation-en-to-es` / `translation-es-to-en` - Translation API not yet available in SDK
+
+**Advanced Parameter Support** (Phase 2 - May vary):
+- Stop sequences, top-p, repeat penalty, min-p parameters may not be fully supported yet
+
+**Current Success Rate:** ~63% (34/54 tests expected)  
+**Expected Without SDK Bugs:** ~94% (51/54 tests - only translation missing)
 
 ## 🔄 Legacy Mode
 

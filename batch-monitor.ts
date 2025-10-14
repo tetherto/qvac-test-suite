@@ -20,7 +20,7 @@ interface TestInProgress {
 
 const consumers = new Map<string, ConsumerStats>();
 const testsInProgress = new Map<string, TestInProgress>();
-const completedTests: Array<{ testId: string; outcome: string; duration: number; consumerId: string }> = [];
+const completedTests: Array<{ testId: string; outcome: string; duration: number; consumerId: string; error?: string; output?: string }> = [];
 
 let totalTestsInBatch = 0;
 let batchStartTime = Date.now();
@@ -85,6 +85,23 @@ function displayDashboard() {
 			const duration = (Date.now() - test.startedAt.getTime()) / 1000;
 			console.log(`   ▶️  ${test.testId} (${duration.toFixed(1)}s)`);
 			console.log(`       Consumer: ${test.consumerId}`);
+		}
+	}
+	
+	console.log("\n❌ FAILURES:");
+	console.log("─".repeat(64));
+	
+	const failures = completedTests.filter(t => t.outcome === "failure");
+	if (failures.length === 0) {
+		console.log("   (No failures yet)");
+	} else {
+		const recentFailures = failures.slice(-5).reverse();
+		for (const test of recentFailures) {
+			const durationSec = (test.duration / 1000).toFixed(1);
+			console.log(`   ❌ ${test.testId} (${durationSec}s) - ${test.consumerId}`);
+		}
+		if (failures.length > 5) {
+			console.log(`   ... and ${failures.length - 5} more failures`);
 		}
 	}
 	
@@ -165,6 +182,8 @@ client.on("message", (topic, payload) => {
 				outcome: message.outcome,
 				duration: message.duration,
 				consumerId: message.consumerId,
+				error: message.error,
+				output: message.output,
 			});
 			
 			const consumer = consumers.get(message.consumerId);
@@ -246,7 +265,7 @@ function generateHtmlReport() {
 			background: #f5f5f5;
 			padding: 20px;
 		}
-		.container { max-width: 1200px; margin: 0 auto; }
+		.container { max-width: 1400px; margin: 0 auto; }
 		.header {
 			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 			color: white;
@@ -259,7 +278,7 @@ function generateHtmlReport() {
 		.header p { opacity: 0.9; }
 		.stats {
 			display: grid;
-			grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+			grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 			gap: 15px;
 			margin-bottom: 20px;
 		}
@@ -287,6 +306,42 @@ function generateHtmlReport() {
 			padding-bottom: 10px;
 			border-bottom: 2px solid #e5e7eb;
 		}
+		
+		/* Tabs */
+		.tabs {
+			display: flex;
+			gap: 5px;
+			border-bottom: 2px solid #e5e7eb;
+			margin-bottom: 20px;
+		}
+		.tab {
+			padding: 12px 24px;
+			background: #f3f4f6;
+			border: none;
+			border-radius: 6px 6px 0 0;
+			cursor: pointer;
+			font-size: 14px;
+			font-weight: 600;
+			color: #6b7280;
+			transition: all 0.2s;
+		}
+		.tab:hover {
+			background: #e5e7eb;
+			color: #374151;
+		}
+		.tab.active {
+			background: white;
+			color: #667eea;
+			border-bottom: 2px solid #667eea;
+			margin-bottom: -2px;
+		}
+		.tab-content {
+			display: none;
+		}
+		.tab-content.active {
+			display: block;
+		}
+		
 		table {
 			width: 100%;
 			border-collapse: collapse;
@@ -321,7 +376,7 @@ function generateHtmlReport() {
 			border-radius: 6px;
 			margin-bottom: 15px;
 		}
-		.consumer-header h3 { color: #1f2937; }
+		.consumer-header h3 { color: #1f2937; margin-bottom: 8px; }
 		.consumer-stats {
 			display: flex;
 			gap: 20px;
@@ -338,6 +393,45 @@ function generateHtmlReport() {
 			color: #6b7280;
 			margin-top: 30px;
 			padding: 20px;
+		}
+		.failure-highlight {
+			background: #fef2f2 !important;
+		}
+		.error-details {
+			background: #fef2f2;
+			border-left: 3px solid #ef4444;
+			padding: 12px;
+			margin: 8px 0;
+			font-family: 'Courier New', monospace;
+			font-size: 13px;
+			white-space: pre-wrap;
+			word-wrap: break-word;
+			border-radius: 4px;
+		}
+		.error-label {
+			font-weight: 600;
+			color: #991b1b;
+			margin-bottom: 4px;
+		}
+		.output-text {
+			color: #374151;
+			line-height: 1.5;
+		}
+		.details-toggle {
+			cursor: pointer;
+			color: #3b82f6;
+			text-decoration: underline;
+			font-size: 12px;
+		}
+		.details-toggle:hover {
+			color: #2563eb;
+		}
+		.details-content {
+			display: none;
+			margin-top: 8px;
+		}
+		.details-content.show {
+			display: block;
 		}
 	</style>
 </head>
@@ -376,52 +470,106 @@ function generateHtmlReport() {
 		</div>
 
 		<div class="section">
-			<h2>📊 Results by Category</h2>
-			<table>
-				<thead>
-					<tr>
-						<th>Category</th>
-						<th>Total</th>
-						<th>Passed</th>
-						<th>Failed</th>
-						<th>Rate</th>
-					</tr>
-				</thead>
-				<tbody>
-					${Array.from(testsByCategory.entries()).map(([category, tests]) => {
-						const passed = tests.filter(t => t.outcome === "success").length;
-						const failed = tests.filter(t => t.outcome === "failure").length;
-						const rate = ((passed / tests.length) * 100).toFixed(0);
-						return `
-						<tr>
-							<td><strong>${category}</strong></td>
-							<td>${tests.length}</td>
-							<td>${passed}</td>
-							<td>${failed}</td>
-							<td>${rate}%</td>
-						</tr>`;
-					}).join('')}
-				</tbody>
-			</table>
-		</div>
+			<div class="tabs">
+				<button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
+				${Array.from(testsByConsumer.keys()).map((consumerId, idx) => {
+					const shortId = consumerId.split('-').slice(1, 3).join('-');
+					return `<button class="tab" onclick="switchTab('consumer-${idx}')">${shortId}</button>`;
+				}).join('')}
+				<button class="tab" onclick="switchTab('all-tests')">📋 All Tests</button>
+			</div>
 
-		<div class="section">
-			<h2>👥 Results by Consumer</h2>
-			${Array.from(testsByConsumer.entries()).map(([consumerId, tests]) => {
+			<!-- Overview Tab -->
+			<div id="overview" class="tab-content active">
+				<h2>📊 Results by Category</h2>
+				<table>
+					<thead>
+						<tr>
+							<th>Category</th>
+							<th>Total</th>
+							<th>Passed</th>
+							<th>Failed</th>
+							<th>Rate</th>
+						</tr>
+					</thead>
+					<tbody>
+						${Array.from(testsByCategory.entries()).map(([category, tests]) => {
+							const passed = tests.filter(t => t.outcome === "success").length;
+							const failed = tests.filter(t => t.outcome === "failure").length;
+							const rate = ((passed / tests.length) * 100).toFixed(0);
+							return `
+							<tr>
+								<td><strong>${category}</strong></td>
+								<td>${tests.length}</td>
+								<td>${passed}</td>
+								<td>${failed}</td>
+								<td>${rate}%</td>
+							</tr>`;
+						}).join('')}
+					</tbody>
+				</table>
+
+				${failureCount > 0 ? `
+				<h2 style="margin-top: 30px;">❌ Failed Tests Summary</h2>
+				<table>
+					<thead>
+						<tr>
+							<th>Test</th>
+							<th>Consumer</th>
+							<th>Duration</th>
+							<th>Error Details</th>
+						</tr>
+					</thead>
+					<tbody>
+						${completedTests.filter(t => t.outcome === "failure").map((test, idx) => {
+							const errorMsg = test.error || 'No error message';
+							const outputMsg = test.output || 'No output';
+							const detailsId = 'details-' + idx;
+							const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+							const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+							const outputHtml = outputMsg !== errorMsg && outputMsg !== 'No output' ? 
+								'<div class="error-details"><div class="error-label">📄 Output:</div><div class="output-text">' + escapedOutput + '</div></div>' : '';
+							return `
+						<tr class="failure-highlight">
+							<td><strong>${test.testId}</strong></td>
+							<td>${test.consumerId.split('-').slice(1, 3).join('-')}</td>
+							<td>${(test.duration / 1000).toFixed(2)}s</td>
+							<td>
+								<span class="details-toggle" onclick="toggleDetails('${detailsId}')">📋 View Details</span>
+								<div id="${detailsId}" class="details-content">
+									<div class="error-details">
+										<div class="error-label">❌ Error:</div>
+										<div class="output-text">${escapedError}</div>
+									</div>
+									${outputHtml}
+								</div>
+							</td>
+						</tr>
+						`;
+						}).join('')}
+					</tbody>
+				</table>
+				` : '<p style="margin-top: 20px; color: #10b981; font-weight: 600;">✅ All tests passed!</p>'}
+			</div>
+
+			<!-- Consumer Tabs -->
+			${Array.from(testsByConsumer.entries()).map(([consumerId, tests], idx) => {
 				const consumer = consumers.get(consumerId);
 				const passed = tests.filter(t => t.outcome === "success").length;
 				const failed = tests.filter(t => t.outcome === "failure").length;
 				const avgDuration = tests.reduce((sum, t) => sum + t.duration, 0) / tests.length;
+				const shortId = consumerId.split('-').slice(1, 3).join('-');
 				
 				return `
-				<div class="consumer-section">
+				<div id="consumer-${idx}" class="tab-content">
 					<div class="consumer-header">
-						<h3>${consumerId}</h3>
+						<h3>Consumer: ${shortId}</h3>
 						<div class="consumer-stats">
 							<span>Platform: ${consumer?.platform || "unknown"}</span>
-							<span>Tests: ${tests.length}</span>
-							<span>Passed: ${passed}</span>
-							<span>Failed: ${failed}</span>
+							<span>Total Tests: ${tests.length}</span>
+							<span>✅ Passed: ${passed}</span>
+							<span>❌ Failed: ${failed}</span>
+							<span>Success Rate: ${((passed / tests.length) * 100).toFixed(1)}%</span>
 							<span>Avg Duration: ${(avgDuration / 1000).toFixed(1)}s</span>
 						</div>
 					</div>
@@ -431,45 +579,78 @@ function generateHtmlReport() {
 								<th>Test</th>
 								<th>Status</th>
 								<th>Duration</th>
+								<th>Details</th>
 							</tr>
 						</thead>
 						<tbody>
-							${tests.map(test => `
-							<tr>
+							${tests.map((test, testIdx) => {
+								const detailsId = 'consumer-' + idx + '-test-' + testIdx;
+								const errorMsg = test.error || 'No error message';
+								const outputMsg = test.output || 'No output';
+								const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+								const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+								const outputHtml = outputMsg !== errorMsg && outputMsg !== 'No output' ? 
+									'<div class="error-details"><div class="error-label">📄 Output:</div><div class="output-text">' + escapedOutput + '</div></div>' : '';
+								const detailsCell = test.outcome === 'failure' ? 
+									'<span class="details-toggle" onclick="toggleDetails(\'' + detailsId + '\')">📋 View Error</span>' +
+									'<div id="' + detailsId + '" class="details-content">' +
+									'<div class="error-details"><div class="error-label">❌ Error:</div><div class="output-text">' + escapedError + '</div></div>' +
+									outputHtml + '</div>' : '✅';
+								return `
+							<tr class="${test.outcome === 'failure' ? 'failure-highlight' : ''}">
 								<td>${test.testId}</td>
 								<td><span class="badge ${test.outcome}">${test.outcome.toUpperCase()}</span></td>
 								<td>${(test.duration / 1000).toFixed(2)}s</td>
+								<td>${detailsCell}</td>
 							</tr>
-							`).join('')}
+							`;
+							}).join('')}
 						</tbody>
 					</table>
 				</div>
 				`;
 			}).join('')}
-		</div>
 
-		<div class="section">
-			<h2>📋 All Test Results</h2>
-			<table>
-				<thead>
-					<tr>
-						<th>Test</th>
-						<th>Consumer</th>
-						<th>Status</th>
-						<th>Duration</th>
-					</tr>
-				</thead>
-				<tbody>
-					${completedTests.map(test => `
-					<tr>
-						<td>${test.testId}</td>
-						<td>${test.consumerId.split('-').slice(-1)[0]}</td>
-						<td><span class="badge ${test.outcome}">${test.outcome.toUpperCase()}</span></td>
-						<td>${(test.duration / 1000).toFixed(2)}s</td>
-					</tr>
-					`).join('')}
-				</tbody>
-			</table>
+			<!-- All Tests Tab -->
+			<div id="all-tests" class="tab-content">
+				<h2>📋 All Test Results</h2>
+				<table>
+					<thead>
+						<tr>
+							<th>Test</th>
+							<th>Consumer</th>
+							<th>Status</th>
+							<th>Duration</th>
+							<th>Details</th>
+						</tr>
+					</thead>
+					<tbody>
+						${completedTests.map((test, allIdx) => {
+							const detailsId = 'all-test-' + allIdx;
+							const errorMsg = test.error || 'No error message';
+							const outputMsg = test.output || 'No output';
+							const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+							const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+							const outputHtml = outputMsg !== errorMsg && outputMsg !== 'No output' ? 
+								'<div class="error-details"><div class="error-label">📄 Output:</div><div class="output-text">' + escapedOutput + '</div></div>' : '';
+							const detailsCell = test.outcome === 'failure' ? 
+								'<span class="details-toggle" onclick="toggleDetails(\'' + detailsId + '\')">📋 View Error</span>' +
+								'<div id="' + detailsId + '" class="details-content">' +
+								'<div class="error-details"><div class="error-label">❌ Error:</div><div class="output-text">' + escapedError + '</div></div>' +
+								outputHtml + '</div>' : '✅';
+							return `
+						<tr class="${test.outcome === 'failure' ? 'failure-highlight' : ''}">
+							<td>${test.testId}</td>
+							<td>${test.consumerId.split('-').slice(1, 3).join('-')}</td>
+							<td><span class="badge ${test.outcome}">${test.outcome.toUpperCase()}</span></td>
+							<td>${(test.duration / 1000).toFixed(2)}s</td>
+							<td>${detailsCell}</td>
+						</tr>
+						`;
+						}).join('')}
+					</tbody>
+				</table>
+			</div>
 		</div>
 
 		<div class="footer">
@@ -477,6 +658,33 @@ function generateHtmlReport() {
 			<p>Total execution time: ${elapsed.toFixed(1)} seconds</p>
 		</div>
 	</div>
+
+	<script>
+		function switchTab(tabId) {
+			// Hide all tab contents
+			document.querySelectorAll('.tab-content').forEach(content => {
+				content.classList.remove('active');
+			});
+			
+			// Deactivate all tabs
+			document.querySelectorAll('.tab').forEach(tab => {
+				tab.classList.remove('active');
+			});
+			
+			// Show selected tab content
+			document.getElementById(tabId).classList.add('active');
+			
+			// Activate clicked tab
+			event.target.classList.add('active');
+		}
+		
+		function toggleDetails(detailsId) {
+			const element = document.getElementById(detailsId);
+			if (element) {
+				element.classList.toggle('show');
+			}
+		}
+	</script>
 </body>
 </html>`;
 

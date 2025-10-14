@@ -154,12 +154,12 @@ export class BatchConsumer {
 				modelId = this.whisperModelId;
 			} else if (testId.startsWith("embed")) {
 				modelId = this.embeddingModelId;
-			} else if (testId.startsWith("completion") || testId.startsWith("model-load")) {
+			} else if (testId.startsWith("completion") || testId.startsWith("model-load") || testId.startsWith("model-unload")) {
 				modelId = this.llmModelId;
 			}
 
-			// Set timeout - 2 minutes max for all tests
-			const timeoutMs = 120000; // 2 minutes
+		// Set timeout - 1 minute max for all tests
+		const timeoutMs = 60000; // 1 minute
 			
 			// Execute the test with timeout
 			const testPromise = this.executor.executeTest(
@@ -179,6 +179,9 @@ export class BatchConsumer {
 			const outcome = result.passed ? "success" : "failure";
 
 			console.log(`${outcome === "success" ? "✅" : "❌"} ${testId} ${outcome} (${duration}ms)`);
+			if (!result.passed && result.output) {
+				console.log(`   Output: ${result.output}`);
+			}
 
 			// Send result to producer
 			this.client.publish(

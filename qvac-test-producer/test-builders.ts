@@ -255,6 +255,8 @@ export class TestBuilder {
 	}
 
 	buildTranscriptionOnlyMusicTest(): TestDefinition {
+		// NOTE: SDK BUG - This test will timeout (120s) because SDK hangs on music-only audio
+		// Expected behavior: Should return empty or minimal text quickly
 		return {
 			testId: "transcription-only-music",
 			payload: JSON.stringify({
@@ -275,6 +277,8 @@ export class TestBuilder {
 	}
 
 	buildTranscriptionLongAudioTest(): TestDefinition {
+		// NOTE: SDK LIMITATION - This test may timeout (120s) on very long audio files
+		// 10-minute audio may require more processing time than 2-minute timeout allows
 		return {
 			testId: "transcription-long-audio",
 			payload: JSON.stringify({
@@ -385,6 +389,8 @@ export class TestBuilder {
 	}
 
 	buildTranscriptionCorruptedMp3Test(): TestDefinition {
+		// NOTE: SDK BUG - This test will timeout (120s) because SDK hangs on corrupted files
+		// Expected behavior: Should throw error immediately
 		return {
 			testId: "transcription-corrupted",
 			payload: JSON.stringify({
@@ -404,6 +410,8 @@ export class TestBuilder {
 	}
 
 	buildTranscriptionCorruptedWavTest(): TestDefinition {
+		// NOTE: SDK BUG - This test will timeout (120s) because SDK hangs on corrupted files
+		// Expected behavior: Should throw error immediately
 		return {
 			testId: "transcription-corrupted-wav",
 			payload: JSON.stringify({
@@ -504,6 +512,652 @@ export class TestBuilder {
 		};
 	}
 
+	buildEmbedBatchTest(): TestDefinition {
+		// NOTE: SDK BUG - This test will timeout (120s) when using Promise.all for batch embeddings
+		// Expected behavior: Should process 3 embeddings in parallel successfully
+		return {
+			testId: "embed-batch",
+			payload: JSON.stringify({
+				testId: "embed-batch",
+				params: {
+					texts: [
+						"First text to embed",
+						"Second text to embed",
+						"Third text to embed",
+					],
+				},
+				expectation: {
+					validation: "returns-batch-vectors",
+					minDimensions: 100,
+					expectedCount: 3,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	// ========== MODEL MANAGEMENT TESTS ==========
+
+	buildModelUnloadTest(): TestDefinition {
+		return {
+			testId: "model-unload",
+			payload: JSON.stringify({
+				testId: "model-unload",
+				params: {
+					shouldClearStorage: false,
+				},
+				expectation: {
+					type: "model-unloaded",
+					validation: "unloads-successfully",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildModelLoadConcurrentTest(): TestDefinition {
+		return {
+			testId: "model-load-concurrent",
+			payload: JSON.stringify({
+				testId: "model-load-concurrent",
+				params: {
+					models: [
+						{ type: "llm", constant: "LLAMA_3_2_1B_INST_Q4_0" },
+						{ type: "embeddings", constant: "GTE_LARGE_FP16" },
+					],
+				},
+				expectation: {
+					type: "models-loaded",
+					validation: "returns-model-ids",
+					expectedCount: 2,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 120000, // 2 minutes for concurrent loading
+		};
+	}
+
+	buildCompletionInvalidModelTest(): TestDefinition {
+		return {
+			testId: "completion-invalid-model",
+			payload: JSON.stringify({
+				testId: "completion-invalid-model",
+				params: {
+					modelId: "invalid-model-id-123",
+					history: [
+						{ role: "user", content: "Hello" },
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "throws-error",
+					errorContains: "model",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	// ========== TRANSLATION TESTS ==========
+
+	buildTranslationEnToEsTest(): TestDefinition {
+		return {
+			testId: "translation-en-to-es",
+			payload: JSON.stringify({
+				testId: "translation-en-to-es",
+				params: {
+					text: "Hello, how are you?",
+					sourceLang: "en",
+					targetLang: "es",
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["hola", "cómo", "estás"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "translation",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildTranslationEsToEnTest(): TestDefinition {
+		return {
+			testId: "translation-es-to-en",
+			payload: JSON.stringify({
+				testId: "translation-es-to-en",
+				params: {
+					text: "Hola, ¿cómo estás?",
+					sourceLang: "es",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["hello", "how", "are"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "translation",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildTranslationErrorTest(): TestDefinition {
+		return {
+			testId: "translation-error",
+			payload: JSON.stringify({
+				testId: "translation-error",
+				params: {
+					text: "",
+					sourceLang: "invalid",
+					targetLang: "invalid",
+				},
+				expectation: {
+					validation: "throws-error",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "translation",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	// ========== ADDITIONAL LLM COMPLETION TESTS ==========
+
+	buildCompletionSystemMessageTest(): TestDefinition {
+		return {
+			testId: "completion-system-message",
+			payload: JSON.stringify({
+				testId: "completion-system-message",
+				params: {
+					history: [
+						{ role: "system", content: "You are a helpful math tutor. Always explain your reasoning." },
+						{ role: "user", content: "What is 15 + 27?" },
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["42"],
+					minLength: 20,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildCompletionMaxTokensTest(): TestDefinition {
+		return {
+			testId: "completion-max-tokens",
+			payload: JSON.stringify({
+				testId: "completion-max-tokens",
+				params: {
+					history: [
+						{ role: "user", content: "Write a long story about a cat." },
+					],
+					stream: false,
+					maxTokens: 10,
+				},
+				expectation: {
+					validation: "max-tokens",
+					maxTokens: 15, // Allow some buffer
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildCompletionSpecialCharsTest(): TestDefinition {
+		return {
+			testId: "completion-special-chars",
+			payload: JSON.stringify({
+				testId: "completion-special-chars",
+				params: {
+					history: [
+						{ role: "user", content: "Translate to English: Hola 👋 ¿Cómo estás? 你好 🌍" },
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "returns-text",
+					minLength: 5,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	// ========== ADDITIONAL EMBEDDING TESTS ==========
+
+	buildEmbedUnicodeTest(): TestDefinition {
+		return {
+			testId: "embed-unicode",
+			payload: JSON.stringify({
+				testId: "embed-unicode",
+				params: {
+					text: "Hello 👋 World 🌍 Testing émojis and ñ special çharacters 你好",
+				},
+				expectation: {
+					validation: "returns-vector",
+					minDimensions: 100,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildEmbedVeryShortTest(): TestDefinition {
+		return {
+			testId: "embed-very-short",
+			payload: JSON.stringify({
+				testId: "embed-very-short",
+				params: {
+					text: "Hi",
+				},
+				expectation: {
+					validation: "returns-vector",
+					minDimensions: 100,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	// ========== ADDITIONAL TRANSCRIPTION TESTS ==========
+
+	buildTranscriptionStreamingTest(): TestDefinition {
+		return {
+			testId: "transcription-streaming",
+			payload: JSON.stringify({
+				testId: "transcription-streaming",
+				params: {
+					audioFileName: "transcription-short.wav",
+					streaming: true,
+				},
+				expectation: {
+					validation: "streaming-updates",
+					keywords: ["test", "automation"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	// ========== PHASE 2: ADVANCED PARAMETER TESTS ==========
+
+	buildCompletionStopSequencesTest(): TestDefinition {
+		return {
+			testId: "completion-stop-sequences",
+			payload: JSON.stringify({
+				testId: "completion-stop-sequences",
+				params: {
+					history: [
+						{ role: "user", content: "Count from 1 to 10: 1, 2, 3," },
+					],
+					stream: false,
+					stop: [",", "5"],
+				},
+				expectation: {
+					validation: "stops-at-sequence",
+					stopBefore: "5",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionTopPTest(): TestDefinition {
+		return {
+			testId: "completion-top-p",
+			payload: JSON.stringify({
+				testId: "completion-top-p",
+				params: {
+					history: [
+						{ role: "user", content: "Say 'hello' in one word." },
+					],
+					stream: false,
+					top_p: 0.1,
+					temperature: 0.7,
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["hello"],
+					minLength: 3,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionRepeatPenaltyTest(): TestDefinition {
+		return {
+			testId: "completion-repeat-penalty",
+			payload: JSON.stringify({
+				testId: "completion-repeat-penalty",
+				params: {
+					history: [
+						{ role: "user", content: "List 3 different colors." },
+					],
+					stream: false,
+					repeat_penalty: 1.5,
+				},
+				expectation: {
+					validation: "length-check",
+					minLength: 10,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionMinPTest(): TestDefinition {
+		return {
+			testId: "completion-min-p",
+			payload: JSON.stringify({
+				testId: "completion-min-p",
+				params: {
+					history: [
+						{ role: "user", content: "What is 2+2? Answer with just the number." },
+					],
+					stream: false,
+					min_p: 0.05,
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["4"],
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildEmbedCodeSnippetTest(): TestDefinition {
+		return {
+			testId: "embed-code-snippet",
+			payload: JSON.stringify({
+				testId: "embed-code-snippet",
+				params: {
+					text: "function hello() { console.log('Hello World'); return true; }",
+				},
+				expectation: {
+					validation: "returns-vector",
+					minDimensions: 128,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildEmbedMultilingualTest(): TestDefinition {
+		return {
+			testId: "embed-multilingual",
+			payload: JSON.stringify({
+				testId: "embed-multilingual",
+				params: {
+					text: "Hello world. Bonjour le monde. Hola mundo. こんにちは世界",
+				},
+				expectation: {
+					validation: "returns-vector",
+					minDimensions: 128,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildCompletionVeryLongContextTest(): TestDefinition {
+		const longContext = "The quick brown fox jumps over the lazy dog. ".repeat(100);
+		return {
+			testId: "completion-very-long-context",
+			payload: JSON.stringify({
+				testId: "completion-very-long-context",
+				params: {
+					history: [
+						{ role: "user", content: `${longContext}. What animal was mentioned first?` },
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["fox"],
+					minLength: 3,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildCompletionZeroTemperatureTest(): TestDefinition {
+		return {
+			testId: "completion-zero-temperature",
+			payload: JSON.stringify({
+				testId: "completion-zero-temperature",
+				params: {
+					history: [
+						{ role: "user", content: "What is the capital of France? Answer with just the city name." },
+					],
+					stream: false,
+					temperature: 0.0,
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["Paris"],
+					minLength: 3,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	// ========== PHASE 3: EDGE CASES & ADVANCED SCENARIOS ==========
+
+	buildCompletionTopKTest(): TestDefinition {
+		return {
+			testId: "completion-top-k",
+			payload: JSON.stringify({
+				testId: "completion-top-k",
+				params: {
+					history: [
+						{ role: "user", content: "What is 10 + 5? Answer with just the number." },
+					],
+					stream: false,
+					top_k: 10,
+					temperature: 0.5,
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["15"],
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionFrequencyPenaltyTest(): TestDefinition {
+		return {
+			testId: "completion-frequency-penalty",
+			payload: JSON.stringify({
+				testId: "completion-frequency-penalty",
+				params: {
+					history: [
+						{ role: "user", content: "Name 5 different fruits." },
+					],
+					stream: false,
+					frequency_penalty: 1.0,
+				},
+				expectation: {
+					validation: "length-check",
+					minLength: 15,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionPresencePenaltyTest(): TestDefinition {
+		return {
+			testId: "completion-presence-penalty",
+			payload: JSON.stringify({
+				testId: "completion-presence-penalty",
+				params: {
+					history: [
+						{ role: "user", content: "Write 3 different words." },
+					],
+					stream: false,
+					presence_penalty: 1.0,
+				},
+				expectation: {
+					validation: "length-check",
+					minLength: 5,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionNegativeTemperatureTest(): TestDefinition {
+		return {
+			testId: "completion-negative-temperature",
+			payload: JSON.stringify({
+				testId: "completion-negative-temperature",
+				params: {
+					history: [
+						{ role: "user", content: "Say hello." },
+					],
+					stream: false,
+					temperature: -0.5,
+				},
+				expectation: {
+					validation: "error-or-clamped",
+					errorContains: "temperature",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildTranscriptionVeryShortAudioTest(): TestDefinition {
+		return {
+			testId: "transcription-very-short",
+			payload: JSON.stringify({
+				testId: "transcription-very-short",
+				params: {
+					audioFileName: "transcription-silence.m4a",
+				},
+				expectation: {
+					validation: "handles-gracefully",
+					allowEmpty: true,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildEmbedSpecialCharactersTest(): TestDefinition {
+		return {
+			testId: "embed-special-chars",
+			payload: JSON.stringify({
+				testId: "embed-special-chars",
+				params: {
+					text: "@#$%^&*()_+{}|:<>?[]\\;',./`~!",
+				},
+				expectation: {
+					validation: "returns-vector",
+					minDimensions: 128,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildEmbedNumbersOnlyTest(): TestDefinition {
+		return {
+			testId: "embed-numbers-only",
+			payload: JSON.stringify({
+				testId: "embed-numbers-only",
+				params: {
+					text: "1234567890 42 3.14159 999",
+				},
+				expectation: {
+					validation: "returns-vector",
+					minDimensions: 128,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildModelReloadTest(): TestDefinition {
+		return {
+			testId: "model-reload-llm",
+			payload: JSON.stringify({
+				testId: "model-reload-llm",
+				params: {
+					modelType: "llm",
+					modelConstant: "LLAMA_3_2_1B_INST_Q4_0",
+				},
+				expectation: {
+					validation: "handles-reload",
+					shouldSucceedOrError: true,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 15000,
+		};
+	}
+
 	// ========== BUILD ALL TESTS ==========
 
 	buildAllTests(): TestDefinition[] {
@@ -513,6 +1167,9 @@ export class TestBuilder {
 		tests.push(this.buildModelLoadLlmTest());
 		tests.push(this.buildModelLoadEmbeddingTest());
 		tests.push(this.buildModelLoadInvalidTest());
+		tests.push(this.buildModelUnloadTest());
+		tests.push(this.buildModelLoadConcurrentTest());
+		tests.push(this.buildModelReloadTest());
 
 		// LLM completion tests
 		tests.push(this.buildCompletionStreamingTest());
@@ -523,6 +1180,24 @@ export class TestBuilder {
 		tests.push(this.buildCompletionEmptyPromptTest());
 		tests.push(this.buildCompletionLongPromptTest());
 		tests.push(this.buildCompletionMultiTurnTest());
+		tests.push(this.buildCompletionInvalidModelTest());
+		tests.push(this.buildCompletionSystemMessageTest());
+		tests.push(this.buildCompletionMaxTokensTest());
+		tests.push(this.buildCompletionSpecialCharsTest());
+		
+		// Phase 2: Advanced parameter tests
+		tests.push(this.buildCompletionStopSequencesTest());
+		tests.push(this.buildCompletionTopPTest());
+		tests.push(this.buildCompletionRepeatPenaltyTest());
+		tests.push(this.buildCompletionMinPTest());
+		tests.push(this.buildCompletionVeryLongContextTest());
+		tests.push(this.buildCompletionZeroTemperatureTest());
+		
+		// Phase 3: Edge cases & advanced scenarios
+		tests.push(this.buildCompletionTopKTest());
+		tests.push(this.buildCompletionFrequencyPenaltyTest());
+		tests.push(this.buildCompletionPresencePenaltyTest());
+		tests.push(this.buildCompletionNegativeTemperatureTest());
 
 		// Transcription tests
 		tests.push(this.buildTranscriptionShortWavTest());
@@ -535,12 +1210,26 @@ export class TestBuilder {
 		tests.push(this.buildTranscriptionLongAudioTest());
 		tests.push(this.buildTranscriptionCorruptedMp3Test());
 		tests.push(this.buildTranscriptionCorruptedWavTest());
+		tests.push(this.buildTranscriptionStreamingTest());
+		tests.push(this.buildTranscriptionVeryShortAudioTest());
 
 		// Embedding tests
 		tests.push(this.buildEmbedSimpleTextTest());
 		tests.push(this.buildEmbedLongTextTest());
 		tests.push(this.buildEmbedEmptyTextTest());
 		tests.push(this.buildEmbedSimilarityTest());
+		tests.push(this.buildEmbedBatchTest());
+		tests.push(this.buildEmbedUnicodeTest());
+		tests.push(this.buildEmbedVeryShortTest());
+		tests.push(this.buildEmbedCodeSnippetTest());
+		tests.push(this.buildEmbedMultilingualTest());
+		tests.push(this.buildEmbedSpecialCharactersTest());
+		tests.push(this.buildEmbedNumbersOnlyTest());
+
+		// Translation tests
+		tests.push(this.buildTranslationEnToEsTest());
+		tests.push(this.buildTranslationEsToEnTest());
+		tests.push(this.buildTranslationErrorTest());
 
 		return tests;
 	}
