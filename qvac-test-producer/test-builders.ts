@@ -1232,7 +1232,203 @@ export class TestBuilder {
 		tests.push(this.buildTranslationEsToEnTest());
 		tests.push(this.buildTranslationErrorTest());
 
+		// ========== PHASE 4: ROBUSTNESS & ADVANCED SCENARIOS ==========
+		tests.push(this.buildCompletionConcurrentRequestsTest());
+		tests.push(this.buildCompletionExtremelyLongPromptTest());
+		tests.push(this.buildCompletionRepeatedTokensTest());
+		tests.push(this.buildModelSwitchLlmTest());
+		tests.push(this.buildModelReloadAfterErrorTest());
+		tests.push(this.buildCompletionWithWhitespaceTest());
+		tests.push(this.buildCompletionJsonFormatTest());
+		tests.push(this.buildCompletionCodeGenerationTest());
+
 		return tests;
+	}
+
+	// ========== PHASE 4: ROBUSTNESS & ADVANCED SCENARIOS ==========
+
+	buildCompletionConcurrentRequestsTest(): TestDefinition {
+		return {
+			testId: "completion-concurrent-requests",
+			payload: JSON.stringify({
+				testId: "completion-concurrent-requests",
+				params: {
+					requests: [
+						{ history: [{ role: "user", content: "What is 3 + 3? Answer with just the number." }] },
+						{ history: [{ role: "user", content: "What is 5 + 5? Answer with just the number." }] },
+						{ history: [{ role: "user", content: "What is 7 + 7? Answer with just the number." }] },
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "concurrent-results",
+					expectedAnswers: ["6", "10", "14"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildCompletionExtremelyLongPromptTest(): TestDefinition {
+		const longPrompt = "Count these numbers: " + Array.from({ length: 50 }, (_, i) => i + 1).join(", ") + ". How many numbers are there? Answer with just the number.";
+		return {
+			testId: "completion-extremely-long-prompt",
+			payload: JSON.stringify({
+				testId: "completion-extremely-long-prompt",
+				params: {
+					history: [
+						{ role: "user", content: longPrompt },
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["50"],
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 12000,
+		};
+	}
+
+	buildCompletionRepeatedTokensTest(): TestDefinition {
+		return {
+			testId: "completion-repeated-tokens",
+			payload: JSON.stringify({
+				testId: "completion-repeated-tokens",
+				params: {
+					history: [
+						{ role: "user", content: "one one one one one. What word is repeated? Answer with just that word." },
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["one"],
+					minLength: 2,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildModelSwitchLlmTest(): TestDefinition {
+		return {
+			testId: "model-switch-llm",
+			payload: JSON.stringify({
+				testId: "model-switch-llm",
+				params: {
+					currentModel: "llm",
+					newModelConstant: "LLAMA_3_2_1B_INST_Q4_0",
+				},
+				expectation: {
+					type: "model-switch",
+					validation: "returns-new-model-id",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 90000, // Unload + reload time
+		};
+	}
+
+	buildModelReloadAfterErrorTest(): TestDefinition {
+		return {
+			testId: "model-reload-after-error",
+			payload: JSON.stringify({
+				testId: "model-reload-after-error",
+				params: {
+					modelType: "llm",
+					modelConstant: "LLAMA_3_2_1B_INST_Q4_0",
+					testAfterReload: {
+						history: [{ role: "user", content: "What is 9 + 9? Answer with just the number." }],
+					},
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["18"],
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 70000,
+		};
+	}
+
+	buildCompletionWithWhitespaceTest(): TestDefinition {
+		return {
+			testId: "completion-whitespace",
+			payload: JSON.stringify({
+				testId: "completion-whitespace",
+				params: {
+					history: [
+						{ role: "user", content: "   What is 12 + 12?   Answer with just the number.   " },
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["24"],
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionJsonFormatTest(): TestDefinition {
+		return {
+			testId: "completion-json-format",
+			payload: JSON.stringify({
+				testId: "completion-json-format",
+				params: {
+					history: [
+						{ role: "user", content: 'Return this JSON: {"result": 25}. Just return the exact JSON.' },
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["25", "{", "}"],
+					minLength: 5,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildCompletionCodeGenerationTest(): TestDefinition {
+		return {
+			testId: "completion-code-generation",
+			payload: JSON.stringify({
+				testId: "completion-code-generation",
+				params: {
+					history: [
+						{ role: "user", content: "Write a function that returns 100. Just write: function f() { return 100; }" },
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["100", "function"],
+					minLength: 10,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 10000,
+		};
 	}
 }
 

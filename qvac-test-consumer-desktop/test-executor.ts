@@ -93,6 +93,16 @@ export class TestExecutor {
 		this.testHandlers.set("model-load-concurrent", this.modelLoadConcurrent.bind(this));
 		this.testHandlers.set("completion-invalid-model", this.completionInvalidModel.bind(this));
 		this.testHandlers.set("model-reload-llm", this.modelReload.bind(this));
+
+		// Phase 4: Robustness & Advanced Scenarios
+		this.testHandlers.set("completion-concurrent-requests", this.completionConcurrentRequests.bind(this));
+		this.testHandlers.set("completion-extremely-long-prompt", this.completionExtremelyLongPrompt.bind(this));
+		this.testHandlers.set("completion-repeated-tokens", this.completionRepeatedTokens.bind(this));
+		this.testHandlers.set("model-switch-llm", this.modelSwitchLlm.bind(this));
+		this.testHandlers.set("model-reload-after-error", this.modelReloadAfterError.bind(this));
+		this.testHandlers.set("completion-whitespace", this.completionWhitespace.bind(this));
+		this.testHandlers.set("completion-json-format", this.completionJsonFormat.bind(this));
+		this.testHandlers.set("completion-code-generation", this.completionCodeGeneration.bind(this));
 	}
 
 	public async executeTest(
@@ -1190,6 +1200,226 @@ export class TestExecutor {
 				output: `Model reload handled with error: ${errorMsg.substring(0, 100)}`,
 				passed: true,
 			};
+		}
+	}
+
+	// ========== PHASE 4: ROBUSTNESS & ADVANCED SCENARIOS ==========
+
+	private async completionConcurrentRequests(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No LLM model loaded", passed: false };
+		}
+
+		try {
+			const { requests } = params;
+			const expectedAnswers = expectation.expectedAnswers || [];
+
+			// Run all completions concurrently
+			const results = await Promise.all(
+				requests.map((req: any) => 
+					runCompletion({ modelId, history: req.history, stream: false })
+				)
+			);
+
+			const texts = await Promise.all(results.map(r => r.text));
+			
+			// Check if each response contains the expected answer
+			const matches = texts.map((text, i) => ({
+				text: text.trim(),
+				expected: expectedAnswers[i],
+				found: text.includes(expectedAnswers[i])
+			}));
+
+			const allPassed = matches.every(m => m.found);
+
+			return {
+				output: `Concurrent results: ${matches.map(m => `"${m.text}" (expected: ${m.expected}, found: ${m.found})`).join(", ")}`,
+				passed: allPassed,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async completionExtremelyLongPrompt(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No LLM model loaded", passed: false };
+		}
+
+		try {
+			const { history, stream = false } = params;
+			const result = runCompletion({ modelId, history, stream });
+			const text = (await result.text).trim();
+
+			const keywords = expectation.keywords || [];
+			const hasKeywords = keywords.every((kw: string) => 
+				text.toLowerCase().includes(kw.toLowerCase())
+			);
+
+			return {
+				output: `Long prompt response (${history[0].content.length} chars): "${text.substring(0, 100)}..." | Keywords found: ${hasKeywords}`,
+				passed: hasKeywords,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async completionRepeatedTokens(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No LLM model loaded", passed: false };
+		}
+
+		try {
+			const { history, stream = false } = params;
+			const result = runCompletion({ modelId, history, stream });
+			const text = (await result.text).trim();
+
+			const keywords = expectation.keywords || [];
+			const hasKeywords = keywords.every((kw: string) => 
+				text.toLowerCase().includes(kw.toLowerCase())
+			);
+
+			return {
+				output: `Repeated tokens response: "${text}" | Keywords found: ${hasKeywords}`,
+				passed: hasKeywords,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async modelSwitchLlm(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No LLM model loaded", passed: false };
+		}
+
+		try {
+			// Unload current model
+			await unloadModel(modelId);
+			
+			// Load same model again (simulates switching)
+			const newModelId = await loadModel({
+				modelSrc: LLAMA_3_2_1B_INST_Q4_0,
+				modelType: "llm",
+			});
+
+			return {
+				output: `Model switched: old=${modelId.substring(0, 8)}, new=${newModelId.substring(0, 8)}`,
+				passed: true,
+				modelId: newModelId,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async modelReloadAfterError(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		try {
+			// Simulate error by unloading if model exists
+			if (modelId) {
+				await unloadModel(modelId);
+			}
+
+			// Reload the model
+			const newModelId = await loadModel({
+				modelSrc: LLAMA_3_2_1B_INST_Q4_0,
+				modelType: "llm",
+			});
+
+			// Test if it works with a completion
+			const { testAfterReload } = params;
+			const result = runCompletion({ 
+				modelId: newModelId, 
+				history: testAfterReload.history, 
+				stream: false 
+			});
+			const text = (await result.text).trim();
+
+			const keywords = expectation.keywords || [];
+			const hasKeywords = keywords.every((kw: string) => 
+				text.includes(kw)
+			);
+
+			return {
+				output: `Reloaded model works: "${text}" | Keywords found: ${hasKeywords}`,
+				passed: hasKeywords,
+				modelId: newModelId,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async completionWhitespace(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No LLM model loaded", passed: false };
+		}
+
+		try {
+			const { history, stream = false } = params;
+			const result = runCompletion({ modelId, history, stream });
+			const text = (await result.text).trim();
+
+			const keywords = expectation.keywords || [];
+			const hasKeywords = keywords.every((kw: string) => 
+				text.includes(kw)
+			);
+
+			return {
+				output: `Whitespace test response: "${text}" | Keywords found: ${hasKeywords}`,
+				passed: hasKeywords,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async completionJsonFormat(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No LLM model loaded", passed: false };
+		}
+
+		try {
+			const { history, stream = false } = params;
+			const result = runCompletion({ modelId, history, stream });
+			const text = (await result.text).trim();
+
+			const keywords = expectation.keywords || [];
+			const hasKeywords = keywords.every((kw: string) => 
+				text.includes(kw)
+			);
+
+			return {
+				output: `JSON format response: "${text}" | Keywords found: ${hasKeywords}`,
+				passed: hasKeywords,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async completionCodeGeneration(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No LLM model loaded", passed: false };
+		}
+
+		try {
+			const { history, stream = false } = params;
+			const result = runCompletion({ modelId, history, stream });
+			const text = (await result.text).trim();
+
+			const keywords = expectation.keywords || [];
+			const hasKeywords = keywords.every((kw: string) => 
+				text.includes(kw)
+			);
+
+			return {
+				output: `Code generation response: "${text.substring(0, 100)}..." | Keywords found: ${hasKeywords}`,
+				passed: hasKeywords,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
 		}
 	}
 }
