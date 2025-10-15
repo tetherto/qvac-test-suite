@@ -213,11 +213,14 @@ client.on("message", (topic, payload) => {
 			// Generate HTML report
 			generateHtmlReport();
 			
+			// Don't call displayDashboard() again after batch complete
+			// to avoid clearing the HTML report path message
 			setTimeout(() => {
 				console.log("\n\n👋 Monitor shutting down...\n");
 				client.end();
 				process.exit(0);
 			}, 5000);
+			return; // Exit early to prevent displayDashboard() call below
 		}
 		
 		displayDashboard();
