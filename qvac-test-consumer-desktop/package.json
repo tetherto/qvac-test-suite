@@ -3,7 +3,6 @@
 	"version": "1.0.0",
 	"type": "module",
 	"scripts": {
-		"dev": "bun run index.ts",
 		"batch": "bun run batch-consumer.ts"
 	},
 	"dependencies": {

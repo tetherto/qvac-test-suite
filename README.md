@@ -61,16 +61,13 @@ Add more consumers for parallel execution - each pulls unique tests from the que
 ```
 qvac-test-producer/
   ├── batch-orchestrator.ts    # Queue manager
-  ├── test-builders.ts         # Test definitions
-  └── index.ts                 # Original continuous mode
+  └── test-builders.ts         # Test definitions (62 tests)
 
 qvac-test-consumer-desktop/
   ├── batch-consumer.ts        # Pull-based consumer
-  ├── test-executor.ts         # Test handlers
-  └── index.ts                 # Original continuous mode
+  └── test-executor.ts         # Test handlers
 
-batch-monitor.ts               # Real-time dashboard
-verify-tests.ts                # Original monitor
+batch-monitor.ts               # Real-time dashboard with HTML reports
 shared-test-data/audio/        # Test audio files
 ```
 
@@ -116,12 +113,3 @@ Examples from latest run:
 - `embed-simple-text`: **60s timeout** ❌ (SDK hung, never responded)
 
 **If a test times out, the SDK is broken for that use case - it's not a test configuration issue.**
-
-## 🔄 Legacy Mode
-
-Original continuous testing still available:
-```powershell
-cd qvac-test-producer && bun run index.ts    # Loops every 3s
-cd qvac-test-consumer-desktop && bun run index.ts
-bun run verify-tests.ts
-```

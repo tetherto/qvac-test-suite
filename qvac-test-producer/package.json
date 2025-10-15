@@ -1,10 +1,9 @@
 {
 	"name": "qvac-test-scheduler",
-	"module": "index.ts",
+	"module": "batch-orchestrator.ts",
 	"type": "module",
 	"private": true,
 	"scripts": {
-		"dev": "bun run index.ts",
 		"batch": "bun run batch-orchestrator.ts"
 	},
 	"devDependencies": {
