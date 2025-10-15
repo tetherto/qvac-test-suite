@@ -1094,21 +1094,22 @@ export class TestBuilder {
 
 	buildTranscriptionVeryShortAudioTest(): TestDefinition {
 		return {
+		testId: "transcription-very-short",
+		payload: JSON.stringify({
 			testId: "transcription-very-short",
-			payload: JSON.stringify({
-				testId: "transcription-very-short",
-				params: {
-					audioFileName: "transcription-silence.m4a",
-				},
-				expectation: {
-					validation: "handles-gracefully",
-					allowEmpty: true,
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "whisper",
-			estimatedDurationMs: 5000,
-		};
+			params: {
+				audioFileName: "transcription-short.m4a",
+			},
+			expectation: {
+				validation: "contains-keywords",
+				keywords: ["test", "automation", "QVAC", "QA"],
+				minLength: 10,
+			},
+			expectedOutcome: "pass",
+		}),
+		dependency: "whisper",
+		estimatedDurationMs: 5000,
+	};
 	}
 
 	buildEmbedSpecialCharactersTest(): TestDefinition {
