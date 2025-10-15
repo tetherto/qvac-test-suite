@@ -1,8 +1,22 @@
 import mqtt from "mqtt";
+import os from "os";
 
 // Simple monitoring dashboard for batch orchestration
 
 const client = mqtt.connect("mqtt://127.0.0.1:1883");
+
+// Collect system information for the report
+const systemInfo = {
+	hostname: os.hostname(),
+	platform: os.platform(),
+	platformVersion: os.release(),
+	arch: os.arch(),
+	cpus: os.cpus()[0]?.model || "Unknown",
+	cpuCores: os.cpus().length,
+	totalMemoryGB: (os.totalmem() / (1024 ** 3)).toFixed(2),
+	freeMemoryGB: (os.freemem() / (1024 ** 3)).toFixed(2),
+	nodeVersion: process.version,
+};
 
 interface ConsumerStats {
 	consumerId: string;
@@ -440,6 +454,20 @@ function generateHtmlReport() {
 		<div class="header">
 			<h1>🧪 QVAC Batch Test Report</h1>
 			<p>Generated: ${new Date().toLocaleString()}</p>
+		</div>
+
+		<div class="section" style="margin-bottom: 20px;">
+			<h2>💻 System Information</h2>
+			<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-top: 15px;">
+				<div><strong>Hostname:</strong> ${systemInfo.hostname}</div>
+				<div><strong>Platform:</strong> ${systemInfo.platform} ${systemInfo.arch}</div>
+				<div><strong>OS Version:</strong> ${systemInfo.platformVersion}</div>
+				<div><strong>CPU:</strong> ${systemInfo.cpus}</div>
+				<div><strong>CPU Cores:</strong> ${systemInfo.cpuCores}</div>
+				<div><strong>Total Memory:</strong> ${systemInfo.totalMemoryGB} GB</div>
+				<div><strong>Free Memory:</strong> ${systemInfo.freeMemoryGB} GB (at report time)</div>
+				<div><strong>Node Version:</strong> ${systemInfo.nodeVersion}</div>
+			</div>
 		</div>
 
 		<div class="stats">

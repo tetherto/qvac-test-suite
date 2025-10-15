@@ -255,8 +255,9 @@ export class TestBuilder {
 	}
 
 	buildTranscriptionOnlyMusicTest(): TestDefinition {
-		// NOTE: SDK BUG - This test will timeout (120s) because SDK hangs on music-only audio
-		// Expected behavior: Should return empty or minimal text quickly
+		// Known Issue: SDK hangs on music-only audio files
+		// Expected: Should return empty/minimal text quickly or handle gracefully
+		// Debug Info: Check if SDK's VAD (Voice Activity Detection) gets stuck in infinite loop
 		return {
 			testId: "transcription-only-music",
 			payload: JSON.stringify({
@@ -270,6 +271,7 @@ export class TestBuilder {
 					maxLength: 0,
 				},
 				expectedOutcome: "pass",
+				debugInfo: "SDK may hang on audio with no speech. VAD might not detect end of stream.",
 			}),
 			dependency: "whisper",
 			estimatedDurationMs: 60000,
@@ -277,8 +279,9 @@ export class TestBuilder {
 	}
 
 	buildTranscriptionLongAudioTest(): TestDefinition {
-		// NOTE: SDK LIMITATION - This test may timeout (120s) on very long audio files
-		// 10-minute audio may require more processing time than 2-minute timeout allows
+		// Known Issue: May timeout on very long audio (10+ minutes)
+		// Expected: Should process or provide progress updates
+		// Debug Info: Check if SDK processes long files in chunks or all at once
 		return {
 			testId: "transcription-long-audio",
 			payload: JSON.stringify({
@@ -302,6 +305,7 @@ export class TestBuilder {
 					],
 				},
 				expectedOutcome: "pass",
+				debugInfo: "10-minute audio file. SDK may need chunking or streaming for long files.",
 			}),
 			dependency: "whisper",
 			estimatedDurationMs: 300000, // 5 minutes
@@ -389,8 +393,9 @@ export class TestBuilder {
 	}
 
 	buildTranscriptionCorruptedMp3Test(): TestDefinition {
-		// NOTE: SDK BUG - This test will timeout (120s) because SDK hangs on corrupted files
-		// Expected behavior: Should throw error immediately
+		// Known Issue: SDK hangs on corrupted audio files instead of throwing error
+		// Expected: Should fail fast with clear error message
+		// Debug Info: File validation should happen before decode attempt
 		return {
 			testId: "transcription-corrupted",
 			payload: JSON.stringify({
@@ -403,6 +408,7 @@ export class TestBuilder {
 					shouldThrowError: true,
 				},
 				expectedOutcome: "pass",
+				debugInfo: "Corrupted MP3. SDK should validate file header before processing.",
 			}),
 			dependency: "whisper",
 			estimatedDurationMs: 10000,
@@ -410,8 +416,9 @@ export class TestBuilder {
 	}
 
 	buildTranscriptionCorruptedWavTest(): TestDefinition {
-		// NOTE: SDK BUG - This test will timeout (120s) because SDK hangs on corrupted files
-		// Expected behavior: Should throw error immediately
+		// Known Issue: SDK hangs on corrupted audio files instead of throwing error
+		// Expected: Should fail fast with clear error message
+		// Debug Info: File validation should happen before decode attempt
 		return {
 			testId: "transcription-corrupted-wav",
 			payload: JSON.stringify({
@@ -424,6 +431,7 @@ export class TestBuilder {
 					shouldThrowError: true,
 				},
 				expectedOutcome: "pass",
+				debugInfo: "Corrupted WAV. SDK should validate RIFF header before processing.",
 			}),
 			dependency: "whisper",
 			estimatedDurationMs: 10000,
@@ -513,8 +521,9 @@ export class TestBuilder {
 	}
 
 	buildEmbedBatchTest(): TestDefinition {
-		// NOTE: SDK BUG - This test will timeout (120s) when using Promise.all for batch embeddings
-		// Expected behavior: Should process 3 embeddings in parallel successfully
+		// Known Issue: SDK hangs when processing parallel embedding requests via Promise.all
+		// Expected: Should process 3 embeddings concurrently or sequentially
+		// Debug Info: RPC client may not handle concurrent embed requests properly
 		return {
 			testId: "embed-batch",
 			payload: JSON.stringify({
@@ -532,6 +541,7 @@ export class TestBuilder {
 					expectedCount: 3,
 				},
 				expectedOutcome: "pass",
+				debugInfo: "Batch of 3 texts. SDK RPC may need queue/semaphore for concurrent requests.",
 			}),
 			dependency: "embeddings",
 			estimatedDurationMs: 15000,
