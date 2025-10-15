@@ -183,6 +183,20 @@ export class BatchConsumer {
 				console.log(`   Output: ${result.output}`);
 			}
 
+			// Update model ID if test returned a new one (for model reload/switch tests)
+			if (result.modelId) {
+				if (testId.startsWith("model-load-llm") || testId.startsWith("model-switch") || testId.startsWith("model-reload") || testId.startsWith("completion")) {
+					this.llmModelId = result.modelId;
+					console.log(`   🔄 Updated LLM model ID: ${result.modelId.substring(0, 12)}...`);
+				} else if (testId.startsWith("model-load-embedding")) {
+					this.embeddingModelId = result.modelId;
+					console.log(`   🔄 Updated Embedding model ID: ${result.modelId.substring(0, 12)}...`);
+				} else if (testId.startsWith("model-load-whisper")) {
+					this.whisperModelId = result.modelId;
+					console.log(`   🔄 Updated Whisper model ID: ${result.modelId.substring(0, 12)}...`);
+				}
+			}
+
 			// Send result to producer
 			this.client.publish(
 				"qvac/results",
