@@ -103,6 +103,15 @@ export class TestExecutor {
 		this.testHandlers.set("completion-whitespace", this.completionWhitespace.bind(this));
 		this.testHandlers.set("completion-json-format", this.completionJsonFormat.bind(this));
 		this.testHandlers.set("completion-code-generation", this.completionCodeGeneration.bind(this));
+		
+		// Phase 5: Real-world scenarios
+		this.testHandlers.set("completion-conversation-context", this.completionConversationContext.bind(this));
+		this.testHandlers.set("completion-single-word", this.completionSingleWord.bind(this));
+		this.testHandlers.set("completion-list-generation", this.completionListGeneration.bind(this));
+		this.testHandlers.set("completion-qa-from-context", this.completionQaFromContext.bind(this));
+		this.testHandlers.set("completion-simple-yes-no", this.completionSimpleYesNo.bind(this));
+		this.testHandlers.set("completion-sentence-completion", this.completionSentenceCompletion.bind(this));
+		this.testHandlers.set("embed-semantic-similarity", this.embedSemanticSimilarity.bind(this));
 	}
 
 	public async executeTest(
@@ -1417,6 +1426,185 @@ export class TestExecutor {
 			return {
 				output: `Code generation response: "${text.substring(0, 100)}..." | Keywords found: ${hasKeywords}`,
 				passed: hasKeywords,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	// ========== PHASE 5: REAL-WORLD SCENARIOS ==========
+
+	private async completionConversationContext(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No LLM model loaded", passed: false };
+		}
+
+		try {
+			const { history, stream = false } = params;
+			const result = runCompletion({ modelId, history, stream });
+			const text = (await result.text).trim();
+
+			const keywords = expectation.keywords || [];
+			const hasKeywords = keywords.every((kw: string) => text.includes(kw));
+
+			return {
+				output: `Conversation with context: "${text}" | Keywords found: ${hasKeywords}`,
+				passed: hasKeywords,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async completionSingleWord(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No LLM model loaded", passed: false };
+		}
+
+		try {
+			const { history, stream = false } = params;
+			const result = runCompletion({ modelId, history, stream });
+			const text = (await result.text).trim();
+
+			const keywords = expectation.keywords || [];
+			const hasKeywords = keywords.some((kw: string) => 
+				text.toLowerCase().includes(kw.toLowerCase())
+			);
+
+			const wordCount = text.split(/\s+/).length;
+
+			return {
+				output: `Single word response: "${text}" (${wordCount} words) | Has expected word: ${hasKeywords}`,
+				passed: hasKeywords,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async completionListGeneration(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No LLM model loaded", passed: false };
+		}
+
+		try {
+			const { history, stream = false } = params;
+			const result = runCompletion({ modelId, history, stream });
+			const text = (await result.text).trim();
+
+			const keywords = expectation.keywords || [];
+			const hasAnyKeyword = keywords.some((kw: string) => 
+				text.toLowerCase().includes(kw.toLowerCase())
+			);
+
+			const minLength = expectation.minLength || 0;
+			const meetsLength = text.length >= minLength;
+
+			return {
+				output: `List generation: "${text.substring(0, 100)}..." | Has color: ${hasAnyKeyword}, Length OK: ${meetsLength}`,
+				passed: hasAnyKeyword && meetsLength,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async completionQaFromContext(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No LLM model loaded", passed: false };
+		}
+
+		try {
+			const { history, stream = false } = params;
+			const result = runCompletion({ modelId, history, stream });
+			const text = (await result.text).trim();
+
+			const keywords = expectation.keywords || [];
+			const hasKeywords = keywords.some((kw: string) => text.includes(kw));
+
+			return {
+				output: `QA from context: "${text}" | Has answer: ${hasKeywords}`,
+				passed: hasKeywords,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async completionSimpleYesNo(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No LLM model loaded", passed: false };
+		}
+
+		try {
+			const { history, stream = false } = params;
+			const result = runCompletion({ modelId, history, stream });
+			const text = (await result.text).toLowerCase().trim();
+
+			const keywords = expectation.keywords || [];
+			const hasKeywords = keywords.some((kw: string) => 
+				text.includes(kw.toLowerCase())
+			);
+
+			return {
+				output: `Yes/No question: "${text}" | Has expected answer: ${hasKeywords}`,
+				passed: hasKeywords,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async completionSentenceCompletion(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No LLM model loaded", passed: false };
+		}
+
+		try {
+			const { history, stream = false } = params;
+			const result = runCompletion({ modelId, history, stream });
+			const text = (await result.text).trim();
+
+			const minLength = expectation.minLength || 0;
+			const meetsLength = text.length >= minLength;
+
+			return {
+				output: `Sentence completion: "${text}" | Length OK: ${meetsLength}`,
+				passed: meetsLength,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async embedSemanticSimilarity(embeddingModelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!embeddingModelId) {
+			return { output: "No embedding model loaded", passed: false };
+		}
+
+		try {
+			const { text1, text2, minSimilarity } = params;
+
+			// Get embeddings for both texts
+			const vec1 = await runEmbed({ modelId: embeddingModelId, text: text1 });
+			const vec2 = await runEmbed({ modelId: embeddingModelId, text: text2 });
+
+			// Calculate cosine similarity
+			let dotProduct = 0;
+			let norm1 = 0;
+			let norm2 = 0;
+			for (let i = 0; i < vec1.length; i++) {
+				dotProduct += vec1[i] * vec2[i];
+				norm1 += vec1[i] * vec1[i];
+				norm2 += vec2[i] * vec2[i];
+			}
+			const similarity = dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
+
+			const passed = similarity >= minSimilarity;
+
+			return {
+				output: `Semantic similarity: ${similarity.toFixed(3)} (threshold: ${minSimilarity}) | Passed: ${passed}`,
+				passed,
 			};
 		} catch (error: any) {
 			return { output: `Error: ${error.message}`, passed: false };

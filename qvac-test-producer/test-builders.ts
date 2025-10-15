@@ -1252,6 +1252,15 @@ export class TestBuilder {
 		tests.push(this.buildCompletionJsonFormatTest());
 		tests.push(this.buildCompletionCodeGenerationTest());
 
+		// ========== PHASE 5: REAL-WORLD SCENARIOS ==========
+		tests.push(this.buildCompletionConversationContextTest());
+		tests.push(this.buildCompletionSingleWordTest());
+		tests.push(this.buildCompletionListGenerationTest());
+		tests.push(this.buildCompletionQaFromContextTest());
+		tests.push(this.buildCompletionSimpleYesNoTest());
+		tests.push(this.buildCompletionSentenceCompletionTest());
+		tests.push(this.buildEmbedSemanticSimilarityTest());
+
 		return tests;
 	}
 
@@ -1438,6 +1447,172 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 10000,
+		};
+	}
+
+	// ========== PHASE 5: REAL-WORLD SCENARIOS ==========
+
+	buildCompletionConversationContextTest(): TestDefinition {
+		return {
+			testId: "completion-conversation-context",
+			payload: JSON.stringify({
+				testId: "completion-conversation-context",
+				params: {
+					history: [
+						{ role: "user", content: "Remember this: my favorite number is 42." },
+						{ role: "assistant", content: "I'll remember that your favorite number is 42." },
+						{ role: "user", content: "What is my favorite number multiplied by 2? Answer with just the number." },
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["84"],
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildCompletionSingleWordTest(): TestDefinition {
+		return {
+			testId: "completion-single-word",
+			payload: JSON.stringify({
+				testId: "completion-single-word",
+				params: {
+					history: [
+						{ role: "user", content: "What color is the sky on a clear day? Answer with ONE word only." },
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["blue", "Blue"],
+					minLength: 1,
+					maxWords: 3, // Allow some flexibility
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionListGenerationTest(): TestDefinition {
+		return {
+			testId: "completion-list-generation",
+			payload: JSON.stringify({
+				testId: "completion-list-generation",
+				params: {
+					history: [
+						{ role: "user", content: "List three primary colors, one per line. Just the colors." },
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "contains-any-keywords",
+					keywords: ["red", "blue", "yellow", "Red", "Blue", "Yellow"],
+					minLength: 10,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildCompletionQaFromContextTest(): TestDefinition {
+		return {
+			testId: "completion-qa-from-context",
+			payload: JSON.stringify({
+				testId: "completion-qa-from-context",
+				params: {
+					history: [
+						{
+							role: "user",
+							content: "The capital of France is Paris. Paris is known for the Eiffel Tower.\n\nBased on the above, what is the capital of France? Answer with just the city name.",
+						},
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["Paris", "paris"],
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionSimpleYesNoTest(): TestDefinition {
+		return {
+			testId: "completion-simple-yes-no",
+			payload: JSON.stringify({
+				testId: "completion-simple-yes-no",
+				params: {
+					history: [
+						{ role: "user", content: "Is water wet? Answer with just 'yes' or 'no'." },
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["yes", "Yes", "YES"],
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionSentenceCompletionTest(): TestDefinition {
+		return {
+			testId: "completion-sentence-completion",
+			payload: JSON.stringify({
+				testId: "completion-sentence-completion",
+				params: {
+					history: [
+						{ role: "user", content: "Complete this sentence: The quick brown fox jumps over the" },
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 5,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildEmbedSemanticSimilarityTest(): TestDefinition {
+		return {
+			testId: "embed-semantic-similarity",
+			payload: JSON.stringify({
+				testId: "embed-semantic-similarity",
+				params: {
+					text1: "The cat sleeps on the mat",
+					text2: "A feline rests on the carpet",
+					minSimilarity: 0.5,
+				},
+				expectation: {
+					validation: "semantic-similarity",
+					minSimilarity: 0.5,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 5000,
 		};
 	}
 }
