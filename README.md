@@ -16,10 +16,18 @@ cd qvac-test-producer
 bun run batch
 ```
 
-**Terminal 2 - Consumer:**
+**Terminal 2 - Desktop Consumer:**
 ```powershell
 cd qvac-test-consumer-desktop
 bun run batch
+```
+
+**Terminal 2 (Alternative) - Mobile Consumer:**
+```powershell
+cd qvac-test-consumer-mobile
+bun start
+# Then open the app on your mobile device (Android/iOS)
+# The batch consumer UI will start automatically
 ```
 
 **Terminal 3 - Monitor (Optional):**
@@ -52,10 +60,12 @@ Add more consumers for parallel execution - each pulls unique tests from the que
 ✅ Pull-based - consumers request tests from queue  
 ✅ Each test runs exactly once  
 ✅ Parallel execution across multiple consumers  
+✅ **Cross-platform:** Desktop (Node.js) and Mobile (React Native/Expo)  
 ✅ Timeout enforcement (60 seconds max for all tests)  
 ✅ Real-time monitoring dashboard with HTML reports  
 ✅ Platform tracking and result grouping  
-✅ Beautiful tabbed HTML reports with per-consumer breakdown
+✅ Beautiful tabbed HTML reports with per-consumer breakdown  
+✅ Mobile consumer with live UI showing progress and logs
 
 ## 📁 Structure
 
@@ -65,8 +75,13 @@ qvac-test-producer/
   └── test-builders.ts         # Test definitions (69 tests)
 
 qvac-test-consumer-desktop/
-  ├── batch-consumer.ts        # Pull-based consumer
-  └── test-executor.ts         # Test handlers
+  ├── batch-consumer.ts        # Pull-based desktop consumer
+  └── test-executor.ts         # Desktop test handlers
+
+qvac-test-consumer-mobile/
+  ├── batch-consumer.tsx       # Pull-based mobile consumer (React Native)
+  ├── test-executor.ts         # Mobile test handlers
+  └── app/(tabs)/index.tsx     # Mobile app entry point
 
 batch-monitor.ts               # Real-time dashboard with HTML reports
 shared-test-data/audio/        # Test audio files
@@ -75,6 +90,36 @@ shared-test-data/audio/        # Test audio files
 ## ⚙️ Configuration
 
 Update `env.ts` in producer/consumer for custom MQTT settings.
+
+### Mobile Consumer Setup
+
+1. **Install dependencies:**
+   ```powershell
+   cd qvac-test-consumer-mobile
+   bun install
+   ```
+
+2. **Configure MQTT broker:**
+   - Update `env.ts` with your MQTT broker URL (must be accessible from mobile device)
+   - For Android: Use `ws://10.0.2.2:1883` if broker is on `localhost`
+   - For iOS: Use your computer's local IP (e.g., `ws://192.168.1.100:1883`)
+
+3. **Run on Android:**
+   ```powershell
+   bun run android
+   ```
+
+4. **Run on iOS:**
+   ```powershell
+   bun run ios
+   ```
+
+The mobile app will automatically:
+- Load all three models (LLM, Whisper, Embedding)
+- Connect to MQTT broker
+- Register with the producer
+- Display real-time progress with a beautiful UI
+- Show test results and logs as they execute
 
 ## ⚠️ Known SDK Issues
 
