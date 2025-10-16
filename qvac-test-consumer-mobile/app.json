@@ -54,8 +54,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "ce20d6e0-d944-4f6f-8cec-03270a7d17e0"
+        "projectId": "c2b7aa9b-abba-4af5-9133-6fde57f9d59a"
       }
-    }
+    },
+    "owner": "boonet"
   }
 }

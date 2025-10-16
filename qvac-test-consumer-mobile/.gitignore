@@ -49,3 +49,7 @@ app-example
 spec/
 bare/llm/llm_server.bundle.js
 bare/backup/backup-share.bundle.js
+
+# Expo prebuild auto-generated folders
+android/
+ios/
