@@ -32,6 +32,11 @@ bun run batch-orchestrator.ts
 cd qvac-test-consumer-desktop
 bun run batch-consumer.ts
 ```
+To run one or more specific tests by their testID, use:
+```powershell
+cd qvac-test-consumer-desktop
+bun run batch testID1 testID2
+```
 
 **3. Start Mobile Consumer (optional):**
 ```bash

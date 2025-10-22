@@ -42,12 +42,14 @@ export class BatchConsumer {
 	private testsCompleted = 0;
 	private isProcessingTest = false;
 	private shutdownRequested = false;
+	private filterTestIds: string[] | null = null;
 
-	constructor(brokerUrl: string, platform: string = "desktop") {
+	constructor(brokerUrl: string, platform: string = "desktop", filterTestIds?: string[]) {
 		this.consumerId = `consumer-${platform}-${os.hostname()}-${Date.now()}`;
 		this.platform = platform;
 		this.client = mqtt.connect(brokerUrl);
 		this.executor = new TestExecutor();
+		this.filterTestIds = filterTestIds || null;
 		this.setupMqttHandlers();
 	}
 
@@ -112,6 +114,14 @@ export class BatchConsumer {
 		}
 
 		if (assignment.status === "assigned" && assignment.test && assignment.uniqueTestId) {
+			// Check if this test should be executed based on filter
+			if (this.filterTestIds && !this.filterTestIds.includes(assignment.test.testId)) {
+				console.log(`⏭️  Skipping test ${assignment.test.testId} (not in filter)`);
+				// Request next test immediately
+				setTimeout(() => this.requestNextTest(), 100);
+				return;
+			}
+			
 			await this.executeTest(assignment.uniqueTestId, assignment.test);
 		}
 	}
@@ -304,6 +314,7 @@ export class BatchConsumer {
 				consumerId: this.consumerId,
 				platform: this.platform,
 				timestamp: new Date().toISOString(),
+				filterTestIds: this.filterTestIds,
 			}),
 			{ qos: 1 },
 		);
@@ -389,7 +400,17 @@ export class BatchConsumer {
 }
 
 // Main execution
-const consumer = new BatchConsumer(env.MQTT_BROKER_URL);
+// Parse command line arguments for test filtering
+const args = process.argv.slice(2);
+const filterTestIds = args.length > 0 ? args : undefined;
+
+if (filterTestIds) {
+	console.log(`🎯 Consumer will only execute tests: ${filterTestIds.join(', ')}\n`);
+} else {
+	console.log("🚀 Consumer will execute all tests\n");
+}
+
+const consumer = new BatchConsumer(env.MQTT_BROKER_URL, "desktop", filterTestIds);
 
 consumer.initialize().catch((err) => {
 	console.error("❌ Fatal error:", err);
