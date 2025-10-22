@@ -84,6 +84,11 @@ export class TestExecutor {
 		this.testHandlers.set("embed-multilingual", this.embedMultilingual.bind(this));
 		this.testHandlers.set("embed-special-chars", this.embedSpecialChars.bind(this));
 		this.testHandlers.set("embed-numbers-only", this.embedNumbersOnly.bind(this));
+		// Enhanced embedding tests with code files
+		this.testHandlers.set("embed-python-code", this.embedSimpleText.bind(this));
+		this.testHandlers.set("embed-javascript-code", this.embedSimpleText.bind(this));
+		this.testHandlers.set("embed-json-data", this.embedSimpleText.bind(this));
+		this.testHandlers.set("embed-html-content", this.embedSimpleText.bind(this));
 
 		// RAG tests
 		this.testHandlers.set("rag-embeddings-small-chunks", this.ragEmbeddings.bind(this));
@@ -1025,14 +1030,24 @@ export class TestExecutor {
 		}
 
 		try {
-			const embedding = await runEmbed({ modelId, text: params.text });
+			// Handle both direct text and code files
+			let text = params.text;
+			if (params.codeFile) {
+				const fs = require("fs");
+				const codePath = path.join(__dirname, "..", "shared-test-data", "code", params.codeFile);
+				console.log(`   📄 Reading code file: ${params.codeFile}`);
+				text = fs.readFileSync(codePath, "utf-8");
+			}
+
+			const embedding = await runEmbed({ modelId, text });
 
 			const isArray = Array.isArray(embedding);
 			const hasMinDimensions = embedding.length >= (expectation.minDimensions || 100);
 			const passed = isArray && hasMinDimensions;
 
+			const source = params.codeFile ? `code file ${params.codeFile}` : "text";
 			return {
-				output: `Embedded text to ${embedding.length}-dimensional vector`,
+				output: `Embedded ${source} to ${embedding.length}-dimensional vector`,
 				passed,
 			};
 		} catch (error: any) {

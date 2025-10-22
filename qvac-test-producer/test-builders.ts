@@ -1153,6 +1153,84 @@ export class TestBuilder {
 		};
 	}
 
+	// ========== ENHANCED EMBEDDING TESTS (Code Files) ==========
+
+	buildEmbedPythonCodeTest(): TestDefinition {
+		return {
+			testId: "embed-python-code",
+			payload: JSON.stringify({
+				testId: "embed-python-code",
+				params: {
+					codeFile: "data_analysis.py",
+				},
+				expectation: {
+					validation: "returns-vector",
+					minDimensions: 128,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 7000,
+		};
+	}
+
+	buildEmbedJavaScriptCodeTest(): TestDefinition {
+		return {
+			testId: "embed-javascript-code",
+			payload: JSON.stringify({
+				testId: "embed-javascript-code",
+				params: {
+					codeFile: "interactive_gallery.js",
+				},
+				expectation: {
+					validation: "returns-vector",
+					minDimensions: 128,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 7000,
+		};
+	}
+
+	buildEmbedJsonDataTest(): TestDefinition {
+		return {
+			testId: "embed-json-data",
+			payload: JSON.stringify({
+				testId: "embed-json-data",
+				params: {
+					codeFile: "api_response.json",
+				},
+				expectation: {
+					validation: "returns-vector",
+					minDimensions: 128,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 7000,
+		};
+	}
+
+	buildEmbedHtmlContentTest(): TestDefinition {
+		return {
+			testId: "embed-html-content",
+			payload: JSON.stringify({
+				testId: "embed-html-content",
+				params: {
+					codeFile: "portfolio_website.html",
+				},
+				expectation: {
+					validation: "returns-vector",
+					minDimensions: 128,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 7000,
+		};
+	}
+
 	buildModelReloadTest(): TestDefinition {
 		return {
 			testId: "model-reload-llm",
@@ -1429,6 +1507,11 @@ export class TestBuilder {
 		tests.push(this.buildEmbedMultilingualTest());
 		tests.push(this.buildEmbedSpecialCharactersTest());
 		tests.push(this.buildEmbedNumbersOnlyTest());
+		// Enhanced embedding tests with code files
+		tests.push(this.buildEmbedPythonCodeTest());
+		tests.push(this.buildEmbedJavaScriptCodeTest());
+		tests.push(this.buildEmbedJsonDataTest());
+		tests.push(this.buildEmbedHtmlContentTest());
 
 		// Translation tests
 		tests.push(this.buildTranslationEnToEsTest());
