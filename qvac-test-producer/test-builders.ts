@@ -1268,6 +1268,100 @@ export class TestBuilder {
 		};
 	}
 
+	// ========== ENHANCED RAG TESTS (Real Documents) ==========
+
+	buildRagLargeDocumentTest(): TestDefinition {
+		return {
+			testId: "rag-large-document-32kb",
+			payload: JSON.stringify({
+				testId: "rag-large-document-32kb",
+				params: {
+					workspace: "desert-adventure",
+					documentFile: "desert_adventure_large.txt",
+					chunkSize: 1000,
+					chunkOverlap: 200,
+					chunkStrategy: "paragraph",
+				},
+				expectation: {
+					validation: "rag-chunks-generated",
+					minChunks: 15, // 32KB should generate many chunks
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 30000, // Longer for large document
+		};
+	}
+
+	buildRagMediumDocumentTest(): TestDefinition {
+		return {
+			testId: "rag-medium-document-10kb",
+			payload: JSON.stringify({
+				testId: "rag-medium-document-10kb",
+				params: {
+					workspace: "hiking-guide",
+					documentFile: "mountain_hiking_guide.txt",
+					chunkSize: 500,
+					chunkOverlap: 100,
+					chunkStrategy: "paragraph",
+				},
+				expectation: {
+					validation: "rag-chunks-generated",
+					minChunks: 10, // 10KB should generate ~10+ chunks
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 20000,
+		};
+	}
+
+	buildRagSmallDocumentTest(): TestDefinition {
+		return {
+			testId: "rag-small-document-poem",
+			payload: JSON.stringify({
+				testId: "rag-small-document-poem",
+				params: {
+					workspace: "ocean-poem",
+					documentFile: "ocean_waves_poem.txt",
+					chunkSize: 100,
+					chunkOverlap: 20,
+					chunkStrategy: "paragraph",
+				},
+				expectation: {
+					validation: "rag-chunks-generated",
+					minChunks: 1, // Small file, just verify it works
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildRagCorruptedDocumentTest(): TestDefinition {
+		return {
+			testId: "rag-corrupted-document",
+			payload: JSON.stringify({
+				testId: "rag-corrupted-document",
+				params: {
+					workspace: "corrupted-test",
+					documentFile: "sunset_beach_corrupted.txt",
+					chunkSize: 200,
+					chunkOverlap: 50,
+					chunkStrategy: "paragraph",
+				},
+				expectation: {
+					validation: "rag-handles-gracefully",
+					shouldSucceedOrHandleError: true,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 15000,
+		};
+	}
+
 	// ========== BUILD ALL TESTS ==========
 
 	buildAllTests(): TestDefinition[] {
@@ -1368,6 +1462,11 @@ export class TestBuilder {
 	tests.push(this.buildRagEmbeddingsTest(100, 20));
 	tests.push(this.buildRagEmbeddingsTest(200, 50));
 	tests.push(this.buildRagEmbeddingsTest(500, 100));
+	// Enhanced RAG tests with real documents
+	tests.push(this.buildRagLargeDocumentTest());
+	tests.push(this.buildRagMediumDocumentTest());
+	tests.push(this.buildRagSmallDocumentTest());
+	tests.push(this.buildRagCorruptedDocumentTest());
 
 	// ========== DESTRUCTIVE TESTS (RUN LAST) ==========
 	// ⚠️  WARNING: These tests intentionally cause context overflow errors

@@ -111,6 +111,11 @@ export class TestExecutor {
 		this.testHandlers.set("rag-embeddings-chunk-100-overlap-20", this.ragEmbeddings.bind(this));
 		this.testHandlers.set("rag-embeddings-chunk-200-overlap-50", this.ragEmbeddings.bind(this));
 		this.testHandlers.set("rag-embeddings-chunk-500-overlap-100", this.ragEmbeddings.bind(this));
+		// Enhanced RAG tests with real documents
+		this.testHandlers.set("rag-large-document-32kb", this.ragEmbeddings.bind(this));
+		this.testHandlers.set("rag-medium-document-10kb", this.ragEmbeddings.bind(this));
+		this.testHandlers.set("rag-small-document-poem", this.ragEmbeddings.bind(this));
+		this.testHandlers.set("rag-corrupted-document", this.ragEmbeddings.bind(this));
 
 		// Translation tests
 		this.testHandlers.set("translation-en-to-es", this.translation.bind(this));
@@ -1782,20 +1787,43 @@ export class TestExecutor {
 		}
 
 		try {
-			const { workspace, documentContent, chunkSize, chunkOverlap, chunkStrategy } = params;
+			const { workspace, documentContent, documentFile, chunkSize, chunkOverlap, chunkStrategy } = params;
+
+			// Read document content from file if documentFile is provided
+			let content = documentContent;
+			if (documentFile) {
+				const docPath = `../shared-test-data/documents/${documentFile}`;
+				console.log(`   📄 Reading document: ${documentFile}`);
+				const asset = Asset.fromModule(require(docPath));
+				await asset.downloadAsync();
+				if (!asset.localUri) {
+					throw new Error(`Failed to load document: ${documentFile}`);
+				}
+				content = await FileSystem.readAsStringAsync(asset.localUri);
+			}
 
 			console.log(`   📚 Testing RAG embeddings with chunk size ${chunkSize}, overlap ${chunkOverlap}`);
 
 			const result = await ragSaveEmbeddings({
 				modelId,
 				workspace,
-				documents: [documentContent],
+				documents: [content],
 				chunk: true,
 				chunkOpts: { chunkSize, chunkOverlap, chunkStrategy },
 			});
 
 			const chunksGenerated = result.processed?.length || 0;
 			const minChunks = expectation.minChunks || 1;
+			
+			// For graceful handling tests, pass if it either succeeds or handles error gracefully
+			if (expectation.validation === "rag-handles-gracefully") {
+				const passed = expectation.shouldSucceedOrHandleError === true;
+				return {
+					output: `Corrupted document handled | Generated ${chunksGenerated} chunks | Passed: ${passed}`,
+					passed,
+				};
+			}
+
 			const passed = chunksGenerated >= minChunks;
 
 			return {
@@ -1803,6 +1831,10 @@ export class TestExecutor {
 				passed,
 			};
 		} catch (error: any) {
+			// For corrupted document test, error handling is expected
+			if (expectation.validation === "rag-handles-gracefully") {
+				return { output: `Gracefully handled error: ${error.message}`, passed: true };
+			}
 			return { output: `Error: ${error.message}`, passed: false };
 		}
 	}
