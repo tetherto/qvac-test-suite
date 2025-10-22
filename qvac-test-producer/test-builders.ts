@@ -99,10 +99,11 @@ export class TestBuilder {
 	}
 
 	buildCompletionContextSizeTest(contextSize: number): TestDefinition {
+		const testId = `completion-context-size-${contextSize}`;
 		return {
-			testId: "completion-context-size",
+			testId,
 			payload: JSON.stringify({
-				testId: "completion-context-size",
+				testId,
 				params: {
 					history: [
 						{ role: "user", content: "What is 1+1? Answer with only the number." },
@@ -122,10 +123,12 @@ export class TestBuilder {
 	}
 
 	buildCompletionTemperatureTest(temperature: number): TestDefinition {
+		const tempLabel = temperature.toString().replace('.', '');
+		const testId = `completion-temperature-${tempLabel}`;
 		return {
-			testId: "completion-temperature",
+			testId,
 			payload: JSON.stringify({
-				testId: "completion-temperature",
+				testId,
 				params: {
 					history: [
 						{ role: "user", content: "What is 2+2? Answer with just the number." },

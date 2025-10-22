@@ -105,17 +105,71 @@ export default function BatchConsumer() {
 			const startTime = Date.now();
 
 			try {
-				// Determine which model to use
+				// ============================================================
+				// 🧹 CLEAN SLATE STRATEGY: Reload model before EACH test
+				// ============================================================
+				// This ensures complete test isolation by:
+				// 1. Clearing any corrupted SDK state from previous tests
+				// 2. Preventing context overflow errors from affecting subsequent tests
+				// 3. Ensuring each test starts with a fresh model instance
+				// ============================================================
+				
+				// Determine which model to use and reload it fresh
 				let modelId: string | null = null;
+				
 				if (testId.startsWith("transcription")) {
+					// Reload Whisper model for clean state
+					if (whisperModelId) {
+						addLog(`   🔄 Reloading Whisper...`);
+						await unloadModel({ modelId: whisperModelId });
+						whisperModelId = await loadModel({
+							modelSrc: WHISPER_TINY,
+							modelType: "whisper",
+							vadModelSrc: VAD_SILERO_5_1_2,
+							modelConfig: {
+								mode: "caption",
+								output_format: "plaintext",
+								min_seconds: 2,
+								max_seconds: 6,
+								audio_format: "f32le",
+							},
+						});
+						addLog(`   ✅ Whisper reloaded`);
+					}
 					modelId = whisperModelId;
+					
 				} else if (testId.startsWith("embed")) {
+					// Reload Embedding model for clean state
+					if (embeddingModelId) {
+						addLog(`   🔄 Reloading Embedding...`);
+						await unloadModel({ modelId: embeddingModelId });
+						embeddingModelId = await loadModel({
+							modelSrc: GTE_LARGE_FP16,
+							modelType: "embeddings",
+						});
+						addLog(`   ✅ Embedding reloaded`);
+					}
 					modelId = embeddingModelId;
+					
 				} else if (
 					testId.startsWith("completion") ||
 					testId.startsWith("model-load") ||
 					testId.startsWith("model-unload")
 				) {
+					// Reload LLM model for clean state (unless this IS a model loading test)
+					if (llmModelId && !testId.startsWith("model-load-llm") && !testId.startsWith("model-unload")) {
+						addLog(`   🔄 Reloading LLM...`);
+						await unloadModel({ modelId: llmModelId });
+						llmModelId = await loadModel({
+							modelSrc: LLAMA_3_2_1B_INST_Q4_0,
+							modelType: "llm",
+							modelConfig: {
+								verbosity: 0 as 0,
+								ctx_size: 2048,
+							},
+						});
+						addLog(`   ✅ LLM reloaded`);
+					}
 					modelId = llmModelId;
 				}
 
@@ -236,7 +290,7 @@ export default function BatchConsumer() {
 					modelSrc: LLAMA_3_2_1B_INST_Q4_0,
 					modelType: "llm",
 					modelConfig: {
-						verbosity: 0, // Reduce logging overhead
+						verbosity: 0 as 0, // Reduce logging overhead
 						ctx_size: 2048, // Increase context size for better performance
 					},
 				});
@@ -261,7 +315,6 @@ export default function BatchConsumer() {
 						min_seconds: 2,
 						max_seconds: 6,
 						audio_format: "f32le",
-						verbosity: 0, // Reduce logging overhead
 					},
 				});
 				addLog(`   ✅ Whisper loaded`);
@@ -270,9 +323,6 @@ export default function BatchConsumer() {
 				embeddingModelId = await loadModel({
 					modelSrc: GTE_LARGE_FP16,
 					modelType: "embeddings",
-					modelConfig: {
-						verbosity: 0, // Reduce logging overhead
-					},
 				});
 				addLog(`   ✅ Embedding loaded\n`);
 

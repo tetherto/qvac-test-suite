@@ -424,15 +424,35 @@ function generateHtmlReport() {
 			white-space: pre-wrap;
 			word-wrap: break-word;
 			border-radius: 4px;
+			max-height: 400px;
+			overflow-y: auto;
 		}
 		.error-label {
 			font-weight: 600;
 			color: #991b1b;
-			margin-bottom: 4px;
+			margin-bottom: 8px;
+			display: block;
 		}
 		.output-text {
 			color: #374151;
-			line-height: 1.5;
+			line-height: 1.6;
+			padding: 8px;
+			background: #ffffff;
+			border-radius: 4px;
+			border: 1px solid #f3f4f6;
+		}
+		.log-section {
+			margin-top: 12px;
+			padding-top: 12px;
+			border-top: 1px solid #e5e7eb;
+		}
+		.log-header {
+			font-weight: 600;
+			color: #374151;
+			margin-bottom: 6px;
+			display: flex;
+			align-items: center;
+			gap: 6px;
 		}
 		.details-toggle {
 			cursor: pointer;
@@ -558,21 +578,38 @@ function generateHtmlReport() {
 							const detailsId = 'details-' + idx;
 							const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 							const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-							const outputHtml = outputMsg !== errorMsg && outputMsg !== 'No output' ? 
-								'<div class="error-details"><div class="error-label">📄 Output:</div><div class="output-text">' + escapedOutput + '</div></div>' : '';
+							
+							// Build comprehensive error details with full log
+							let errorDetailsHtml = '<div class="error-details">';
+							errorDetailsHtml += '<div class="error-label">❌ Error Details</div>';
+							errorDetailsHtml += '<div class="output-text">' + escapedError + '</div>';
+							
+							if (outputMsg !== errorMsg && outputMsg !== 'No output') {
+								errorDetailsHtml += '<div class="log-section">';
+								errorDetailsHtml += '<div class="log-header">📄 Test Output / Log</div>';
+								errorDetailsHtml += '<div class="output-text">' + escapedOutput + '</div>';
+								errorDetailsHtml += '</div>';
+							}
+							
+							errorDetailsHtml += '<div class="log-section">';
+							errorDetailsHtml += '<div class="log-header">ℹ️  Test Information</div>';
+							errorDetailsHtml += '<div class="output-text">';
+							errorDetailsHtml += '<strong>Test ID:</strong> ' + test.testId + '<br>';
+							errorDetailsHtml += '<strong>Consumer:</strong> ' + test.consumerId + '<br>';
+							errorDetailsHtml += '<strong>Duration:</strong> ' + (test.duration / 1000).toFixed(2) + 's<br>';
+							errorDetailsHtml += '<strong>Timestamp:</strong> ' + new Date().toISOString();
+							errorDetailsHtml += '</div></div>';
+							errorDetailsHtml += '</div>';
+							
 							return `
 						<tr class="failure-highlight">
 							<td><strong>${test.testId}</strong></td>
 							<td>${test.consumerId.split('-').slice(1, 3).join('-')}</td>
 							<td>${(test.duration / 1000).toFixed(2)}s</td>
 							<td>
-								<span class="details-toggle" onclick="toggleDetails('${detailsId}')">📋 View Details</span>
+								<span class="details-toggle" onclick="toggleDetails('${detailsId}')">📋 View Complete Log</span>
 								<div id="${detailsId}" class="details-content">
-									<div class="error-details">
-										<div class="error-label">❌ Error:</div>
-										<div class="output-text">${escapedError}</div>
-									</div>
-									${outputHtml}
+									${errorDetailsHtml}
 								</div>
 							</td>
 						</tr>
@@ -620,13 +657,22 @@ function generateHtmlReport() {
 								const outputMsg = test.output || 'No output';
 								const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 								const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-								const outputHtml = outputMsg !== errorMsg && outputMsg !== 'No output' ? 
-									'<div class="error-details"><div class="error-label">📄 Output:</div><div class="output-text">' + escapedOutput + '</div></div>' : '';
+								
+								// Build comprehensive error details
+								let errorDetailsHtml = '<div class="error-details">';
+								errorDetailsHtml += '<div class="error-label">❌ Error Details</div>';
+								errorDetailsHtml += '<div class="output-text">' + escapedError + '</div>';
+								if (outputMsg !== errorMsg && outputMsg !== 'No output') {
+									errorDetailsHtml += '<div class="log-section"><div class="log-header">📄 Test Output / Log</div>';
+									errorDetailsHtml += '<div class="output-text">' + escapedOutput + '</div></div>';
+								}
+								errorDetailsHtml += '<div class="log-section"><div class="log-header">ℹ️  Test Information</div>';
+								errorDetailsHtml += '<div class="output-text"><strong>Duration:</strong> ' + (test.duration / 1000).toFixed(2) + 's</div></div>';
+								errorDetailsHtml += '</div>';
+								
 								const detailsCell = test.outcome === 'failure' ? 
-									'<span class="details-toggle" onclick="toggleDetails(\'' + detailsId + '\')">📋 View Error</span>' +
-									'<div id="' + detailsId + '" class="details-content">' +
-									'<div class="error-details"><div class="error-label">❌ Error:</div><div class="output-text">' + escapedError + '</div></div>' +
-									outputHtml + '</div>' : '✅';
+									'<span class="details-toggle" onclick="toggleDetails(\'' + detailsId + '\')">📋 View Complete Log</span>' +
+									'<div id="' + detailsId + '" class="details-content">' + errorDetailsHtml + '</div>' : '✅';
 								return `
 							<tr class="${test.outcome === 'failure' ? 'failure-highlight' : ''}">
 								<td>${test.testId}</td>
@@ -662,13 +708,23 @@ function generateHtmlReport() {
 							const outputMsg = test.output || 'No output';
 							const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 							const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-							const outputHtml = outputMsg !== errorMsg && outputMsg !== 'No output' ? 
-								'<div class="error-details"><div class="error-label">📄 Output:</div><div class="output-text">' + escapedOutput + '</div></div>' : '';
+							
+							// Build comprehensive error details
+							let errorDetailsHtml = '<div class="error-details">';
+							errorDetailsHtml += '<div class="error-label">❌ Error Details</div>';
+							errorDetailsHtml += '<div class="output-text">' + escapedError + '</div>';
+							if (outputMsg !== errorMsg && outputMsg !== 'No output') {
+								errorDetailsHtml += '<div class="log-section"><div class="log-header">📄 Test Output / Log</div>';
+								errorDetailsHtml += '<div class="output-text">' + escapedOutput + '</div></div>';
+							}
+							errorDetailsHtml += '<div class="log-section"><div class="log-header">ℹ️  Test Information</div>';
+							errorDetailsHtml += '<div class="output-text"><strong>Consumer:</strong> ' + test.consumerId + '<br>';
+							errorDetailsHtml += '<strong>Duration:</strong> ' + (test.duration / 1000).toFixed(2) + 's</div></div>';
+							errorDetailsHtml += '</div>';
+							
 							const detailsCell = test.outcome === 'failure' ? 
-								'<span class="details-toggle" onclick="toggleDetails(\'' + detailsId + '\')">📋 View Error</span>' +
-								'<div id="' + detailsId + '" class="details-content">' +
-								'<div class="error-details"><div class="error-label">❌ Error:</div><div class="output-text">' + escapedError + '</div></div>' +
-								outputHtml + '</div>' : '✅';
+								'<span class="details-toggle" onclick="toggleDetails(\'' + detailsId + '\')">📋 View Complete Log</span>' +
+								'<div id="' + detailsId + '" class="details-content">' + errorDetailsHtml + '</div>' : '✅';
 							return `
 						<tr class="${test.outcome === 'failure' ? 'failure-highlight' : ''}">
 							<td>${test.testId}</td>
