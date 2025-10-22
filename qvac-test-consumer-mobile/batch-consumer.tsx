@@ -138,8 +138,8 @@ export default function BatchConsumer() {
 					}
 					modelId = whisperModelId;
 					
-				} else if (testId.startsWith("embed")) {
-					// Reload Embedding model for clean state
+				} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
+					// Reload Embedding model for clean state (embeddings + RAG tests)
 					if (embeddingModelId) {
 						addLog(`   🔄 Reloading Embedding...`);
 						await unloadModel({ modelId: embeddingModelId });

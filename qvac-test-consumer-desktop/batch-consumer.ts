@@ -181,8 +181,8 @@ export class BatchConsumer {
 				}
 				modelId = this.whisperModelId;
 				
-			} else if (testId.startsWith("embed")) {
-				// Reload Embedding model for clean state
+			} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
+				// Reload Embedding model for clean state (embeddings + RAG tests)
 				if (this.embeddingModelId) {
 					console.log(`   🔄 Reloading Embedding model for clean state...`);
 					await unloadModel({ modelId: this.embeddingModelId });
