@@ -4,6 +4,7 @@ import {
 	embed as runEmbed,
 	loadModel,
 	unloadModel,
+	ragSaveEmbeddings,
 	LLAMA_3_2_1B_INST_Q4_0,
 	GTE_LARGE_FP16,
 } from "@qvac/sdk";
@@ -100,6 +101,16 @@ export class TestExecutor {
 		this.testHandlers.set("embed-multilingual", this.embedMultilingual.bind(this));
 		this.testHandlers.set("embed-special-chars", this.embedSpecialChars.bind(this));
 		this.testHandlers.set("embed-numbers-only", this.embedNumbersOnly.bind(this));
+
+		// RAG tests
+		this.testHandlers.set("rag-embeddings-small-chunks", this.ragEmbeddings.bind(this));
+		this.testHandlers.set("rag-embeddings-medium-chunks", this.ragEmbeddings.bind(this));
+		this.testHandlers.set("rag-embeddings-large-chunks", this.ragEmbeddings.bind(this));
+		// Dynamic test IDs for parameterized RAG tests
+		this.testHandlers.set("rag-embeddings-chunk-50-overlap-10", this.ragEmbeddings.bind(this));
+		this.testHandlers.set("rag-embeddings-chunk-100-overlap-20", this.ragEmbeddings.bind(this));
+		this.testHandlers.set("rag-embeddings-chunk-200-overlap-50", this.ragEmbeddings.bind(this));
+		this.testHandlers.set("rag-embeddings-chunk-500-overlap-100", this.ragEmbeddings.bind(this));
 
 		// Translation tests
 		this.testHandlers.set("translation-en-to-es", this.translation.bind(this));
@@ -1756,6 +1767,39 @@ export class TestExecutor {
 
 			return {
 				output: `Semantic similarity: ${similarity.toFixed(3)} (threshold: ${minSimilarity}) | Passed: ${passed}`,
+				passed,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	// ========== RAG TESTS ==========
+
+	async ragEmbeddings(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No embedding model ID provided", passed: false };
+		}
+
+		try {
+			const { workspace, documentContent, chunkSize, chunkOverlap, chunkStrategy } = params;
+
+			console.log(`   📚 Testing RAG embeddings with chunk size ${chunkSize}, overlap ${chunkOverlap}`);
+
+			const result = await ragSaveEmbeddings({
+				modelId,
+				workspace,
+				documents: [documentContent],
+				chunk: true,
+				chunkOpts: { chunkSize, chunkOverlap, chunkStrategy },
+			});
+
+			const chunksGenerated = result.processed?.length || 0;
+			const minChunks = expectation.minChunks || 1;
+			const passed = chunksGenerated >= minChunks;
+
+			return {
+				output: `Generated ${chunksGenerated} chunks (min: ${minChunks}) | Workspace: ${workspace} | Passed: ${passed}`,
 				passed,
 			};
 		} catch (error: any) {

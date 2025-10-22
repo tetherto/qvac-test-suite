@@ -1173,6 +1173,101 @@ export class TestBuilder {
 		};
 	}
 
+	// ========== RAG (RETRIEVAL-AUGMENTED GENERATION) TESTS ==========
+
+	buildRagEmbeddingsTest(chunkSize: number, chunkOverlap: number): TestDefinition {
+		const testId = `rag-embeddings-chunk-${chunkSize}-overlap-${chunkOverlap}`;
+		return {
+			testId,
+			payload: JSON.stringify({
+				testId,
+				params: {
+					workspace: "test",
+					documentContent: "sample text content for chunking",
+					chunkSize,
+					chunkOverlap,
+					chunkStrategy: "paragraph",
+				},
+				expectation: {
+					validation: "rag-chunks-generated",
+					minChunks: 1,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildRagEmbeddingsSmallTest(): TestDefinition {
+		return {
+			testId: "rag-embeddings-small-chunks",
+			payload: JSON.stringify({
+				testId: "rag-embeddings-small-chunks",
+				params: {
+					workspace: "test-small",
+					documentContent: "This is a test document for RAG embeddings with small chunk size.",
+					chunkSize: 50,
+					chunkOverlap: 10,
+					chunkStrategy: "paragraph",
+				},
+				expectation: {
+					validation: "rag-chunks-generated",
+					minChunks: 1,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildRagEmbeddingsMediumTest(): TestDefinition {
+		return {
+			testId: "rag-embeddings-medium-chunks",
+			payload: JSON.stringify({
+				testId: "rag-embeddings-medium-chunks",
+				params: {
+					workspace: "test-medium",
+					documentContent: "This is a longer test document for RAG embeddings with medium chunk size. It contains multiple sentences to test the chunking strategy.",
+					chunkSize: 100,
+					chunkOverlap: 20,
+					chunkStrategy: "paragraph",
+				},
+				expectation: {
+					validation: "rag-chunks-generated",
+					minChunks: 1,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildRagEmbeddingsLargeTest(): TestDefinition {
+		return {
+			testId: "rag-embeddings-large-chunks",
+			payload: JSON.stringify({
+				testId: "rag-embeddings-large-chunks",
+				params: {
+					workspace: "test-large",
+					documentContent: "This is an even longer test document for RAG embeddings with large chunk size. It contains multiple paragraphs and sentences to properly test the chunking strategy with larger chunks. The RAG system should be able to handle this size efficiently.",
+					chunkSize: 500,
+					chunkOverlap: 50,
+					chunkStrategy: "paragraph",
+				},
+				expectation: {
+					validation: "rag-chunks-generated",
+					minChunks: 1,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 15000,
+		};
+	}
+
 	// ========== BUILD ALL TESTS ==========
 
 	buildAllTests(): TestDefinition[] {
@@ -1264,6 +1359,15 @@ export class TestBuilder {
 	tests.push(this.buildCompletionSimpleYesNoTest());
 	tests.push(this.buildCompletionSentenceCompletionTest());
 	tests.push(this.buildEmbedSemanticSimilarityTest());
+
+	// ========== PHASE 6: RAG (RETRIEVAL-AUGMENTED GENERATION) ==========
+	tests.push(this.buildRagEmbeddingsSmallTest());
+	tests.push(this.buildRagEmbeddingsMediumTest());
+	tests.push(this.buildRagEmbeddingsLargeTest());
+	tests.push(this.buildRagEmbeddingsTest(50, 10));
+	tests.push(this.buildRagEmbeddingsTest(100, 20));
+	tests.push(this.buildRagEmbeddingsTest(200, 50));
+	tests.push(this.buildRagEmbeddingsTest(500, 100));
 
 	// ========== DESTRUCTIVE TESTS (RUN LAST) ==========
 	// ⚠️  WARNING: These tests intentionally cause context overflow errors
