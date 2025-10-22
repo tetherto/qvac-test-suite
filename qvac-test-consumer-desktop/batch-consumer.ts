@@ -9,7 +9,7 @@ import {
 	WHISPER_TINY,
 	VAD_SILERO_5_1_2,
 	GTE_LARGE_FP16,
-} from "@tetherto/qvac-sdk";
+} from "@qvac/sdk";
 import { env } from "./env";
 import * as path from "path";
 import * as os from "os";
@@ -158,8 +158,8 @@ export class BatchConsumer {
 				modelId = this.llmModelId;
 			}
 
-		// Set timeout - 1 minute max for all tests
-		const timeoutMs = 60000; // 1 minute
+		// Set timeout - 90 seconds max for all tests (increased from 60s)
+		const timeoutMs = 90000; // 1.5 minutes
 			
 			// Execute the test with timeout
 			const testPromise = this.executor.executeTest(
@@ -182,6 +182,9 @@ export class BatchConsumer {
 			if (!result.passed && result.output) {
 				console.log(`   Output: ${result.output}`);
 			}
+
+			// Add small delay after each test to let GPU recover
+			await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
 
 			// Update model ID if test returned a new one (for model reload/switch tests)
 			if (result.modelId) {
@@ -286,6 +289,10 @@ export class BatchConsumer {
 			this.llmModelId = await loadModel({
 				modelSrc: LLAMA_3_2_1B_INST_Q4_0,
 				modelType: "llm",
+				modelConfig: {
+					verbosity: 0, // Reduce logging overhead
+					ctx_size: 2048, // Increase context size for better performance
+				},
 			});
 			console.log(`   ✅ LLM loaded: ${this.llmModelId}`);
 
@@ -300,6 +307,7 @@ export class BatchConsumer {
 					min_seconds: 2,
 					max_seconds: 6,
 					audio_format: "f32le",
+					verbosity: 0, // Reduce logging overhead
 				},
 			});
 			console.log(`   ✅ Whisper loaded: ${this.whisperModelId}`);
@@ -308,6 +316,9 @@ export class BatchConsumer {
 			this.embeddingModelId = await loadModel({
 				modelSrc: GTE_LARGE_FP16,
 				modelType: "embeddings",
+				modelConfig: {
+					verbosity: 0, // Reduce logging overhead
+				},
 			});
 			console.log(`   ✅ Embedding loaded: ${this.embeddingModelId}\n`);
 

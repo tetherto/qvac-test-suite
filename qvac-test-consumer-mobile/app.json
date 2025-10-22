@@ -32,7 +32,7 @@
     },
     "plugins": [
       "expo-router",
-      "@tetherto/qvac-sdk/expo-plugin",
+      "@qvac/sdk/expo-plugin",
       [
         "expo-build-properties",
         {

@@ -11,7 +11,7 @@
     "lint": "expo lint"
   },
   "dependencies": {
-    "@tetherto/qvac-sdk": "0.13.0-dev.1760556288.4674d39",
+    "@qvac/sdk": "0.2.6-dev.1761136954.37a3ab8",
     "expo": "53.0.22",
     "expo-build-properties": "~0.14.8",
     "expo-constants": "~17.1.7",

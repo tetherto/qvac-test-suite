@@ -6,27 +6,12 @@
 		"batch": "bun run batch-consumer.ts"
 	},
 	"dependencies": {
-		"@tetherto/qvac-sdk": "0.13.0-dev.1760556288.4674d39",
-		"bare-abort-controller": "^1.0.0",
-		"bare-buffer": "^3.4.0",
-		"bare-crypto": "^1.11.6",
-		"bare-fetch": "^2.5.0",
-		"bare-process": "^4.2.1",
-		"bare-rpc": "^0.2.13",
-		"bare-runtime": "^1.23.4",
-		"bare-stream": "^2.7.0",
-		"bare-subprocess": "^5.1.4",
-		"corestore": "^7.5.0",
-		"hyperdb": "^4.19.0",
-		"hyperdrive": "^13.0.2",
-		"hyperswarm": "^4.14.2",
+		"@qvac/sdk": "0.2.6-dev.1761136954.37a3ab8",
 		"mqtt": "^5.14.1"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.2.4",
 		"@types/bun": "latest"
 	},
-	"overrides": {
-		"@tetherto/qvac-lib-logging": "2.0.3"
-	}
+	"overrides": {}
 }

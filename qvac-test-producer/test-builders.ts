@@ -1183,27 +1183,27 @@ export class TestBuilder {
 		tests.push(this.buildModelLoadConcurrentTest());
 		tests.push(this.buildModelReloadTest());
 
-		// LLM completion tests
-		tests.push(this.buildCompletionStreamingTest());
-		tests.push(this.buildCompletionContextSizeTest(512));
-		tests.push(this.buildCompletionContextSizeTest(2048));
-		tests.push(this.buildCompletionTemperatureTest(0.1));
-		tests.push(this.buildCompletionTemperatureTest(0.9));
-		tests.push(this.buildCompletionEmptyPromptTest());
-		tests.push(this.buildCompletionLongPromptTest());
-		tests.push(this.buildCompletionMultiTurnTest());
-		tests.push(this.buildCompletionInvalidModelTest());
-		tests.push(this.buildCompletionSystemMessageTest());
-		tests.push(this.buildCompletionMaxTokensTest());
-		tests.push(this.buildCompletionSpecialCharsTest());
-		
-		// Phase 2: Advanced parameter tests
-		tests.push(this.buildCompletionStopSequencesTest());
-		tests.push(this.buildCompletionTopPTest());
-		tests.push(this.buildCompletionRepeatPenaltyTest());
-		tests.push(this.buildCompletionMinPTest());
-		tests.push(this.buildCompletionVeryLongContextTest());
-		tests.push(this.buildCompletionZeroTemperatureTest());
+	// LLM completion tests
+	tests.push(this.buildCompletionStreamingTest());
+	tests.push(this.buildCompletionContextSizeTest(512));
+	tests.push(this.buildCompletionContextSizeTest(2048));
+	tests.push(this.buildCompletionTemperatureTest(0.1));
+	tests.push(this.buildCompletionTemperatureTest(0.9));
+	tests.push(this.buildCompletionEmptyPromptTest());
+	// MOVED: buildCompletionLongPromptTest() → END (causes context overflow)
+	tests.push(this.buildCompletionMultiTurnTest());
+	tests.push(this.buildCompletionInvalidModelTest());
+	tests.push(this.buildCompletionSystemMessageTest());
+	tests.push(this.buildCompletionMaxTokensTest());
+	tests.push(this.buildCompletionSpecialCharsTest());
+	
+	// Phase 2: Advanced parameter tests
+	tests.push(this.buildCompletionStopSequencesTest());
+	tests.push(this.buildCompletionTopPTest());
+	tests.push(this.buildCompletionRepeatPenaltyTest());
+	tests.push(this.buildCompletionMinPTest());
+	// MOVED: buildCompletionVeryLongContextTest() → END (causes context overflow)
+	tests.push(this.buildCompletionZeroTemperatureTest());
 		
 		// Phase 3: Edge cases & advanced scenarios
 		tests.push(this.buildCompletionTopKTest());
@@ -1243,27 +1243,37 @@ export class TestBuilder {
 		tests.push(this.buildTranslationEsToEnTest());
 		tests.push(this.buildTranslationErrorTest());
 
-		// ========== PHASE 4: ROBUSTNESS & ADVANCED SCENARIOS ==========
-		tests.push(this.buildCompletionConcurrentRequestsTest());
-		tests.push(this.buildCompletionExtremelyLongPromptTest());
-		tests.push(this.buildCompletionRepeatedTokensTest());
-		tests.push(this.buildModelSwitchLlmTest());
-		tests.push(this.buildModelReloadAfterErrorTest());
-		tests.push(this.buildCompletionWithWhitespaceTest());
-		tests.push(this.buildCompletionJsonFormatTest());
-		tests.push(this.buildCompletionCodeGenerationTest());
+	// ========== PHASE 4: ROBUSTNESS & ADVANCED SCENARIOS ==========
+	tests.push(this.buildCompletionConcurrentRequestsTest());
+	// MOVED: buildCompletionExtremelyLongPromptTest() → END (causes context overflow)
+	tests.push(this.buildCompletionRepeatedTokensTest());
+	tests.push(this.buildModelSwitchLlmTest());
+	tests.push(this.buildModelReloadAfterErrorTest());
+	tests.push(this.buildCompletionWithWhitespaceTest());
+	tests.push(this.buildCompletionJsonFormatTest());
+	tests.push(this.buildCompletionCodeGenerationTest());
 
-		// ========== PHASE 5: REAL-WORLD SCENARIOS ==========
-		tests.push(this.buildCompletionConversationContextTest());
-		tests.push(this.buildCompletionSingleWordTest());
-		tests.push(this.buildCompletionListGenerationTest());
-		tests.push(this.buildCompletionQaFromContextTest());
-		tests.push(this.buildCompletionSimpleYesNoTest());
-		tests.push(this.buildCompletionSentenceCompletionTest());
-		tests.push(this.buildEmbedSemanticSimilarityTest());
+	// ========== PHASE 5: REAL-WORLD SCENARIOS ==========
+	tests.push(this.buildCompletionConversationContextTest());
+	tests.push(this.buildCompletionSingleWordTest());
+	tests.push(this.buildCompletionListGenerationTest());
+	tests.push(this.buildCompletionQaFromContextTest());
+	tests.push(this.buildCompletionSimpleYesNoTest());
+	tests.push(this.buildCompletionSentenceCompletionTest());
+	tests.push(this.buildEmbedSemanticSimilarityTest());
 
-		return tests;
-	}
+	// ========== DESTRUCTIVE TESTS (RUN LAST) ==========
+	// ⚠️  WARNING: These tests intentionally cause context overflow errors
+	// ⚠️  SDK BUG: Context overflow corrupts inference engine state
+	// ⚠️  Result: Subsequent tests hang/timeout even though error is caught
+	// ⚠️  Solution: Run these tests LAST to avoid affecting other tests
+	console.log("\n⚠️  NOTE: Context overflow tests run LAST (known SDK bug)");
+	tests.push(this.buildCompletionLongPromptTest());
+	tests.push(this.buildCompletionVeryLongContextTest());
+	tests.push(this.buildCompletionExtremelyLongPromptTest());
+
+	return tests;
+}
 
 	// ========== PHASE 4: ROBUSTNESS & ADVANCED SCENARIOS ==========
 
