@@ -228,7 +228,7 @@ export class TestBuilder {
 				},
 				expectation: {
 					validation: "contains-keywords",
-					keywords: ["hope", "transcription", "working", "expected"],
+					keywords: ["test", "automation", "pack"],
 				},
 				expectedOutcome: "pass",
 			}),
@@ -248,7 +248,7 @@ export class TestBuilder {
 				},
 				expectation: {
 					validation: "contains-keywords",
-					keywords: ["hope", "transcription", "working", "expected"],
+					keywords: ["test", "automation", "pack"],
 				},
 				expectedOutcome: "pass",
 			}),
@@ -326,7 +326,7 @@ export class TestBuilder {
 				},
 				expectation: {
 					validation: "contains-keywords",
-					keywords: ["hope", "transcription", "working", "expected"],
+					keywords: ["test", "automation", "pack"],
 				},
 				expectedOutcome: "pass",
 			}),
@@ -346,7 +346,7 @@ export class TestBuilder {
 				},
 				expectation: {
 					validation: "contains-keywords",
-					keywords: ["hope", "transcription", "working", "expected"],
+					keywords: ["test", "automation", "pack"],
 				},
 				expectedOutcome: "pass",
 			}),
@@ -366,7 +366,7 @@ export class TestBuilder {
 				},
 				expectation: {
 					validation: "contains-keywords",
-					keywords: ["hope", "transcription", "working", "expected"],
+					keywords: ["test", "automation", "pack"],
 				},
 				expectedOutcome: "pass",
 			}),
