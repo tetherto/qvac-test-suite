@@ -2,6 +2,7 @@ import {
 	completion as runCompletion,
 	transcribe as runTranscribe,
 	embed as runEmbed,
+	translate as runTranslate,
 	loadModel,
 	unloadModel,
 	ragSaveEmbeddings,
@@ -1239,19 +1240,65 @@ export class TestExecutor {
 	// ========== TRANSLATION TESTS ==========
 
 	private async translation(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
-		// Translation not yet supported by SDK
-		return {
-			output: "Translation API not yet implemented in SDK",
-			passed: false,
-		};
+		if (!modelId) {
+			return { output: "No translation model loaded", passed: false };
+		}
+
+		try {
+			const { text, sourceLang, targetLang } = params;
+			
+			console.log(`   🌐 Translating from ${sourceLang} to ${targetLang}: "${text}"`);
+			
+			const result = await runTranslate({
+				modelId,
+				text,
+				sourceLang,
+				targetLang,
+			});
+
+			const translatedText = result.toLowerCase();
+			console.log(`   ✨ Translation result: "${result}"`);
+
+			// Check if result contains expected keywords
+			const keywords = expectation.keywords || [];
+			const hasKeywords = keywords.some((kw: string) => translatedText.includes(kw.toLowerCase()));
+
+			return {
+				output: `Translated "${text}" → "${result}" | Has expected keywords: ${hasKeywords}`,
+				passed: hasKeywords,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
 	}
 
 	private async translationError(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
-		// Translation not yet supported by SDK
-		return {
-			output: "Translation API not yet implemented in SDK - error handling test skipped",
-			passed: true, // Pass because we correctly identify SDK limitation
-		};
+		if (!modelId) {
+			return { output: "No translation model loaded", passed: false };
+		}
+
+		try {
+			const { text, sourceLang, targetLang } = params;
+
+			await runTranslate({
+				modelId,
+				text,
+				sourceLang,
+				targetLang,
+			});
+
+			// If we get here without error, the test should fail
+			return {
+				output: "Expected error but translation succeeded",
+				passed: false,
+			};
+		} catch (error: any) {
+			// We expect an error for invalid params
+			return {
+				output: `Correctly threw error: ${error.message}`,
+				passed: true,
+			};
+		}
 	}
 
 	// ========== MODEL MANAGEMENT TESTS ==========
