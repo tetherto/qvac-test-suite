@@ -158,59 +158,16 @@ export class BatchConsumer {
 			// ============================================================
 			
 			// Determine which model to use and reload it fresh
-			let modelId: string | null = null;
-			
-			if (testId.startsWith("transcription")) {
-				// Reload Whisper model for clean state
-				if (this.whisperModelId) {
-					console.log(`   🔄 Reloading Whisper model for clean state...`);
-					await unloadModel({ modelId: this.whisperModelId });
-					this.whisperModelId = await loadModel({
-						modelSrc: WHISPER_TINY,
-						modelType: "whisper",
-						vadModelSrc: VAD_SILERO_5_1_2,
-						modelConfig: {
-							mode: "caption",
-							output_format: "plaintext",
-							min_seconds: 2,
-							max_seconds: 6,
-							audio_format: "f32le",
-						},
-					});
-					console.log(`   ✅ Whisper model reloaded: ${this.whisperModelId.substring(0, 12)}...`);
-				}
-				modelId = this.whisperModelId;
-				
-			} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
-				// Reload Embedding model for clean state (embeddings + RAG tests)
-				if (this.embeddingModelId) {
-					console.log(`   🔄 Reloading Embedding model for clean state...`);
-					await unloadModel({ modelId: this.embeddingModelId });
-					this.embeddingModelId = await loadModel({
-						modelSrc: GTE_LARGE_FP16,
-						modelType: "embeddings",
-					});
-					console.log(`   ✅ Embedding model reloaded: ${this.embeddingModelId.substring(0, 12)}...`);
-				}
-				modelId = this.embeddingModelId;
-				
-			} else if (testId.startsWith("completion") || testId.startsWith("model-load") || testId.startsWith("model-unload") || testId.startsWith("model-switch") || testId.startsWith("model-reload")) {
-				// Reload LLM model for clean state (unless this IS a model loading test or model switch/reload test)
-				if (this.llmModelId && !testId.startsWith("model-load-llm") && !testId.startsWith("model-unload") && !testId.startsWith("model-switch") && !testId.startsWith("model-reload")) {
-					console.log(`   🔄 Reloading LLM model for clean state...`);
-					await unloadModel({ modelId: this.llmModelId });
-					this.llmModelId = await loadModel({
-						modelSrc: LLAMA_3_2_1B_INST_Q4_0,
-						modelType: "llm",
-						modelConfig: {
-							verbosity: 0,
-							ctx_size: 2048,
-						},
-					});
-					console.log(`   ✅ LLM model reloaded: ${this.llmModelId.substring(0, 12)}...`);
-				}
-				modelId = this.llmModelId;
-			}
+		// Determine which model to use based on test type (models kept loaded for speed)
+		let modelId: string | null = null;
+		
+		if (testId.startsWith("transcription")) {
+			modelId = this.whisperModelId;
+		} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
+			modelId = this.embeddingModelId;
+		} else if (testId.startsWith("completion") || testId.startsWith("model-load") || testId.startsWith("model-unload") || testId.startsWith("model-switch") || testId.startsWith("model-reload")) {
+			modelId = this.llmModelId;
+		}
 
 		// Set timeout - 30 seconds max for all tests
 		const timeoutMs = 30000; // 30 seconds
@@ -235,12 +192,9 @@ export class BatchConsumer {
 			console.log(`${outcome === "success" ? "✅" : "❌"} ${testId} ${outcome} (${duration}ms)`);
 			if (!result.passed && result.output) {
 				console.log(`   Output: ${result.output}`);
-			}
+		}
 
-			// Add small delay after each test to let GPU recover
-			await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
-
-			// Update model ID if test returned a new one (for model reload/switch tests)
+		// Update model ID if test returned a new one (for model reload/switch tests)
 			if (result.modelId) {
 				if (testId.startsWith("model-load-llm") || testId.startsWith("model-switch") || testId.startsWith("model-reload") || testId.startsWith("completion")) {
 					this.llmModelId = result.modelId;

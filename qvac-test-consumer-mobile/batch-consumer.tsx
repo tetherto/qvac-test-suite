@@ -114,66 +114,22 @@ export default function BatchConsumer() {
 				// 3. Ensuring each test starts with a fresh model instance
 				// ============================================================
 				
-				// Determine which model to use and reload it fresh
-				let modelId: string | null = null;
-				
-				if (testId.startsWith("transcription")) {
-					// Reload Whisper model for clean state
-					if (whisperModelId) {
-						addLog(`   🔄 Reloading Whisper...`);
-						await unloadModel({ modelId: whisperModelId });
-						whisperModelId = await loadModel({
-							modelSrc: WHISPER_TINY,
-							modelType: "whisper",
-							vadModelSrc: VAD_SILERO_5_1_2,
-							modelConfig: {
-								mode: "caption",
-								output_format: "plaintext",
-								min_seconds: 2,
-								max_seconds: 6,
-								audio_format: "f32le",
-							},
-						});
-						addLog(`   ✅ Whisper reloaded`);
-					}
-					modelId = whisperModelId;
-					
-				} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
-					// Reload Embedding model for clean state (embeddings + RAG tests)
-					if (embeddingModelId) {
-						addLog(`   🔄 Reloading Embedding...`);
-						await unloadModel({ modelId: embeddingModelId });
-						embeddingModelId = await loadModel({
-							modelSrc: GTE_LARGE_FP16,
-							modelType: "embeddings",
-						});
-						addLog(`   ✅ Embedding reloaded`);
-					}
-					modelId = embeddingModelId;
-					
-				} else if (
-					testId.startsWith("completion") ||
-					testId.startsWith("model-load") ||
-					testId.startsWith("model-unload") ||
-					testId.startsWith("model-switch") ||
-					testId.startsWith("model-reload")
-				) {
-					// Reload LLM model for clean state (unless this IS a model loading test or model switch/reload test)
-					if (llmModelId && !testId.startsWith("model-load-llm") && !testId.startsWith("model-unload") && !testId.startsWith("model-switch") && !testId.startsWith("model-reload")) {
-						addLog(`   🔄 Reloading LLM...`);
-						await unloadModel({ modelId: llmModelId });
-						llmModelId = await loadModel({
-							modelSrc: LLAMA_3_2_1B_INST_Q4_0,
-							modelType: "llm",
-							modelConfig: {
-								verbosity: 0 as 0,
-								ctx_size: 2048,
-							},
-						});
-						addLog(`   ✅ LLM reloaded`);
-					}
-					modelId = llmModelId;
-				}
+			// Determine which model to use (models kept loaded for speed)
+			let modelId: string | null = null;
+			
+			if (testId.startsWith("transcription")) {
+				modelId = whisperModelId;
+			} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
+				modelId = embeddingModelId;
+			} else if (
+				testId.startsWith("completion") ||
+				testId.startsWith("model-load") ||
+				testId.startsWith("model-unload") ||
+				testId.startsWith("model-switch") ||
+				testId.startsWith("model-reload")
+			) {
+				modelId = llmModelId;
+			}
 
 				// Set timeout - 30 seconds max for all tests
 				const timeoutMs = 30000; // 30 seconds
@@ -196,12 +152,9 @@ export default function BatchConsumer() {
 				addLog(`${outcome === "success" ? "✅" : "❌"} ${testId} (${duration}ms)`);
 				if (!result.passed && result.output) {
 					addLog(`   ${result.output.substring(0, 100)}`);
-				}
+			}
 
-				// Add small delay after each test to let GPU recover
-				await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
-
-				// Update model ID if test returned a new one
+			// Update model ID if test returned a new one
 				if (result.modelId) {
 					if (
 						testId.startsWith("model-load-llm") ||
