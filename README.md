@@ -1,161 +1,228 @@
 # QVAC SDK Test Suite
 
-Batch test orchestration for QVAC SDK with parallel execution across multiple devices.
+Comprehensive automated testing for the QVAC SDK across desktop and mobile platforms.
 
-## 🚀 Quick Start
+## Overview
+
+- **84 tests** covering LLM, Whisper, Embeddings, RAG, and Translation APIs
+- **Desktop consumer** (Bare runtime)
+- **Mobile consumer** (React Native/Expo)
+- **Producer** orchestrates tests via MQTT
+- **HTML reports** with detailed results
+
+## Quick Start
 
 ### Prerequisites
-- MQTT broker on `localhost:1883`
-- GitHub token in `.npmrc` (copy from `.npmrc.example`)
 
-### Run Tests
+- Bun runtime
+- MQTT broker (e.g., Mosquitto)
+- QVAC SDK version: `@qvac/sdk@0.2.6-dev.1761136954.37a3ab8`
+- NPM token in environment: `NPM_TOKEN=npm_...`
 
-**Terminal 1 - Producer:**
-```powershell
+### Running Tests
+
+**1. Start Producer:**
+```bash
 cd qvac-test-producer
-bun run batch
+bun run batch-orchestrator.ts
 ```
 
-**Terminal 2 - Desktop Consumer:**
-```powershell
+**2. Start Desktop Consumer:**
+```bash
 cd qvac-test-consumer-desktop
-bun run batch
+bun run batch-consumer.ts
 ```
 
-**Terminal 2 (Alternative) - Mobile Consumer:**
-```powershell
+**3. Start Mobile Consumer (optional):**
+```bash
 cd qvac-test-consumer-mobile
-bun start
-# Then open the app on your mobile device (Android/iOS)
-# The batch consumer UI will start automatically
+npm start
+# Then run on Android/iOS
 ```
 
-**Terminal 3 - Monitor (Optional):**
-```powershell
+**4. Monitor & Generate Report:**
+```bash
 bun run batch:monitor
 ```
 
-The monitor generates an HTML report in `reports/` folder when the batch completes. If interrupted (Ctrl+C), no report is generated.
+## Test Categories
 
-Add more consumers for parallel execution - each pulls unique tests from the queue.
+| Category | Tests | Description |
+|----------|-------|-------------|
+| **Model Loading** | 5 | Load/unload/reload models |
+| **LLM Completion** | 37 | Text generation, streaming, parameters |
+| **Whisper** | 12 | Audio transcription, formats |
+| **Embeddings** | 27 | Text/code embeddings, RAG |
+| **Translation** | 3 | Language translation |
 
-## 📊 Test Coverage
+## Test Execution Order
 
-**69 tests organized by dependency:**
+Tests are ordered to run stable tests first, destructive tests last:
 
-- **Model Loading** (6 tests): LLM, Embeddings, Concurrent loading, Unload, Reload, Error handling
-- **LLM Completion** (37 tests): 
-  - Basic: Streaming, context sizes, temperatures, edge cases, invalid model error
-  - Advanced Parameters: System messages, max tokens, special characters, stop sequences, top-p, repeat penalty, min-p, very long context, zero temperature, top-k, frequency penalty, presence penalty, negative temperature
-  - Phase 4 Robustness: Concurrent requests, extremely long prompts, repeated tokens, whitespace handling, JSON format, code generation
-  - Phase 5 Real-World: Conversation context, single-word responses, list generation, QA from context, yes/no questions, sentence completion
-- **Model Management** (2 tests): Model switching, reload after error
-- **Transcription** (12 tests): WAV, MP3, AAC, M4A, OGG, silence, music, long audio, streaming, very short audio, corrupted files
-- **Embeddings** (12 tests): Simple, long text, empty text, similarity, batch, unicode, very short, code snippets, multilingual, special characters, numbers-only, semantic similarity
-- **Translation** (3 tests): EN→ES, ES→EN, Error handling (SDK limitation)
+1. **Tests 1-76**: Normal tests (expected: 90%+ pass)
+2. **Tests 77-79**: Context overflow tests
+3. **Tests 80-81**: Corrupted audio tests (known SDK hang)
+4. **Tests 82-85**: Code embedding tests (known GGML assertion)
 
-## 🎯 Key Features
+## Known SDK Issues
 
-✅ Single batch cycle with automatic termination  
-✅ Pull-based - consumers request tests from queue  
-✅ Each test runs exactly once  
-✅ Parallel execution across multiple consumers  
-✅ **Cross-platform:** Desktop (Node.js) and Mobile (React Native/Expo)  
-✅ Timeout enforcement (60 seconds max for all tests)  
-✅ Real-time monitoring dashboard with HTML reports  
-✅ Platform tracking and result grouping  
-✅ Beautiful tabbed HTML reports with per-consumer breakdown  
-✅ Mobile consumer with live UI showing progress and logs
+### Critical: GGML Assertion Failure (P0)
 
-## 📁 Structure
+**Error:** `GGML_ASSERT(i01 >= 0 && i01 < ne01) failed` at `ggml-cpu/ops.cpp:5358`
+
+**Triggers:**
+- Processing ~852 tokens through embedding model
+- Context overflow in LLM model
+- Corrupted audio files in Whisper model
+
+**Impact:**
+- SDK crashes at C++ level
+- No recovery possible
+- Subsequent tests timeout (cascade effect)
+
+**Workaround:**
+Tests that trigger this are moved to the end of the suite to prevent contamination.
+
+## Test Framework Features
+
+### Resilience
+- ✅ Strict 30s timeout per test
+- ✅ try-catch error handling
+- ✅ SDK crash detection
+- ✅ Graceful continuation (never stops suite)
+- ✅ Complete reporting even with crashes
+
+### Optimizations
+- ✅ Models loaded once at startup
+- ✅ No reload between tests (faster)
+- ✅ `n_discarded: 256` to prevent generation overflow
+- ✅ Expected runtime: 4-6 minutes (84 tests)
+
+## Configuration
+
+### Environment Variables
+
+**Required:**
+- `NPM_TOKEN` - npm registry authentication
+
+**Optional:**
+- `MQTT_BROKER` - MQTT broker URL (default: `mqtt://localhost:1883`)
+
+### Model Configuration
+
+**LLM:**
+```typescript
+{
+  modelSrc: LLAMA_3_2_1B_INST_Q4_0,
+  modelType: "llm",
+  modelConfig: {
+    verbosity: 0,
+    ctx_size: 2048,
+    n_discarded: 256
+  }
+}
+```
+
+**Whisper:**
+```typescript
+{
+  modelSrc: WHISPER_TINY,
+  modelType: "whisper",
+  vadModelSrc: VAD_SILERO_5_1_2,
+  modelConfig: {
+    mode: "caption",
+    output_format: "plaintext",
+    audio_format: "f32le"
+  }
+}
+```
+
+**Embeddings:**
+```typescript
+{
+  modelSrc: GTE_LARGE_FP16,
+  modelType: "embeddings"
+}
+```
+
+## Reports
+
+HTML reports are generated in `reports/` directory:
+- Test results (pass/fail)
+- Execution time
+- Error details
+- Consumer breakdown
+- Success rate
+
+## Project Structure
 
 ```
-qvac-test-producer/
-  ├── batch-orchestrator.ts    # Queue manager
-  └── test-builders.ts         # Test definitions (69 tests)
-
-qvac-test-consumer-desktop/
-  ├── batch-consumer.ts        # Pull-based desktop consumer
-  └── test-executor.ts         # Desktop test handlers
-
-qvac-test-consumer-mobile/
-  ├── batch-consumer.tsx       # Pull-based mobile consumer (React Native)
-  ├── test-executor.ts         # Mobile test handlers
-  └── app/(tabs)/index.tsx     # Mobile app entry point
-
-batch-monitor.ts               # Real-time dashboard with HTML reports
-shared-test-data/audio/        # Test audio files
+qvac-sdk-tests/
+├── qvac-test-producer/         # Test orchestrator
+│   ├── batch-orchestrator.ts   # Main producer
+│   └── test-builders.ts         # Test definitions
+├── qvac-test-consumer-desktop/ # Desktop consumer
+│   ├── batch-consumer.ts        # Main consumer
+│   └── test-executor.ts         # Test implementations
+├── qvac-test-consumer-mobile/  # Mobile consumer
+│   ├── batch-consumer.tsx       # Main consumer
+│   └── test-executor.ts         # Test implementations
+├── shared-test-data/           # Test assets
+│   ├── audio/                   # Audio files
+│   ├── code/                    # Code files
+│   └── documents/               # Documents
+├── reports/                     # HTML test reports
+├── batch-monitor.ts            # Monitor & report generator
+└── README.md                   # This file
 ```
 
-## ⚙️ Configuration
+## Expected Results
 
-Update `env.ts` in producer/consumer for custom MQTT settings.
+### After SDK Fixes
 
-### Mobile Consumer Setup
+**Current:** 76/84 tests pass (90.5%)
+- 76 normal tests: ✅ PASS
+- 8 destructive tests: ❌ FAIL (known SDK bugs)
 
-1. **Install dependencies:**
-   ```powershell
-   cd qvac-test-consumer-mobile
-   bun install
-   ```
+**After SDK team fixes GGML assertion:**
+- Expected: 84/84 tests pass (100%)
 
-2. **Configure MQTT broker:**
-   - Update `env.ts` with your MQTT broker URL (must be accessible from mobile device)
-   - For Android: Use `ws://10.0.2.2:1883` if broker is on `localhost`
-   - For iOS: Use your computer's local IP (e.g., `ws://192.168.1.100:1883`)
+## Contributing
 
-3. **Run on Android:**
-   ```powershell
-   bun run android
-   ```
+### Adding New Tests
 
-4. **Run on iOS:**
-   ```powershell
-   bun run ios
-   ```
+1. Add test builder in `qvac-test-producer/test-builders.ts`
+2. Add test handler in `test-executor.ts` (both consumers)
+3. Add test data in `shared-test-data/` if needed
+4. Run test suite to verify
 
-The mobile app will automatically:
-- Load all three models (LLM, Whisper, Embedding)
-- Connect to MQTT broker
-- Register with the producer
-- Display real-time progress with a beautiful UI
-- Show test results and logs as they execute
+### Test Naming Convention
 
-## ⚠️ Known SDK Issues
+- `{api}-{scenario}-{variant}` (e.g., `completion-streaming-long`)
+- `model-{action}-{type}` (e.g., `model-load-llm`)
+- `{api}-{format}-{condition}` (e.g., `transcription-mp3-short`)
 
-The following tests expose SDK bugs and will timeout (60s limit):
+## Troubleshooting
 
-**Transcription Issues:**
-- `transcription-corrupted` / `transcription-corrupted-wav` - SDK hangs on corrupted files instead of throwing errors
-- `transcription-only-music` - SDK hangs on music-only audio
-- `transcription-long-audio` - May timeout on very long audio files
+**Tests hanging:**
+- Check if MQTT broker is running
+- Verify SDK models are downloaded
+- Check for SDK crashes in logs
 
-**Embedding Issues:**
-- `embed-batch` - SDK hangs when processing batch embeddings with Promise.all
+**Low pass rate:**
+- Check SDK version matches expected
+- Verify destructive tests are at end
+- Review HTML report for patterns
 
-**Model Management Issues:**
-- `model-unload` - Unload functionality not fully implemented
-- `completion-invalid-model` - SDK doesn't validate model IDs before attempting completion
+**Consumer not connecting:**
+- Verify MQTT broker URL
+- Check network connectivity
+- Ensure consumer registered before tests start
 
-**Translation Issues:**
-- `translation-en-to-es` / `translation-es-to-en` - Translation API not yet available in SDK
+## License
 
-**Advanced Parameter Support** (Phase 2 - May vary):
-- Stop sequences, top-p, repeat penalty, min-p parameters may not be fully supported yet
+Proprietary - Tether/QVAC
 
-**Current Success Rate:** ~65% (45-47/69 tests expected)  
-**Expected Without SDK Bugs:** ~96% (66/69 tests - only translation missing)
+## Contact
 
-### ⏱️ About Test Timeouts
-
-**Test Timeout = 60 seconds** (per test). This is NOT a performance issue:
-- ✅ **Healthy tests complete in < 5 seconds** (most in < 1 second)
-- ❌ **Timeout failures indicate SDK hangs** - the SDK never responds, it's not just slow
-- 🐛 **All timeout failures are SDK bugs** where the SDK enters an unrecoverable state
-
-Examples from latest run:
-- `completion-basic`: 0.34s ✅
-- `transcription-wav`: 12.5s ✅  
-- `embed-simple-text`: **60s timeout** ❌ (SDK hung, never responded)
-
-**If a test times out, the SDK is broken for that use case - it's not a test configuration issue.**
+For issues or questions, contact the QVAC SDK development team.
