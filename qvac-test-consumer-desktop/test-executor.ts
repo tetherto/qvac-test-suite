@@ -1249,22 +1249,26 @@ export class TestExecutor {
 			
 			console.log(`   🌐 Translating from ${sourceLang} to ${targetLang}: "${text}"`);
 			
-			const result = await runTranslate({
+			// translate() returns same structure as completion(): { tokenStream, text, stats }
+			// Parameters are 'from' and 'to' (not 'sourceLang' and 'targetLang')
+			const result = runTranslate({
 				modelId,
 				text,
-				sourceLang,
-				targetLang,
+				from: sourceLang,
+				to: targetLang,
 			});
 
-			const translatedText = result.toLowerCase();
-			console.log(`   ✨ Translation result: "${result}"`);
+			// Await the .text promise (like completion API)
+			const translatedText = await (result as any).text;
+			console.log(`   ✨ Translation result: "${translatedText}"`);
 
 			// Check if result contains expected keywords
 			const keywords = expectation.keywords || [];
-			const hasKeywords = keywords.some((kw: string) => translatedText.includes(kw.toLowerCase()));
+			const translatedLower = translatedText.toLowerCase();
+			const hasKeywords = keywords.some((kw: string) => translatedLower.includes(kw.toLowerCase()));
 
 			return {
-				output: `Translated "${text}" → "${result}" | Has expected keywords: ${hasKeywords}`,
+				output: `Translated "${text}" → "${translatedText}" | Has expected keywords: ${hasKeywords}`,
 				passed: hasKeywords,
 			};
 		} catch (error: any) {
@@ -1280,12 +1284,16 @@ export class TestExecutor {
 		try {
 			const { text, sourceLang, targetLang } = params;
 
-			await runTranslate({
+			// Use correct parameter names: from/to
+			const result = runTranslate({
 				modelId,
 				text,
-				sourceLang,
-				targetLang,
+				from: sourceLang,
+				to: targetLang,
 			});
+
+			// Try to await the .text
+			await (result as any).text;
 
 			// If we get here without error, the test should fail
 			return {
