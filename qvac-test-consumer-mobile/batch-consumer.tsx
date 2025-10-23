@@ -193,32 +193,41 @@ export default function BatchConsumer() {
 					}),
 					{ qos: 1 }
 				);
-			} catch (error: any) {
-				const duration = Date.now() - startTime;
-				addLog(`❌ ${testId} failed: ${error.message}`);
+		} catch (error: any) {
+			const duration = Date.now() - startTime;
+			const errorMsg = error.message || "Unknown error";
+			
+			addLog(`❌ ${testId} failed: ${errorMsg}`);
 
-				// Update stats
-				setStats((prev) => ({
-					...prev,
-					testsCompleted: prev.testsCompleted + 1,
-					testsFailed: prev.testsFailed + 1,
-				}));
-
-				// Send failure result
-				client.publish(
-					"qvac/results",
-					JSON.stringify({
-						consumerId,
-						testId,
-						uniqueTestId,
-						outcome: "failure",
-						duration,
-						timestamp: new Date().toISOString(),
-						error: error.message,
-					}),
-					{ qos: 1 }
-				);
+			// Check if this looks like an SDK crash/hang
+			if (errorMsg.includes("timeout") || errorMsg.includes("hung")) {
+				addLog(`   ⚠️  SDK may be hung/crashed - known issue`);
+				addLog(`   ℹ️  Continuing with next test...`);
 			}
+
+			// Update stats
+			setStats((prev) => ({
+				...prev,
+				testsCompleted: prev.testsCompleted + 1,
+				testsFailed: prev.testsFailed + 1,
+			}));
+
+			// Send failure result
+			client.publish(
+				"qvac/results",
+				JSON.stringify({
+					consumerId,
+					testId,
+					uniqueTestId,
+					outcome: "failure",
+					duration,
+					timestamp: new Date().toISOString(),
+					error: errorMsg,
+					sdkCrash: errorMsg.includes("timeout") ? true : undefined,
+				}),
+				{ qos: 1 }
+			);
+		}
 
 			isProcessingTest = false;
 

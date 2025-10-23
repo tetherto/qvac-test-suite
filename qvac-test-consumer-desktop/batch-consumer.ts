@@ -224,26 +224,37 @@ export class BatchConsumer {
 				{ qos: 1 },
 			);
 
-			this.testsCompleted++;
-		} catch (error: any) {
-			const duration = Date.now() - startTime;
-			console.error(`❌ ${testId} failed:`, error.message);
+		this.testsCompleted++;
+	} catch (error: any) {
+		const duration = Date.now() - startTime;
+		const errorMsg = error.message || "Unknown error";
+		
+		console.error(`❌ ${testId} failed:`, errorMsg);
 
-			// Send failure result
-			this.client.publish(
-				"qvac/results",
-				JSON.stringify({
-					consumerId: this.consumerId,
-					testId,
-					uniqueTestId,
-					outcome: "failure",
-					duration,
-					timestamp: new Date().toISOString(),
-					error: error.message,
-				}),
-				{ qos: 1 },
-			);
+		// Check if this looks like an SDK crash/hang
+		if (errorMsg.includes("timeout") || errorMsg.includes("hung")) {
+			console.error(`   ⚠️  SDK may be hung/crashed - known issue (GGML assertion)`);
+			console.error(`   ℹ️  Continuing with next test...`);
 		}
+
+		// Send failure result
+		this.client.publish(
+			"qvac/results",
+			JSON.stringify({
+				consumerId: this.consumerId,
+				testId,
+				uniqueTestId,
+				outcome: "failure",
+				duration,
+				timestamp: new Date().toISOString(),
+				error: errorMsg,
+				sdkCrash: errorMsg.includes("timeout") ? true : undefined,
+			}),
+			{ qos: 1 },
+		);
+		
+		this.testsCompleted++;
+	}
 
 		this.isProcessingTest = false;
 
