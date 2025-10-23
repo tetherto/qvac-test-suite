@@ -295,13 +295,14 @@ export class BatchConsumer {
 		try {
 			console.log("   - Loading LLM model...");
 			this.llmModelId = await loadModel({
-				modelSrc: LLAMA_3_2_1B_INST_Q4_0,
-				modelType: "llm",
-				modelConfig: {
-					verbosity: 0, // Reduce logging overhead
-					ctx_size: 2048, // Increase context size for better performance
-				},
-			});
+			modelSrc: LLAMA_3_2_1B_INST_Q4_0,
+			modelType: "llm",
+			modelConfig: {
+				verbosity: 0, // Reduce logging overhead
+				ctx_size: 2048, // Increase context size for better performance
+				n_discarded: 256, // Enable context overflow prevention during generation (Gianfranco's recommendation)
+			},
+		});
 			console.log(`   ✅ LLM loaded: ${this.llmModelId}`);
 
 			console.log("   - Loading Whisper model...");

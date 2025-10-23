@@ -242,13 +242,14 @@ export default function BatchConsumer() {
 
 				addLog("   - Loading LLM...");
 				llmModelId = await loadModel({
-					modelSrc: LLAMA_3_2_1B_INST_Q4_0,
-					modelType: "llm",
-					modelConfig: {
-						verbosity: 0 as 0, // Reduce logging overhead
-						ctx_size: 2048, // Increase context size for better performance
-					},
-				});
+				modelSrc: LLAMA_3_2_1B_INST_Q4_0,
+				modelType: "llm",
+				modelConfig: {
+					verbosity: 0 as 0, // Reduce logging overhead
+					ctx_size: 2048, // Increase context size for better performance
+					n_discarded: 256, // Enable context overflow prevention during generation (Gianfranco's recommendation)
+				},
+			});
 				addLog(`   ✅ LLM loaded`);
 
 				addLog("   - Loading Whisper...");
