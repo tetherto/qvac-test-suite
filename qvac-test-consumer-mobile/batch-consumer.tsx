@@ -298,21 +298,18 @@ export default function BatchConsumer() {
 				});
 				addLog(`   ✅ Whisper loaded`);
 
-			addLog("   - Loading Embedding...");
-			embeddingModelId = await loadModel({
-				modelSrc: GTE_LARGE_FP16,
-				modelType: "embeddings",
-			});
-			addLog(`   ✅ Embedding loaded`);
+		addLog("   - Loading Embedding...");
+		embeddingModelId = await loadModel({
+			modelSrc: GTE_LARGE_FP16,
+			modelType: "embeddings",
+		});
+		addLog(`   ✅ Embedding loaded\n`);
 
-			addLog("   - Loading Translation (IndicTrans2)...");
-			translationModelId = await loadModel({
-				modelSrc: "ai4bharat/indictrans2-en-indic-1B",
-				modelType: "translation",
-			});
-			addLog(`   ✅ Translation loaded\n`);
+		// Translation uses the LLM model (no separate translation model type in SDK)
+		translationModelId = llmModelId;
+		addLog(`   ℹ️  Translation will use LLM model\n`);
 
-			addLog("✅ All models loaded\n");
+		addLog("✅ All models loaded\n");
 
 				// Connect to MQTT
 				const protocol = env.useSsl ? "wss" : "ws";

@@ -345,21 +345,18 @@ export class BatchConsumer {
 			});
 			console.log(`   ✅ Whisper loaded: ${this.whisperModelId}`);
 
-		console.log("   - Loading Embedding model...");
-		this.embeddingModelId = await loadModel({
-			modelSrc: GTE_LARGE_FP16,
-			modelType: "embeddings",
-		});
-		console.log(`   ✅ Embedding loaded: ${this.embeddingModelId}`);
+	console.log("   - Loading Embedding model...");
+	this.embeddingModelId = await loadModel({
+		modelSrc: GTE_LARGE_FP16,
+		modelType: "embeddings",
+	});
+	console.log(`   ✅ Embedding loaded: ${this.embeddingModelId}\n`);
 
-		console.log("   - Loading Translation model (IndicTrans2)...");
-		this.translationModelId = await loadModel({
-			modelSrc: "ai4bharat/indictrans2-en-indic-1B",
-			modelType: "translation",
-		});
-		console.log(`   ✅ Translation loaded: ${this.translationModelId}\n`);
+	// Translation uses the LLM model (no separate translation model type in SDK)
+	this.translationModelId = this.llmModelId;
+	console.log(`   ℹ️  Translation will use LLM model\n`);
 
-		console.log("✅ All models loaded successfully\n");
+	console.log("✅ All models loaded successfully\n");
 
 			// Wait a bit for MQTT to be fully connected
 			await new Promise(resolve => setTimeout(resolve, 1000));
