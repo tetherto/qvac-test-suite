@@ -49,11 +49,15 @@ export class TestExecutor {
 		this.testHandlers.set("model-unload", this.modelUnload.bind(this));
 
 		// LLM completion tests
-		this.testHandlers.set("completion", this.completion.bind(this));
-		this.testHandlers.set("completion-streaming", this.completionStreaming.bind(this));
-		this.testHandlers.set("completion-context-size", this.completionContextSize.bind(this));
-		this.testHandlers.set("completion-temperature", this.completionTemperature.bind(this));
-		this.testHandlers.set("completion-empty-prompt", this.completionEmptyPrompt.bind(this));
+	this.testHandlers.set("completion", this.completion.bind(this));
+	this.testHandlers.set("completion-streaming", this.completionStreaming.bind(this));
+	this.testHandlers.set("completion-context-size", this.completionContextSize.bind(this));
+	this.testHandlers.set("completion-context-size-512", this.completionContextSize.bind(this));
+	this.testHandlers.set("completion-context-size-2048", this.completionContextSize.bind(this));
+	this.testHandlers.set("completion-temperature", this.completionTemperature.bind(this));
+	this.testHandlers.set("completion-temperature-01", this.completionTemperature.bind(this));
+	this.testHandlers.set("completion-temperature-09", this.completionTemperature.bind(this));
+	this.testHandlers.set("completion-empty-prompt", this.completionEmptyPrompt.bind(this));
 		this.testHandlers.set("completion-long-prompt", this.completionLongPrompt.bind(this));
 		this.testHandlers.set("completion-multi-turn", this.completionMultiTurn.bind(this));
 		this.testHandlers.set("completion-system-message", this.completionSystemMessage.bind(this));
