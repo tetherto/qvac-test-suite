@@ -200,11 +200,18 @@ C:\vcpkg\buildtrees\llama-cpp\src\v6435.2.1-7148ab838d.clean\ggml\src\ggml-cpu\o
 GGML_ASSERT(i01 >= 0 && i01 < ne01) failed
 
 REPRODUCTION:
-1. Load LLM model with ctx_size: 2048, n_discarded: 256
-2. Run completion tests
-3. Process ~850 tokens
-4. Assertion fails, SDK crashes
-5. unloadModel() hangs indefinitely
+1. Load embedding model (GTE_LARGE_FP16)
+2. Run embed test with code file (e.g., data_analysis.py)
+3. Process ~852 tokens through batchDecode
+4. Assertion fails: GGML_ASSERT(i01 >= 0 && i01 < ne01) failed
+5. SDK crashes, unloadModel() hangs indefinitely
+
+ALSO AFFECTS:
+- embed-python-code (data_analysis.py - 852 tokens)
+- embed-javascript-code (likely similar token count)
+- embed-json-data (likely similar token count)  
+- embed-html-content (likely similar token count)
+- ANY test processing ~850+ tokens through embedding model
 
 IMPACT:
 - SDK becomes completely unresponsive

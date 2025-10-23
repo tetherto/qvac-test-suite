@@ -1506,12 +1506,12 @@ export class TestBuilder {
 		tests.push(this.buildEmbedCodeSnippetTest());
 		tests.push(this.buildEmbedMultilingualTest());
 		tests.push(this.buildEmbedSpecialCharactersTest());
-		tests.push(this.buildEmbedNumbersOnlyTest());
-		// Enhanced embedding tests with code files
-		tests.push(this.buildEmbedPythonCodeTest());
-		tests.push(this.buildEmbedJavaScriptCodeTest());
-		tests.push(this.buildEmbedJsonDataTest());
-		tests.push(this.buildEmbedHtmlContentTest());
+	tests.push(this.buildEmbedNumbersOnlyTest());
+	// MOVED: Enhanced embedding tests with code files → END (trigger GGML assertion at ~852 tokens)
+	// MOVED: buildEmbedPythonCodeTest() → END
+	// MOVED: buildEmbedJavaScriptCodeTest() → END
+	// MOVED: buildEmbedJsonDataTest() → END
+	// MOVED: buildEmbedHtmlContentTest() → END
 
 		// Translation tests
 		tests.push(this.buildTranslationEnToEsTest());
@@ -1552,12 +1552,13 @@ export class TestBuilder {
 	tests.push(this.buildRagCorruptedDocumentTest());
 
 	// ========== DESTRUCTIVE TESTS (RUN LAST) ==========
-	// ⚠️  WARNING: These tests cause SDK to hang/corrupt and affect subsequent tests
-	// ⚠️  SDK BUG #1: Context overflow corrupts inference engine state
-	// ⚠️  SDK BUG #2: Corrupted audio files hang SDK indefinitely
-	// ⚠️  Result: Subsequent tests hang/timeout even though errors are caught
+	// ⚠️  WARNING: These tests cause SDK to crash/hang and affect subsequent tests
+	// ⚠️  SDK BUG #1: GGML assertion failure (ggml-cpu/ops.cpp:5358) at ~852 tokens
+	// ⚠️  SDK BUG #2: Context overflow corrupts inference engine state
+	// ⚠️  SDK BUG #3: Corrupted audio files hang SDK indefinitely
+	// ⚠️  Result: SDK crashes, subsequent tests timeout even though errors are caught
 	// ⚠️  Solution: Run these tests LAST to avoid contaminating other tests
-	console.log("\n⚠️  NOTE: Destructive tests (context overflow + corrupted audio) run LAST to prevent SDK contamination");
+	console.log("\n⚠️  NOTE: Destructive tests (GGML assertion + context overflow + corrupted audio) run LAST to prevent SDK contamination");
 	
 	// Context overflow tests (cause state corruption)
 	tests.push(this.buildCompletionLongPromptTest());
@@ -1567,6 +1568,13 @@ export class TestBuilder {
 	// Corrupted audio tests (cause SDK to hang indefinitely)
 	tests.push(this.buildTranscriptionCorruptedMp3Test());
 	tests.push(this.buildTranscriptionCorruptedWavTest());
+	
+	// Enhanced embedding tests with code files (trigger GGML assertion at ~852 tokens)
+	// These cause: batchDecode: n_tokens = 852 → GGML_ASSERT(i01 >= 0 && i01 < ne01) failed
+	tests.push(this.buildEmbedPythonCodeTest());
+	tests.push(this.buildEmbedJavaScriptCodeTest());
+	tests.push(this.buildEmbedJsonDataTest());
+	tests.push(this.buildEmbedHtmlContentTest());
 
 	return tests;
 }
