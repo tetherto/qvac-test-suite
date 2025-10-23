@@ -175,8 +175,8 @@ export default function BatchConsumer() {
 					modelId = llmModelId;
 				}
 
-				// Set timeout - 1 minute max for all tests
-				const timeoutMs = 90000; // 1.5 minutes (increased from 60s)
+				// Set timeout - 30 seconds max for all tests
+				const timeoutMs = 30000; // 30 seconds
 
 				// Execute the test with timeout
 				const testPromise = executor.executeTest(testId, modelId, params, expectation);

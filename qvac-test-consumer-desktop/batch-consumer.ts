@@ -212,8 +212,8 @@ export class BatchConsumer {
 				modelId = this.llmModelId;
 			}
 
-		// Set timeout - 90 seconds max for all tests (increased from 60s)
-		const timeoutMs = 90000; // 1.5 minutes
+		// Set timeout - 30 seconds max for all tests
+		const timeoutMs = 30000; // 30 seconds
 			
 			// Execute the test with timeout
 			const testPromise = this.executor.executeTest(

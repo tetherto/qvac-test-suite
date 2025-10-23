@@ -158,8 +158,8 @@ export class BatchOrchestrator {
 			testCase: nextTest,
 			consumerId,
 			assignedAt: Date.now(),
-			// Use max of: 2x estimate OR 120s (to match consumer 90s + 30s MQTT buffer)
-			timeoutMs: Math.max(nextTest.estimatedDurationMs * 2, 120000),
+			// Use max of: 2x estimate OR 40s (to match consumer 30s + 10s MQTT buffer)
+			timeoutMs: Math.max(nextTest.estimatedDurationMs * 2, 40000),
 		};
 
 		this.assignedTests.set(nextTest.id, assignment);
