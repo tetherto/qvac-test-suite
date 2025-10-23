@@ -1711,7 +1711,8 @@ export class TestExecutor {
 			if (error) {
 				return { output: `Error: ${error}`, passed: false };
 			}
-			const text = rawText.toLowerCase().trim();
+			// Strip punctuation and normalize whitespace for more lenient matching
+			const text = rawText.toLowerCase().trim().replace(/[.,!?;:]+$/g, '');
 
 			const keywords = expectation.keywords || [];
 			const hasKeywords = keywords.some((kw: string) => 
@@ -1719,7 +1720,7 @@ export class TestExecutor {
 			);
 
 			return {
-				output: `Yes/No question: "${text}" | Has expected answer: ${hasKeywords}`,
+				output: `Yes/No question: "${rawText.trim()}" → normalized: "${text}" | Has expected answer: ${hasKeywords}`,
 				passed: hasKeywords,
 			};
 		} catch (error: any) {

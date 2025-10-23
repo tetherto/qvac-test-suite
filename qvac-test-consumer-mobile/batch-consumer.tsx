@@ -154,10 +154,12 @@ export default function BatchConsumer() {
 				} else if (
 					testId.startsWith("completion") ||
 					testId.startsWith("model-load") ||
-					testId.startsWith("model-unload")
+					testId.startsWith("model-unload") ||
+					testId.startsWith("model-switch") ||
+					testId.startsWith("model-reload")
 				) {
-					// Reload LLM model for clean state (unless this IS a model loading test)
-					if (llmModelId && !testId.startsWith("model-load-llm") && !testId.startsWith("model-unload")) {
+					// Reload LLM model for clean state (unless this IS a model loading test or model switch/reload test)
+					if (llmModelId && !testId.startsWith("model-load-llm") && !testId.startsWith("model-unload") && !testId.startsWith("model-switch") && !testId.startsWith("model-reload")) {
 						addLog(`   🔄 Reloading LLM...`);
 						await unloadModel({ modelId: llmModelId });
 						llmModelId = await loadModel({

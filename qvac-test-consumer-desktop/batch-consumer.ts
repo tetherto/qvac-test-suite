@@ -194,9 +194,9 @@ export class BatchConsumer {
 				}
 				modelId = this.embeddingModelId;
 				
-			} else if (testId.startsWith("completion") || testId.startsWith("model-load") || testId.startsWith("model-unload")) {
-				// Reload LLM model for clean state (unless this IS a model loading test)
-				if (this.llmModelId && !testId.startsWith("model-load-llm") && !testId.startsWith("model-unload")) {
+			} else if (testId.startsWith("completion") || testId.startsWith("model-load") || testId.startsWith("model-unload") || testId.startsWith("model-switch") || testId.startsWith("model-reload")) {
+				// Reload LLM model for clean state (unless this IS a model loading test or model switch/reload test)
+				if (this.llmModelId && !testId.startsWith("model-load-llm") && !testId.startsWith("model-unload") && !testId.startsWith("model-switch") && !testId.startsWith("model-reload")) {
 					console.log(`   🔄 Reloading LLM model for clean state...`);
 					await unloadModel({ modelId: this.llmModelId });
 					this.llmModelId = await loadModel({

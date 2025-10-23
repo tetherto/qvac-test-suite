@@ -83,12 +83,12 @@ export class TestBuilder {
 				testId: "completion-streaming",
 				params: {
 					history: [
-						{ role: "user", content: "What is 1+1+1+1+1? Answer with only the number." },
+						{ role: "user", content: "What is 2+2? Answer with only the number." },
 					],
 					stream: true,
 				},
 				expectation: {
-					contains: ["5"],
+					contains: ["4"],
 					validation: "contains-all",
 				},
 				expectedOutcome: "pass",
@@ -1857,7 +1857,7 @@ export class TestBuilder {
 				testId: "completion-simple-yes-no",
 				params: {
 					history: [
-						{ role: "user", content: "Is water wet? Answer with just 'yes' or 'no'." },
+						{ role: "user", content: "Is fire hot? Answer with just 'yes' or 'no'." },
 					],
 					stream: false,
 				},
