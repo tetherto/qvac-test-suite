@@ -68,7 +68,6 @@ export default function BatchConsumer() {
 		let registered = false;
 		let isProcessingTest = false;
 		let shutdownRequested = false;
-		let cleanupInProgress = false;
 
 		const requestNextTest = () => {
 			if (!registered || isProcessingTest || shutdownRequested) {
@@ -83,122 +82,6 @@ export default function BatchConsumer() {
 				}),
 				{ qos: 1 }
 			);
-		};
-
-		/**
-		 * Immediately cleanup and unload all models after a critical failure
-		 * This prevents resource clogging and ensures clean state for next test
-		 */
-		const emergencyCleanup = async (testId: string) => {
-			if (cleanupInProgress) {
-				addLog(`   ⏭️  Cleanup already in progress, skipping...`);
-				return;
-			}
-
-			cleanupInProgress = true;
-			addLog(`   🧹 EMERGENCY CLEANUP for ${testId}...`);
-
-			try {
-				// Unload all models to free resources
-				const cleanupPromises: Promise<void>[] = [];
-
-				if (llmModelId) {
-					addLog(`   🔓 Unloading LLM model...`);
-					cleanupPromises.push(
-						unloadModel({ modelId: llmModelId })
-							.then(() => {
-								llmModelId = null;
-								addLog(`   ✅ LLM model unloaded`);
-							})
-							.catch((err) => addLog(`   ⚠️  Failed to unload LLM: ${err.message}`))
-					);
-				}
-
-				if (embeddingModelId) {
-					addLog(`   🔓 Unloading Embedding model...`);
-					cleanupPromises.push(
-						unloadModel({ modelId: embeddingModelId })
-							.then(() => {
-								embeddingModelId = null;
-								addLog(`   ✅ Embedding model unloaded`);
-							})
-							.catch((err) => addLog(`   ⚠️  Failed to unload Embedding: ${err.message}`))
-					);
-				}
-
-				if (whisperModelId) {
-					addLog(`   🔓 Unloading Whisper model...`);
-					cleanupPromises.push(
-						unloadModel({ modelId: whisperModelId })
-							.then(() => {
-								whisperModelId = null;
-								addLog(`   ✅ Whisper model unloaded`);
-							})
-							.catch((err) => addLog(`   ⚠️  Failed to unload Whisper: ${err.message}`))
-					);
-				}
-
-				// Wait max 5 seconds for cleanup (don't wait forever if SDK is hung)
-				await Promise.race([
-					Promise.all(cleanupPromises),
-					new Promise((resolve) => setTimeout(resolve, 5000))
-				]);
-
-				addLog(`   ✅ Cleanup complete - all resources freed`);
-
-				// Reload models for next test
-				addLog(`   🔄 Reloading models for next test...`);
-				await reloadModels();
-				addLog(`   ✅ Models reloaded and ready`);
-
-			} catch (error: any) {
-				addLog(`   ❌ Cleanup failed: ${error.message}`);
-				addLog(`   ⚠️  Consumer may be in unstable state`);
-			} finally {
-				cleanupInProgress = false;
-			}
-		};
-
-		/**
-		 * Reload all models with fresh state
-		 */
-		const reloadModels = async () => {
-			try {
-				if (!llmModelId) {
-					llmModelId = await loadModel({
-						modelSrc: LLAMA_3_2_1B_INST_Q4_0,
-						modelType: "llm",
-						modelConfig: {
-							verbosity: 0,
-							ctx_size: 2048,
-							n_discarded: 256,
-						},
-					});
-				}
-
-				if (!embeddingModelId) {
-					embeddingModelId = await loadModel({
-						modelSrc: GTE_LARGE_FP16,
-						modelType: "embeddings",
-					});
-				}
-
-				if (!whisperModelId) {
-					whisperModelId = await loadModel({
-						modelSrc: WHISPER_TINY,
-						modelType: "whisper",
-						vadModelSrc: VAD_SILERO_5_1_2,
-						modelConfig: {
-							mode: "caption",
-							output_format: "plaintext",
-							audio_format: "f32le",
-						},
-					});
-				}
-			} catch (error: any) {
-				addLog(`   ❌ Model reload failed: ${error.message}`);
-				throw error;
-			}
 		};
 
 		const executeTest = async (uniqueTestId: string, test: TestMessage) => {
@@ -329,8 +212,8 @@ export default function BatchConsumer() {
 			// Check if this looks like an SDK crash/hang
 			const isSdkCrash = errorMsg.includes("timeout") || errorMsg.includes("hung") || errorMsg.includes("GGML");
 			if (isSdkCrash) {
-				addLog(`   ⚠️  SDK CRASH DETECTED - Immediate cleanup required!`);
-				addLog(`   🧹 Unloading all models to free resources...`);
+				addLog(`   ⚠️  SDK CRASH DETECTED (C++ level - no recovery possible)`);
+				addLog(`   ℹ️  Subsequent tests may fail (cascade effect)`);
 			}
 
 			// Update stats
@@ -340,7 +223,7 @@ export default function BatchConsumer() {
 				testsFailed: prev.testsFailed + 1,
 			}));
 
-			// Send failure result FIRST (before cleanup, so it doesn't delay reporting)
+			// Send failure result
 			client.publish(
 				"qvac/results",
 				JSON.stringify({
@@ -355,12 +238,6 @@ export default function BatchConsumer() {
 				}),
 				{ qos: 1 }
 			);
-
-			// IMMEDIATE CLEANUP: Unload all models to prevent resource clogging
-			if (isSdkCrash) {
-				addLog(`   🔄 Performing emergency cleanup...`);
-				await emergencyCleanup(testId);
-			}
 		}
 
 			isProcessingTest = false;

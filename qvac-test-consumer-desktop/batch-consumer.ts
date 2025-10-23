@@ -41,7 +41,6 @@ export class BatchConsumer {
 	private testsCompleted = 0;
 	private isProcessingTest = false;
 	private shutdownRequested = false;
-	private cleanupInProgress = false;
 
 	constructor(brokerUrl: string, platform: string = "desktop") {
 		this.consumerId = `consumer-${platform}-${os.hostname()}-${Date.now()}`;
@@ -245,11 +244,11 @@ export class BatchConsumer {
 		// Check if this looks like an SDK crash/hang
 		const isSdkCrash = errorMsg.includes("timeout") || errorMsg.includes("hung") || errorMsg.includes("GGML");
 		if (isSdkCrash) {
-			console.error(`   ⚠️  SDK CRASH DETECTED - Immediate cleanup required!`);
-			console.error(`   🧹 Unloading all models to free resources...`);
+			console.error(`   ⚠️  SDK CRASH DETECTED (C++ level - no recovery possible)`);
+			console.error(`   ℹ️  Subsequent tests may fail (cascade effect)`);
 		}
 
-		// Send failure result FIRST (before cleanup, so it doesn't delay reporting)
+		// Send failure result
 		this.client.publish(
 			"qvac/results",
 			JSON.stringify({
@@ -266,12 +265,6 @@ export class BatchConsumer {
 		);
 		
 		this.testsCompleted++;
-
-		// IMMEDIATE CLEANUP: Unload all models to prevent resource clogging
-		if (isSdkCrash) {
-			console.error(`   🔄 Performing emergency cleanup...`);
-			await this.emergencyCleanup(testId);
-		}
 	}
 
 		this.isProcessingTest = false;
@@ -282,122 +275,6 @@ export class BatchConsumer {
 			setTimeout(() => this.requestNextTest(), 100);
 		} else {
 			this.shutdown();
-		}
-	}
-
-	/**
-	 * Immediately cleanup and unload all models after a critical failure
-	 * This prevents resource clogging and ensures clean state for next test
-	 */
-	private async emergencyCleanup(testId: string) {
-		if (this.cleanupInProgress) {
-			console.log(`   ⏭️  Cleanup already in progress, skipping...`);
-			return;
-		}
-
-		this.cleanupInProgress = true;
-		console.log(`   🧹 EMERGENCY CLEANUP for ${testId}...`);
-
-		try {
-			// Unload all models to free resources
-			const cleanupPromises: Promise<void>[] = [];
-
-			if (this.llmModelId) {
-				console.log(`   🔓 Unloading LLM model...`);
-				cleanupPromises.push(
-					unloadModel({ modelId: this.llmModelId })
-						.then(() => {
-							this.llmModelId = null;
-							console.log(`   ✅ LLM model unloaded`);
-						})
-						.catch((err) => console.error(`   ⚠️  Failed to unload LLM: ${err.message}`))
-				);
-			}
-
-			if (this.embeddingModelId) {
-				console.log(`   🔓 Unloading Embedding model...`);
-				cleanupPromises.push(
-					unloadModel({ modelId: this.embeddingModelId })
-						.then(() => {
-							this.embeddingModelId = null;
-							console.log(`   ✅ Embedding model unloaded`);
-						})
-						.catch((err) => console.error(`   ⚠️  Failed to unload Embedding: ${err.message}`))
-				);
-			}
-
-			if (this.whisperModelId) {
-				console.log(`   🔓 Unloading Whisper model...`);
-				cleanupPromises.push(
-					unloadModel({ modelId: this.whisperModelId })
-						.then(() => {
-							this.whisperModelId = null;
-							console.log(`   ✅ Whisper model unloaded`);
-						})
-						.catch((err) => console.error(`   ⚠️  Failed to unload Whisper: ${err.message}`))
-				);
-			}
-
-			// Wait max 5 seconds for cleanup (don't wait forever if SDK is hung)
-			await Promise.race([
-				Promise.all(cleanupPromises),
-				new Promise((resolve) => setTimeout(resolve, 5000))
-			]);
-
-			console.log(`   ✅ Cleanup complete - all resources freed`);
-
-			// Reload models for next test
-			console.log(`   🔄 Reloading models for next test...`);
-			await this.reloadModels();
-			console.log(`   ✅ Models reloaded and ready`);
-
-		} catch (error: any) {
-			console.error(`   ❌ Cleanup failed: ${error.message}`);
-			console.error(`   ⚠️  Consumer may be in unstable state`);
-		} finally {
-			this.cleanupInProgress = false;
-		}
-	}
-
-	/**
-	 * Reload all models with fresh state
-	 */
-	private async reloadModels() {
-		try {
-			if (!this.llmModelId) {
-				this.llmModelId = await loadModel({
-					modelSrc: LLAMA_3_2_1B_INST_Q4_0,
-					modelType: "llm",
-					modelConfig: {
-						verbosity: 0,
-						ctx_size: 2048,
-						n_discarded: 256,
-					},
-				});
-			}
-
-			if (!this.embeddingModelId) {
-				this.embeddingModelId = await loadModel({
-					modelSrc: GTE_LARGE_FP16,
-					modelType: "embeddings",
-				});
-			}
-
-			if (!this.whisperModelId) {
-				this.whisperModelId = await loadModel({
-					modelSrc: WHISPER_TINY,
-					modelType: "whisper",
-					vadModelSrc: VAD_SILERO_5_1_2,
-					modelConfig: {
-						mode: "caption",
-						output_format: "plaintext",
-						audio_format: "f32le",
-					},
-				});
-			}
-		} catch (error: any) {
-			console.error(`   ❌ Model reload failed: ${error.message}`);
-			throw error;
 		}
 	}
 
