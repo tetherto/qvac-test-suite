@@ -62,9 +62,10 @@ export default function BatchConsumer() {
 	useEffect(() => {
 		let client: MqttClient;
 		let executor: TestExecutor;
-		let llmModelId: string | null = null;
-		let whisperModelId: string | null = null;
-		let embeddingModelId: string | null = null;
+	let llmModelId: string | null = null;
+	let whisperModelId: string | null = null;
+	let embeddingModelId: string | null = null;
+	let translationModelId: string | null = null;
 		let registered = false;
 		let isProcessingTest = false;
 		let shutdownRequested = false;
@@ -115,21 +116,23 @@ export default function BatchConsumer() {
 				// ============================================================
 				
 			// Determine which model to use (models kept loaded for speed)
-			let modelId: string | null = null;
-			
-			if (testId.startsWith("transcription")) {
-				modelId = whisperModelId;
-			} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
-				modelId = embeddingModelId;
-			} else if (
-				testId.startsWith("completion") ||
-				testId.startsWith("model-load") ||
-				testId.startsWith("model-unload") ||
-				testId.startsWith("model-switch") ||
-				testId.startsWith("model-reload")
-			) {
-				modelId = llmModelId;
-			}
+		let modelId: string | null = null;
+		
+		if (testId.startsWith("transcription")) {
+			modelId = whisperModelId;
+		} else if (testId.startsWith("translation")) {
+			modelId = translationModelId;
+		} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
+			modelId = embeddingModelId;
+		} else if (
+			testId.startsWith("completion") ||
+			testId.startsWith("model-load") ||
+			testId.startsWith("model-unload") ||
+			testId.startsWith("model-switch") ||
+			testId.startsWith("model-reload")
+		) {
+			modelId = llmModelId;
+		}
 
 			// Set timeout based on test type
 			// - Known destructive tests (embed code, context overflow, corrupted audio): 10s (fail fast)
@@ -295,14 +298,21 @@ export default function BatchConsumer() {
 				});
 				addLog(`   ✅ Whisper loaded`);
 
-				addLog("   - Loading Embedding...");
-				embeddingModelId = await loadModel({
-					modelSrc: GTE_LARGE_FP16,
-					modelType: "embeddings",
-				});
-				addLog(`   ✅ Embedding loaded\n`);
+			addLog("   - Loading Embedding...");
+			embeddingModelId = await loadModel({
+				modelSrc: GTE_LARGE_FP16,
+				modelType: "embeddings",
+			});
+			addLog(`   ✅ Embedding loaded`);
 
-				addLog("✅ All models loaded\n");
+			addLog("   - Loading Translation (IndicTrans2)...");
+			translationModelId = await loadModel({
+				modelSrc: "ai4bharat/indictrans2-en-indic-1B",
+				modelType: "translation",
+			});
+			addLog(`   ✅ Translation loaded\n`);
+
+			addLog("✅ All models loaded\n");
 
 				// Connect to MQTT
 				const protocol = env.useSsl ? "wss" : "ws";

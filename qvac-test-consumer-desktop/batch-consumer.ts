@@ -36,6 +36,7 @@ export class BatchConsumer {
 	private llmModelId: string | null = null;
 	private whisperModelId: string | null = null;
 	private embeddingModelId: string | null = null;
+	private translationModelId: string | null = null;
 	private executor: TestExecutor;
 	private registered = false;
 	private testsCompleted = 0;
@@ -159,15 +160,17 @@ export class BatchConsumer {
 			
 			// Determine which model to use and reload it fresh
 		// Determine which model to use based on test type (models kept loaded for speed)
-		let modelId: string | null = null;
-		
-		if (testId.startsWith("transcription")) {
-			modelId = this.whisperModelId;
-		} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
-			modelId = this.embeddingModelId;
-		} else if (testId.startsWith("completion") || testId.startsWith("model-load") || testId.startsWith("model-unload") || testId.startsWith("model-switch") || testId.startsWith("model-reload")) {
-			modelId = this.llmModelId;
-		}
+	let modelId: string | null = null;
+	
+	if (testId.startsWith("transcription")) {
+		modelId = this.whisperModelId;
+	} else if (testId.startsWith("translation")) {
+		modelId = this.translationModelId;
+	} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
+		modelId = this.embeddingModelId;
+	} else if (testId.startsWith("completion") || testId.startsWith("model-load") || testId.startsWith("model-unload") || testId.startsWith("model-switch") || testId.startsWith("model-reload")) {
+		modelId = this.llmModelId;
+	}
 
 		// Set timeout based on test type
 		// - Known destructive tests (embed code, context overflow, corrupted audio): 10s (fail fast)
@@ -342,14 +345,21 @@ export class BatchConsumer {
 			});
 			console.log(`   ✅ Whisper loaded: ${this.whisperModelId}`);
 
-			console.log("   - Loading Embedding model...");
-			this.embeddingModelId = await loadModel({
-				modelSrc: GTE_LARGE_FP16,
-				modelType: "embeddings",
-			});
-			console.log(`   ✅ Embedding loaded: ${this.embeddingModelId}\n`);
+		console.log("   - Loading Embedding model...");
+		this.embeddingModelId = await loadModel({
+			modelSrc: GTE_LARGE_FP16,
+			modelType: "embeddings",
+		});
+		console.log(`   ✅ Embedding loaded: ${this.embeddingModelId}`);
 
-			console.log("✅ All models loaded successfully\n");
+		console.log("   - Loading Translation model (IndicTrans2)...");
+		this.translationModelId = await loadModel({
+			modelSrc: "ai4bharat/indictrans2-en-indic-1B",
+			modelType: "translation",
+		});
+		console.log(`   ✅ Translation loaded: ${this.translationModelId}\n`);
+
+		console.log("✅ All models loaded successfully\n");
 
 			// Wait a bit for MQTT to be fully connected
 			await new Promise(resolve => setTimeout(resolve, 1000));
