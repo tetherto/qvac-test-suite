@@ -1487,13 +1487,13 @@ export class TestBuilder {
 		tests.push(this.buildTranscriptionAacTest());
 		tests.push(this.buildTranscriptionM4aTest());
 		tests.push(this.buildTranscriptionOggTest());
-		tests.push(this.buildTranscriptionSilenceTest());
-		tests.push(this.buildTranscriptionOnlyMusicTest());
-		tests.push(this.buildTranscriptionLongAudioTest());
-		tests.push(this.buildTranscriptionCorruptedMp3Test());
-		tests.push(this.buildTranscriptionCorruptedWavTest());
-		tests.push(this.buildTranscriptionStreamingTest());
-		tests.push(this.buildTranscriptionVeryShortAudioTest());
+	tests.push(this.buildTranscriptionSilenceTest());
+	tests.push(this.buildTranscriptionOnlyMusicTest());
+	tests.push(this.buildTranscriptionLongAudioTest());
+	// MOVED: buildTranscriptionCorruptedMp3Test() → END (SDK hangs on corrupted audio)
+	// MOVED: buildTranscriptionCorruptedWavTest() → END (SDK hangs on corrupted audio)
+	tests.push(this.buildTranscriptionStreamingTest());
+	tests.push(this.buildTranscriptionVeryShortAudioTest());
 
 		// Embedding tests
 		tests.push(this.buildEmbedSimpleTextTest());
@@ -1552,14 +1552,21 @@ export class TestBuilder {
 	tests.push(this.buildRagCorruptedDocumentTest());
 
 	// ========== DESTRUCTIVE TESTS (RUN LAST) ==========
-	// ⚠️  WARNING: These tests intentionally cause context overflow errors
-	// ⚠️  SDK BUG: Context overflow corrupts inference engine state
-	// ⚠️  Result: Subsequent tests hang/timeout even though error is caught
-	// ⚠️  Solution: Run these tests LAST to avoid affecting other tests
-	console.log("\n⚠️  NOTE: Context overflow tests run LAST (known SDK bug)");
+	// ⚠️  WARNING: These tests cause SDK to hang/corrupt and affect subsequent tests
+	// ⚠️  SDK BUG #1: Context overflow corrupts inference engine state
+	// ⚠️  SDK BUG #2: Corrupted audio files hang SDK indefinitely
+	// ⚠️  Result: Subsequent tests hang/timeout even though errors are caught
+	// ⚠️  Solution: Run these tests LAST to avoid contaminating other tests
+	console.log("\n⚠️  NOTE: Destructive tests (context overflow + corrupted audio) run LAST to prevent SDK contamination");
+	
+	// Context overflow tests (cause state corruption)
 	tests.push(this.buildCompletionLongPromptTest());
 	tests.push(this.buildCompletionVeryLongContextTest());
 	tests.push(this.buildCompletionExtremelyLongPromptTest());
+	
+	// Corrupted audio tests (cause SDK to hang indefinitely)
+	tests.push(this.buildTranscriptionCorruptedMp3Test());
+	tests.push(this.buildTranscriptionCorruptedWavTest());
 
 	return tests;
 }
