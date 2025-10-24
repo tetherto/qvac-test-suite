@@ -1242,12 +1242,14 @@ export class TestExecutor {
 			console.log(`   🌐 Translating from ${sourceLang} to ${targetLang}: "${text}"`);
 			
 			// translate() returns same structure as completion(): { tokenStream, text, stats }
-			// Parameters are 'from' and 'to' (not 'sourceLang' and 'targetLang')
+			// Parameters: from, to, modelType, stream (discovered from Simon's example)
 			const result = runTranslate({
 				modelId,
 				text,
 				from: sourceLang,
 				to: targetLang,
+				modelType: "llm",
+				stream: false,
 			});
 
 			// Await the .text promise (like completion API)
@@ -1276,12 +1278,14 @@ export class TestExecutor {
 		try {
 			const { text, sourceLang, targetLang } = params;
 
-			// Use correct parameter names: from/to
+			// Use correct parameter names: from/to + modelType/stream
 			const result = runTranslate({
 				modelId,
 				text,
 				from: sourceLang,
 				to: targetLang,
+				modelType: "llm",
+				stream: false,
 			});
 
 			// Try to await the .text

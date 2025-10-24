@@ -6,7 +6,13 @@
 		"batch": "bun run batch-consumer.ts"
 	},
 	"dependencies": {
-		"@qvac/sdk": "0.2.6-dev.1761136954.37a3ab8",
+		"@qvac/sdk": "0.2.7-dev.1761295911.0436ccb",
+		"bare-abort-controller": "^1.0.0",
+		"bare-events": "^2.8.1",
+		"bare-fetch": "^2.5.0",
+		"bare-net": "^2.2.0",
+		"bare-rpc": "^1.0.0",
+		"bare-runtime": "^1.23.6",
 		"mqtt": "^5.14.1"
 	},
 	"devDependencies": {
