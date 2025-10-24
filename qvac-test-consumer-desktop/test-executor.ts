@@ -301,8 +301,39 @@ export class TestExecutor {
 		}
 
 		try {
-			const { history = [], stream = false } = params;
-			const result = runCompletion({ modelId, history, stream });
+			// Extract all params and pass them through to SDK
+			// SDK will handle: temperature, topP, frequencyPenalty, presencePenalty, seed, stopSequences, etc.
+			const {
+				history = [],
+				stream = false,
+				temperature,
+				topP,
+				maxTokens,
+				frequencyPenalty,
+				presencePenalty,
+				seed,
+				stopSequences,
+				...otherParams
+			} = params;
+
+			const completionParams: any = {
+				modelId,
+				history,
+				stream,
+			};
+
+			// Only include optional parameters if provided
+			if (temperature !== undefined) completionParams.temperature = temperature;
+			if (topP !== undefined) completionParams.topP = topP;
+			if (maxTokens !== undefined) completionParams.maxTokens = maxTokens;
+			if (frequencyPenalty !== undefined) completionParams.frequencyPenalty = frequencyPenalty;
+			if (presencePenalty !== undefined) completionParams.presencePenalty = presencePenalty;
+			if (seed !== undefined) completionParams.seed = seed;
+			if (stopSequences !== undefined) completionParams.stopSequences = stopSequences;
+			// Include any other params that might be added
+			Object.assign(completionParams, otherParams);
+
+			const result = runCompletion(completionParams);
 			const { text: rawText, error } = await this.safeAwaitCompletion(result);
 			
 			if (error) {

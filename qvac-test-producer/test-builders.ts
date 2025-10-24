@@ -1475,13 +1475,39 @@ export class TestBuilder {
 	// MOVED: buildCompletionVeryLongContextTest() → END (causes context overflow)
 	tests.push(this.buildCompletionZeroTemperatureTest());
 		
-		// Phase 3: Edge cases & advanced scenarios
-		tests.push(this.buildCompletionTopKTest());
-		tests.push(this.buildCompletionFrequencyPenaltyTest());
-		tests.push(this.buildCompletionPresencePenaltyTest());
-		tests.push(this.buildCompletionNegativeTemperatureTest());
+	// Phase 3: Edge cases & advanced scenarios
+	tests.push(this.buildCompletionTopKTest());
+	tests.push(this.buildCompletionFrequencyPenaltyTest());
+	tests.push(this.buildCompletionPresencePenaltyTest());
+	tests.push(this.buildCompletionNegativeTemperatureTest());
 
-		// Transcription tests
+	// ========== PHASE 3.5: COMPREHENSIVE PARAMETER COVERAGE (Sprint 2) ==========
+	// Temperature variations
+	tests.push(this.buildCompletionTemperature00Test());
+	tests.push(this.buildCompletionTemperature05Test());
+	tests.push(this.buildCompletionTemperature10Test());
+	tests.push(this.buildCompletionTemperature15Test());
+	
+	// top_p variations
+	tests.push(this.buildCompletionTopP01Test());
+	tests.push(this.buildCompletionTopP05Test());
+	tests.push(this.buildCompletionTopP10Test());
+	
+	// Frequency penalty variations
+	tests.push(this.buildCompletionFrequencyPenaltyNeg10Test());
+	tests.push(this.buildCompletionFrequencyPenalty00Test());
+	tests.push(this.buildCompletionFrequencyPenalty10Test());
+	
+	// Presence penalty variations
+	tests.push(this.buildCompletionPresencePenaltyNeg10Test());
+	tests.push(this.buildCompletionPresencePenalty00Test());
+	tests.push(this.buildCompletionPresencePenalty10Test());
+	
+	// Seed (reproducibility) and stop sequences
+	tests.push(this.buildCompletionSeedReproducibilityTest());
+	tests.push(this.buildCompletionStopSequencesMultipleTest());
+
+	// Transcription tests
 		tests.push(this.buildTranscriptionShortWavTest());
 		tests.push(this.buildTranscriptionShortMp3Test());
 		tests.push(this.buildTranscriptionAacTest());
@@ -1928,6 +1954,363 @@ export class TestBuilder {
 			}),
 			dependency: "embeddings",
 			estimatedDurationMs: 5000,
+		};
+	}
+
+	// ========== NEW: COMPLETION PARAMETER TESTS (Sprint 2) ==========
+
+	// Temperature tests
+	buildCompletionTemperature00Test(): TestDefinition {
+		return {
+			testId: "completion-temperature-00",
+			payload: JSON.stringify({
+				testId: "completion-temperature-00",
+				params: {
+					history: [
+						{ role: "user", content: "What is 5+5? Answer with just the number." },
+					],
+					stream: false,
+					temperature: 0.0, // Most deterministic
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["10"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionTemperature05Test(): TestDefinition {
+		return {
+			testId: "completion-temperature-05",
+			payload: JSON.stringify({
+				testId: "completion-temperature-05",
+				params: {
+					history: [
+						{ role: "user", content: "What is 3+3? Answer with just the number." },
+					],
+					stream: false,
+					temperature: 0.5, // Balanced
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["6"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionTemperature10Test(): TestDefinition {
+		return {
+			testId: "completion-temperature-10",
+			payload: JSON.stringify({
+				testId: "completion-temperature-10",
+				params: {
+					history: [
+						{ role: "user", content: "What is 7+7? Answer with just the number." },
+					],
+					stream: false,
+					temperature: 1.0, // Default
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["14"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionTemperature15Test(): TestDefinition {
+		return {
+			testId: "completion-temperature-15",
+			payload: JSON.stringify({
+				testId: "completion-temperature-15",
+				params: {
+					history: [
+						{ role: "user", content: "What is 8+8? Answer with just the number." },
+					],
+					stream: false,
+					temperature: 1.5, // More creative
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["16"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	// top_p tests
+	buildCompletionTopP01Test(): TestDefinition {
+		return {
+			testId: "completion-top-p-01",
+			payload: JSON.stringify({
+				testId: "completion-top-p-01",
+				params: {
+					history: [
+						{ role: "user", content: "Count from 1 to 5. Answer with just the numbers separated by spaces." },
+					],
+					stream: false,
+					temperature: 1.0,
+					topP: 0.1, // Very focused sampling
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["1", "2", "3", "4", "5"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionTopP05Test(): TestDefinition {
+		return {
+			testId: "completion-top-p-05",
+			payload: JSON.stringify({
+				testId: "completion-top-p-05",
+				params: {
+					history: [
+						{ role: "user", content: "What is 10+10? Answer with just the number." },
+					],
+					stream: false,
+					temperature: 1.0,
+					topP: 0.5, // Balanced nucleus sampling
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["20"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionTopP10Test(): TestDefinition {
+		return {
+			testId: "completion-top-p-10",
+			payload: JSON.stringify({
+				testId: "completion-top-p-10",
+				params: {
+					history: [
+						{ role: "user", content: "What is 12+12? Answer with just the number." },
+					],
+					stream: false,
+					temperature: 1.0,
+					topP: 1.0, // Consider all tokens (default)
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["24"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	// Frequency penalty tests
+	buildCompletionFrequencyPenaltyNeg10Test(): TestDefinition {
+		return {
+			testId: "completion-frequency-penalty-neg10",
+			payload: JSON.stringify({
+				testId: "completion-frequency-penalty-neg10",
+				params: {
+					history: [
+						{ role: "user", content: "Say 'hello' three times, separated by spaces." },
+					],
+					stream: false,
+					frequencyPenalty: -1.0, // Encourage repetition
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["hello", "Hello"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionFrequencyPenalty00Test(): TestDefinition {
+		return {
+			testId: "completion-frequency-penalty-00",
+			payload: JSON.stringify({
+				testId: "completion-frequency-penalty-00",
+				params: {
+					history: [
+						{ role: "user", content: "What is 15+15? Answer with just the number." },
+					],
+					stream: false,
+					frequencyPenalty: 0.0, // No penalty (default)
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["30"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionFrequencyPenalty10Test(): TestDefinition {
+		return {
+			testId: "completion-frequency-penalty-10",
+			payload: JSON.stringify({
+				testId: "completion-frequency-penalty-10",
+				params: {
+					history: [
+						{ role: "user", content: "Describe a tree in 10 words, trying to use different words." },
+					],
+					stream: false,
+					frequencyPenalty: 1.0, // Discourage repetition
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 20,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	// Presence penalty tests
+	buildCompletionPresencePenaltyNeg10Test(): TestDefinition {
+		return {
+			testId: "completion-presence-penalty-neg10",
+			payload: JSON.stringify({
+				testId: "completion-presence-penalty-neg10",
+				params: {
+					history: [
+						{ role: "user", content: "What is 18+18? Answer with just the number." },
+					],
+					stream: false,
+					presencePenalty: -1.0, // Encourage familiar topics
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["36"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionPresencePenalty00Test(): TestDefinition {
+		return {
+			testId: "completion-presence-penalty-00",
+			payload: JSON.stringify({
+				testId: "completion-presence-penalty-00",
+				params: {
+					history: [
+						{ role: "user", content: "What is 20+20? Answer with just the number." },
+					],
+					stream: false,
+					presencePenalty: 0.0, // No penalty (default)
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["40"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	buildCompletionPresencePenalty10Test(): TestDefinition {
+		return {
+			testId: "completion-presence-penalty-10",
+			payload: JSON.stringify({
+				testId: "completion-presence-penalty-10",
+				params: {
+					history: [
+						{ role: "user", content: "Name 5 different animals, one per line." },
+					],
+					stream: false,
+					presencePenalty: 1.0, // Encourage new topics
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 20,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	// Seed test (reproducibility)
+	buildCompletionSeedReproducibilityTest(): TestDefinition {
+		return {
+			testId: "completion-seed-reproducibility",
+			payload: JSON.stringify({
+				testId: "completion-seed-reproducibility",
+				params: {
+					history: [
+						{ role: "user", content: "Pick a random number between 1 and 100." },
+					],
+					stream: false,
+					temperature: 1.0,
+					seed: 42, // Fixed seed for reproducible results
+				},
+				expectation: {
+					validation: "reproducible",
+					// Note: Will need special handling to verify reproducibility
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
+		};
+	}
+
+	// Stop sequences test (improved)
+	buildCompletionStopSequencesMultipleTest(): TestDefinition {
+		return {
+			testId: "completion-stop-sequences-multiple",
+			payload: JSON.stringify({
+				testId: "completion-stop-sequences-multiple",
+				params: {
+					history: [
+						{ role: "user", content: "Count from 1 to 10." },
+					],
+					stream: false,
+					stopSequences: ["5", "five", "FIVE"], // Stop at 5
+				},
+				expectation: {
+					validation: "stops-before",
+					stopKeywords: ["6", "7", "8", "9", "10"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 8000,
 		};
 	}
 }
