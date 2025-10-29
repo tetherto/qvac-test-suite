@@ -5,10 +5,13 @@
 	"private": true,
 	"scripts": {
 		"monitor": "bun run verify-tests.ts",
-		"batch:monitor": "bun run batch-monitor.ts"
+		"batch:monitor": "bun run batch-monitor.ts",
+		"broker": "node mqtt-websocket-broker.cjs"
 	},
 	"dependencies": {
-		"mqtt": "^5.14.1"
+		"mqtt": "^5.14.1",
+		"aedes": "^0.51.3",
+		"websocket-stream": "^5.5.2"
 	}
 }
 

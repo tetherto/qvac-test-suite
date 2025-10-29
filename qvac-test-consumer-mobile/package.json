@@ -11,7 +11,7 @@
     "lint": "expo lint"
   },
   "dependencies": {
-    "@qvac/sdk": "0.2.7-dev.1761295911.0436ccb",
+    "@qvac/sdk": "0.2.0",
     "bare-abort-controller": "^1.0.0",
     "bare-events": "^2.8.1",
     "bare-fetch": "^2.5.0",
@@ -32,6 +32,8 @@
     "expo-symbols": "~0.4.5",
     "expo-system-ui": "~5.0.11",
     "expo-web-browser": "~14.2.0",
+    "hyperdb": "^4.19.1",
+    "llm-splitter": "~0.2.0",
     "mqtt": "^5.14.1",
     "react": "19.0.0",
     "react-dom": "19.0.0",

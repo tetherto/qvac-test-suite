@@ -34,12 +34,33 @@ const AUDIO_ASSETS: Record<string, any> = {
 	"corrupted.wav": require("./assets/audio/corrupted.wav"),
 };
 
+// Document asset mappings for RAG tests (Metro requires static imports)
+const DOCUMENT_ASSETS: Record<string, any> = {
+	"desert_adventure_large.txt": require("../shared-test-data/documents/desert_adventure_large.txt"),
+	"mountain_hiking_guide.txt": require("../shared-test-data/documents/mountain_hiking_guide.txt"),
+	"ocean_waves_poem.txt": require("../shared-test-data/documents/ocean_waves_poem.txt"),
+	"sunset_beach_corrupted.txt": require("../shared-test-data/documents/sunset_beach_corrupted.txt"),
+};
+
+// Code asset mappings for embedding tests (Metro requires static imports)
+const CODE_ASSETS: Record<string, any> = {
+	"data_analysis.py": require("../shared-test-data/code/data_analysis.py"),
+	"interactive_gallery.js": require("../shared-test-data/code/interactive_gallery.js"),
+	"api_response.json": require("../shared-test-data/code/api_response.json"),
+	"portfolio_website.html": require("../shared-test-data/code/portfolio_website.html"),
+};
+
 export class TestExecutor {
 	private testHandlers: Map<string, (modelId: string | null, params: any, expectation: any) => Promise<TestResult>>;
 
 	constructor() {
 		this.testHandlers = new Map();
 		this.registerHandlers();
+	}
+
+	// Helper function to count words in text
+	private countWords(text: string): number {
+		return text.trim().split(/\s+/).filter(word => word.length > 0).length;
 	}
 
 	private registerHandlers() {
@@ -73,11 +94,33 @@ export class TestExecutor {
 		this.testHandlers.set("completion-very-long-context", this.completionVeryLongContext.bind(this));
 		this.testHandlers.set("completion-zero-temperature", this.completionZeroTemperature.bind(this));
 		
-		// Phase 3: Edge cases & advanced scenarios
-		this.testHandlers.set("completion-top-k", this.completionTopK.bind(this));
-		this.testHandlers.set("completion-frequency-penalty", this.completionFrequencyPenalty.bind(this));
-		this.testHandlers.set("completion-presence-penalty", this.completionPresencePenalty.bind(this));
-		this.testHandlers.set("completion-negative-temperature", this.completionNegativeTemperature.bind(this));
+	// Phase 3: Edge cases & advanced scenarios
+	this.testHandlers.set("completion-top-k", this.completionTopK.bind(this));
+	this.testHandlers.set("completion-frequency-penalty", this.completionFrequencyPenalty.bind(this));
+	this.testHandlers.set("completion-presence-penalty", this.completionPresencePenalty.bind(this));
+	this.testHandlers.set("completion-negative-temperature", this.completionNegativeTemperature.bind(this));
+
+	// Phase 3.5: Sprint 2 - Comprehensive parameter coverage
+	// Temperature variations
+	this.testHandlers.set("completion-temperature-00", this.completion.bind(this));
+	this.testHandlers.set("completion-temperature-05", this.completion.bind(this));
+	this.testHandlers.set("completion-temperature-10", this.completion.bind(this));
+	this.testHandlers.set("completion-temperature-15", this.completion.bind(this));
+	// top_p variations
+	this.testHandlers.set("completion-top-p-01", this.completion.bind(this));
+	this.testHandlers.set("completion-top-p-05", this.completion.bind(this));
+	this.testHandlers.set("completion-top-p-10", this.completion.bind(this));
+	// Frequency penalty variations
+	this.testHandlers.set("completion-frequency-penalty-neg10", this.completion.bind(this));
+	this.testHandlers.set("completion-frequency-penalty-00", this.completion.bind(this));
+	this.testHandlers.set("completion-frequency-penalty-10", this.completion.bind(this));
+	// Presence penalty variations
+	this.testHandlers.set("completion-presence-penalty-neg10", this.completion.bind(this));
+	this.testHandlers.set("completion-presence-penalty-00", this.completion.bind(this));
+	this.testHandlers.set("completion-presence-penalty-10", this.completion.bind(this));
+	// Seed and stop sequences
+	this.testHandlers.set("completion-seed-reproducibility", this.completion.bind(this));
+	this.testHandlers.set("completion-stop-sequences-multiple", this.completion.bind(this));
 
 		// Transcription tests
 		this.testHandlers.set("transcription", this.transcription.bind(this));
@@ -106,6 +149,11 @@ export class TestExecutor {
 		this.testHandlers.set("embed-multilingual", this.embedMultilingual.bind(this));
 		this.testHandlers.set("embed-special-chars", this.embedSpecialChars.bind(this));
 		this.testHandlers.set("embed-numbers-only", this.embedNumbersOnly.bind(this));
+		// Enhanced embedding tests with code files
+		this.testHandlers.set("embed-python-code", this.embedSimpleText.bind(this));
+		this.testHandlers.set("embed-javascript-code", this.embedSimpleText.bind(this));
+		this.testHandlers.set("embed-json-data", this.embedSimpleText.bind(this));
+		this.testHandlers.set("embed-html-content", this.embedSimpleText.bind(this));
 
 		// RAG tests
 		this.testHandlers.set("rag-embeddings-small-chunks", this.ragEmbeddings.bind(this));
@@ -372,10 +420,19 @@ export class TestExecutor {
 			}
 			const text = rawText.trim();
 
-			const passed =
-				expectation.match === "contains"
-					? text.includes(expectation.value)
-					: text === expectation.value;
+			// Support multiple validation types
+			let passed = false;
+			if (expectation.validation === "contains-keywords") {
+				// Check if text contains all keywords (case-insensitive)
+				const keywords = expectation.keywords || [];
+				passed = keywords.every((kw: string) => 
+					text.toLowerCase().includes(kw.toLowerCase())
+				);
+			} else if (expectation.match === "contains") {
+				passed = text.includes(expectation.value);
+			} else {
+				passed = text === expectation.value;
+			}
 
 			return { output: text, passed };
 		} catch (error: any) {
@@ -844,10 +901,11 @@ export class TestExecutor {
 			const result = runCompletion({ modelId, history, stream, frequency_penalty });
 			const text = (await result.text).trim();
 
-			const hasMinLength = text.length >= (expectation.minLength || 15);
+			const wordCount = this.countWords(text);
+			const hasMinLength = wordCount >= (expectation.minLength || 15);
 
 			return {
-				output: `frequency_penalty=${frequency_penalty} response (${text.length} chars): "${text}"`,
+				output: `frequency_penalty=${frequency_penalty} response (${wordCount} words, ${text.length} chars): "${text}"`,
 				passed: hasMinLength,
 			};
 		} catch (error: any) {
@@ -865,10 +923,11 @@ export class TestExecutor {
 			const result = runCompletion({ modelId, history, stream, presence_penalty });
 			const text = (await result.text).trim();
 
-			const hasMinLength = text.length >= (expectation.minLength || 5);
+			const wordCount = this.countWords(text);
+			const hasMinLength = wordCount >= (expectation.minLength || 5);
 
 			return {
-				output: `presence_penalty=${presence_penalty} response (${text.length} chars): "${text}"`,
+				output: `presence_penalty=${presence_penalty} response (${wordCount} words, ${text.length} chars): "${text}"`,
 				passed: hasMinLength,
 			};
 		} catch (error: any) {
@@ -1068,14 +1127,31 @@ export class TestExecutor {
 		}
 
 		try {
-			const embedding = await runEmbed({ modelId, text: params.text });
+			// Handle both direct text and code files
+			let text = params.text;
+			if (params.codeFile) {
+				console.log(`   📄 Reading code file: ${params.codeFile}`);
+				const assetModule = CODE_ASSETS[params.codeFile];
+				if (!assetModule) {
+					throw new Error(`Code file not found in static imports: ${params.codeFile}`);
+				}
+				const asset = Asset.fromModule(assetModule);
+				await asset.downloadAsync();
+				if (!asset.localUri) {
+					throw new Error(`Failed to load code file: ${params.codeFile}`);
+				}
+				text = await FileSystem.readAsStringAsync(asset.localUri);
+			}
+
+			const embedding = await runEmbed({ modelId, text });
 
 			const isArray = Array.isArray(embedding);
 			const hasMinDimensions = embedding.length >= (expectation.minDimensions || 100);
 			const passed = isArray && hasMinDimensions;
 
+			const source = params.codeFile ? `code file ${params.codeFile}` : "text";
 			return {
-				output: `Embedded text to ${embedding.length}-dimensional vector`,
+				output: `Embedded ${source} to ${embedding.length}-dimensional vector`,
 				passed,
 			};
 		} catch (error: any) {
@@ -1887,9 +1963,12 @@ export class TestExecutor {
 			// Read document content from file if documentFile is provided
 			let content = documentContent;
 			if (documentFile) {
-				const docPath = `../shared-test-data/documents/${documentFile}`;
 				console.log(`   📄 Reading document: ${documentFile}`);
-				const asset = Asset.fromModule(require(docPath));
+				const assetModule = DOCUMENT_ASSETS[documentFile];
+				if (!assetModule) {
+					throw new Error(`Document not found in static imports: ${documentFile}`);
+				}
+				const asset = Asset.fromModule(assetModule);
 				await asset.downloadAsync();
 				if (!asset.localUri) {
 					throw new Error(`Failed to load document: ${documentFile}`);

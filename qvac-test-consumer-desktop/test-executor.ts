@@ -25,6 +25,11 @@ export class TestExecutor {
 		this.registerHandlers();
 	}
 
+	// Helper function to count words in text
+	private countWords(text: string): number {
+		return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+	}
+
 	private registerHandlers() {
 		// Model loading tests
 		this.testHandlers.set("model-load-llm", this.modelLoadLlm.bind(this));
@@ -56,11 +61,33 @@ export class TestExecutor {
 		this.testHandlers.set("completion-very-long-context", this.completionVeryLongContext.bind(this));
 		this.testHandlers.set("completion-zero-temperature", this.completionZeroTemperature.bind(this));
 		
-		// Phase 3: Edge cases & advanced scenarios
-		this.testHandlers.set("completion-top-k", this.completionTopK.bind(this));
-		this.testHandlers.set("completion-frequency-penalty", this.completionFrequencyPenalty.bind(this));
-		this.testHandlers.set("completion-presence-penalty", this.completionPresencePenalty.bind(this));
-		this.testHandlers.set("completion-negative-temperature", this.completionNegativeTemperature.bind(this));
+	// Phase 3: Edge cases & advanced scenarios
+	this.testHandlers.set("completion-top-k", this.completionTopK.bind(this));
+	this.testHandlers.set("completion-frequency-penalty", this.completionFrequencyPenalty.bind(this));
+	this.testHandlers.set("completion-presence-penalty", this.completionPresencePenalty.bind(this));
+	this.testHandlers.set("completion-negative-temperature", this.completionNegativeTemperature.bind(this));
+
+	// Phase 3.5: Sprint 2 - Comprehensive parameter coverage
+	// Temperature variations
+	this.testHandlers.set("completion-temperature-00", this.completion.bind(this));
+	this.testHandlers.set("completion-temperature-05", this.completion.bind(this));
+	this.testHandlers.set("completion-temperature-10", this.completion.bind(this));
+	this.testHandlers.set("completion-temperature-15", this.completion.bind(this));
+	// top_p variations
+	this.testHandlers.set("completion-top-p-01", this.completion.bind(this));
+	this.testHandlers.set("completion-top-p-05", this.completion.bind(this));
+	this.testHandlers.set("completion-top-p-10", this.completion.bind(this));
+	// Frequency penalty variations
+	this.testHandlers.set("completion-frequency-penalty-neg10", this.completion.bind(this));
+	this.testHandlers.set("completion-frequency-penalty-00", this.completion.bind(this));
+	this.testHandlers.set("completion-frequency-penalty-10", this.completion.bind(this));
+	// Presence penalty variations
+	this.testHandlers.set("completion-presence-penalty-neg10", this.completion.bind(this));
+	this.testHandlers.set("completion-presence-penalty-00", this.completion.bind(this));
+	this.testHandlers.set("completion-presence-penalty-10", this.completion.bind(this));
+	// Seed and stop sequences
+	this.testHandlers.set("completion-seed-reproducibility", this.completion.bind(this));
+	this.testHandlers.set("completion-stop-sequences-multiple", this.completion.bind(this));
 
 		// Transcription tests
 		this.testHandlers.set("transcription", this.transcription.bind(this));
@@ -342,10 +369,19 @@ export class TestExecutor {
 			
 			const text = rawText.trim();
 
-			const passed =
-				expectation.match === "contains"
-					? text.includes(expectation.value)
-					: text === expectation.value;
+			// Support multiple validation types
+			let passed = false;
+			if (expectation.validation === "contains-keywords") {
+				// Check if text contains all keywords (case-insensitive)
+				const keywords = expectation.keywords || [];
+				passed = keywords.every((kw: string) => 
+					text.toLowerCase().includes(kw.toLowerCase())
+				);
+			} else if (expectation.match === "contains") {
+				passed = text.includes(expectation.value);
+			} else {
+				passed = text === expectation.value;
+			}
 
 			return { output: text, passed };
 		} catch (error: any) {
@@ -814,10 +850,11 @@ export class TestExecutor {
 			const result = runCompletion({ modelId, history, stream, frequency_penalty });
 			const text = (await result.text).trim();
 
-			const hasMinLength = text.length >= (expectation.minLength || 15);
+			const wordCount = this.countWords(text);
+			const hasMinLength = wordCount >= (expectation.minLength || 15);
 
 			return {
-				output: `frequency_penalty=${frequency_penalty} response (${text.length} chars): "${text}"`,
+				output: `frequency_penalty=${frequency_penalty} response (${wordCount} words, ${text.length} chars): "${text}"`,
 				passed: hasMinLength,
 			};
 		} catch (error: any) {
@@ -835,10 +872,11 @@ export class TestExecutor {
 			const result = runCompletion({ modelId, history, stream, presence_penalty });
 			const text = (await result.text).trim();
 
-			const hasMinLength = text.length >= (expectation.minLength || 5);
+			const wordCount = this.countWords(text);
+			const hasMinLength = wordCount >= (expectation.minLength || 5);
 
 			return {
-				output: `presence_penalty=${presence_penalty} response (${text.length} chars): "${text}"`,
+				output: `presence_penalty=${presence_penalty} response (${wordCount} words, ${text.length} chars): "${text}"`,
 				passed: hasMinLength,
 			};
 		} catch (error: any) {

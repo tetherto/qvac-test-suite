@@ -8,8 +8,8 @@ const config = getDefaultConfig(projectRoot);
 // let Metro follow symlinks (pnpm/yarn link, monorepo)
 config.resolver.unstable_enableSymlinks = true;
 
-// watch the workspace (or replace with [path.resolve(projectRoot, "../qvac-sdk")])
-config.watchFolders = [projectRoot];
+// watch the workspace root to access ../shared-test-data/ files
+config.watchFolders = [projectRoot, path.resolve(projectRoot, "..")];
 
 // resolve modules only from the app's node_modules to avoid dupes
 config.resolver.nodeModulesPaths = [path.resolve(projectRoot, "node_modules")];
@@ -25,6 +25,8 @@ config.resolver.assetExts = [
   "model",
   "bundle",
   "txt",
+  "py",
+  "html",
   "onnx",
   "wav",
 ];

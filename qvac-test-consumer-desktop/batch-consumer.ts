@@ -172,18 +172,48 @@ export class BatchConsumer {
 		modelId = this.llmModelId;
 	}
 
-		// Set timeout based on test type
-		// - Known destructive tests (embed code, context overflow, corrupted audio): 10s (fail fast)
-		// - Normal tests: 30s
-		const isDestructiveTest = testId.includes("embed-python") || testId.includes("embed-javascript") || 
-		                          testId.includes("embed-json") || testId.includes("embed-html") ||
-		                          testId.includes("very-long") || testId.includes("extremely-long") ||
-		                          testId.includes("corrupted");
-		const timeoutMs = isDestructiveTest ? 10000 : 30000; // 10s or 30s
-		
-		if (isDestructiveTest) {
-			console.log(`   ⚠️  Destructive test - reduced timeout to ${timeoutMs / 1000}s`);
-		}
+	// Set timeout based on test type
+	// - Known destructive tests (embed code, context overflow, corrupted audio): 10s (fail fast)
+	// - Large RAG documents (32KB+): 120s (complex chunking and embedding)
+	// - Medium RAG documents (10KB): 90s (moderate chunking and embedding)
+	// - Small RAG documents: 60s (basic chunking and embedding)
+	// - Long prompt tests: 60s (large input processing)
+	// - Transcription tests: 60s (legitimate processing time for audio)
+	// - Normal tests: 30s
+	const isDestructiveTest = testId.includes("embed-python") || testId.includes("embed-javascript") || 
+	                          testId.includes("embed-json") || testId.includes("embed-html") ||
+	                          testId.includes("very-long") || testId.includes("extremely-long") ||
+	                          testId.includes("corrupted");
+	const isLargeRagTest = testId.includes("rag-large");
+	const isMediumRagTest = testId.includes("rag-medium");
+	const isSmallRagTest = testId.includes("rag-small");
+	const isLongPromptTest = testId === "completion-long-prompt";
+	const isTranscriptionTest = testId.startsWith("transcription-");
+	
+	let timeoutMs: number;
+	if (isDestructiveTest) {
+		timeoutMs = 10000; // 10s
+	} else if (isLargeRagTest) {
+		timeoutMs = 120000; // 120s
+	} else if (isMediumRagTest) {
+		timeoutMs = 90000; // 90s
+	} else if (isSmallRagTest || isLongPromptTest) {
+		timeoutMs = 60000; // 60s
+	} else if (isTranscriptionTest) {
+		timeoutMs = 60000; // 60s
+	} else {
+		timeoutMs = 30000; // 30s
+	}
+	
+	if (isDestructiveTest) {
+		console.log(`   ⚠️  Destructive test - reduced timeout to ${timeoutMs / 1000}s`);
+	} else if (isLargeRagTest || isMediumRagTest || isSmallRagTest) {
+		console.log(`   📚 RAG test - extended timeout to ${timeoutMs / 1000}s`);
+	} else if (isLongPromptTest) {
+		console.log(`   📝 Long prompt test - extended timeout to ${timeoutMs / 1000}s`);
+	} else if (isTranscriptionTest) {
+		console.log(`   🎤 Transcription test - extended timeout to ${timeoutMs / 1000}s`);
+	}
 			
 			// Execute the test with timeout
 			const testPromise = this.executor.executeTest(
@@ -221,21 +251,27 @@ export class BatchConsumer {
 				}
 			}
 
-			// Send result to producer
-			this.client.publish(
-				"qvac/results",
-				JSON.stringify({
-					consumerId: this.consumerId,
-					testId,
-					uniqueTestId,
-					outcome,
-					duration,
-					timestamp: new Date().toISOString(),
-					output: result.output,
-					error: result.passed ? undefined : result.output,
-				}),
-				{ qos: 1 },
-			);
+		// Format expected and actual values for debugging
+		const expected = this.formatExpectation(expectation);
+		const actual = result.output || "No output";
+		
+		// Send result to producer
+		this.client.publish(
+			"qvac/results",
+			JSON.stringify({
+				consumerId: this.consumerId,
+				testId,
+				uniqueTestId,
+				outcome,
+				duration,
+				timestamp: new Date().toISOString(),
+				output: result.output,
+				error: result.passed ? undefined : result.output,
+				expected: outcome === "failure" ? expected : undefined,
+				actual: outcome === "failure" ? actual : undefined,
+			}),
+			{ qos: 1 },
+		);
 
 		this.testsCompleted++;
 	} catch (error: any) {
@@ -251,6 +287,10 @@ export class BatchConsumer {
 			console.error(`   ℹ️  Subsequent tests may fail (cascade effect)`);
 		}
 
+		// Format expected for error case
+		const expected = this.formatExpectation(expectation);
+		const actual = `Error: ${errorMsg}`;
+		
 		// Send failure result
 		this.client.publish(
 			"qvac/results",
@@ -262,6 +302,8 @@ export class BatchConsumer {
 				duration,
 				timestamp: new Date().toISOString(),
 				error: errorMsg,
+				expected,
+				actual,
 				sdkCrash: isSdkCrash ? true : undefined,
 			}),
 			{ qos: 1 },
@@ -296,6 +338,42 @@ export class BatchConsumer {
 		);
 	}
 
+	private formatExpectation(expectation: any): string {
+		if (!expectation) return "No expectation defined";
+		
+		const parts: string[] = [];
+		
+		if (expectation.validation) {
+			parts.push(`Validation: ${expectation.validation}`);
+		}
+		
+		if (expectation.keywords && expectation.keywords.length > 0) {
+			parts.push(`Keywords: ${expectation.keywords.join(", ")}`);
+		}
+		
+		if (expectation.minLength) {
+			parts.push(`Min length: ${expectation.minLength}`);
+		}
+		
+		if (expectation.minDimensions) {
+			parts.push(`Min dimensions: ${expectation.minDimensions}`);
+		}
+		
+		if (expectation.minChunks) {
+			parts.push(`Min chunks: ${expectation.minChunks}`);
+		}
+		
+		if (expectation.maxChunks) {
+			parts.push(`Max chunks: ${expectation.maxChunks}`);
+		}
+		
+		if (expectation.errorExpected) {
+			parts.push("Error expected: true");
+		}
+		
+		return parts.length > 0 ? parts.join("\n") : "Test should pass";
+	}
+	
 	private async registerWithProducer() {
 		console.log(`🔌 Registering as: ${this.consumerId}`);
 		this.client.publish(

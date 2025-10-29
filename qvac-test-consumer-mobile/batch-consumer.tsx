@@ -85,6 +85,42 @@ export default function BatchConsumer() {
 			);
 		};
 
+		const formatExpectation = (expectation: any): string => {
+			if (!expectation) return "No expectation defined";
+			
+			const parts: string[] = [];
+			
+			if (expectation.validation) {
+				parts.push(`Validation: ${expectation.validation}`);
+			}
+			
+			if (expectation.keywords && expectation.keywords.length > 0) {
+				parts.push(`Keywords: ${expectation.keywords.join(", ")}`);
+			}
+			
+			if (expectation.minLength) {
+				parts.push(`Min length: ${expectation.minLength}`);
+			}
+			
+			if (expectation.minDimensions) {
+				parts.push(`Min dimensions: ${expectation.minDimensions}`);
+			}
+			
+			if (expectation.minChunks) {
+				parts.push(`Min chunks: ${expectation.minChunks}`);
+			}
+			
+			if (expectation.maxChunks) {
+				parts.push(`Max chunks: ${expectation.maxChunks}`);
+			}
+			
+			if (expectation.errorExpected) {
+				parts.push("Error expected: true");
+			}
+			
+			return parts.length > 0 ? parts.join("\n") : "Test should pass";
+		};
+
 		const executeTest = async (uniqueTestId: string, test: TestMessage) => {
 			isProcessingTest = true;
 			const { testId, params, expectation } = test;
@@ -134,18 +170,48 @@ export default function BatchConsumer() {
 			modelId = llmModelId;
 		}
 
-			// Set timeout based on test type
-			// - Known destructive tests (embed code, context overflow, corrupted audio): 10s (fail fast)
-			// - Normal tests: 30s
-			const isDestructiveTest = testId.includes("embed-python") || testId.includes("embed-javascript") || 
-			                          testId.includes("embed-json") || testId.includes("embed-html") ||
-			                          testId.includes("very-long") || testId.includes("extremely-long") ||
-			                          testId.includes("corrupted");
-			const timeoutMs = isDestructiveTest ? 10000 : 30000; // 10s or 30s
-			
-			if (isDestructiveTest) {
-				addLog(`   ⚠️  Destructive test - reduced timeout to ${timeoutMs / 1000}s`);
-			}
+	// Set timeout based on test type
+	// - Known destructive tests (embed code, context overflow, corrupted audio): 10s (fail fast)
+	// - Large RAG documents (32KB+): 120s (complex chunking and embedding)
+	// - Medium RAG documents (10KB): 90s (moderate chunking and embedding)
+	// - Small RAG documents: 60s (basic chunking and embedding)
+	// - Long prompt tests: 60s (large input processing)
+	// - Transcription tests: 60s (legitimate processing time for audio)
+	// - Normal tests: 30s
+	const isDestructiveTest = testId.includes("embed-python") || testId.includes("embed-javascript") || 
+	                          testId.includes("embed-json") || testId.includes("embed-html") ||
+	                          testId.includes("very-long") || testId.includes("extremely-long") ||
+	                          testId.includes("corrupted");
+	const isLargeRagTest = testId.includes("rag-large");
+	const isMediumRagTest = testId.includes("rag-medium");
+	const isSmallRagTest = testId.includes("rag-small");
+	const isLongPromptTest = testId === "completion-long-prompt";
+	const isTranscriptionTest = testId.startsWith("transcription-");
+	
+	let timeoutMs: number;
+	if (isDestructiveTest) {
+		timeoutMs = 10000; // 10s
+	} else if (isLargeRagTest) {
+		timeoutMs = 120000; // 120s
+	} else if (isMediumRagTest) {
+		timeoutMs = 90000; // 90s
+	} else if (isSmallRagTest || isLongPromptTest) {
+		timeoutMs = 60000; // 60s
+	} else if (isTranscriptionTest) {
+		timeoutMs = 60000; // 60s
+	} else {
+		timeoutMs = 30000; // 30s
+	}
+	
+	if (isDestructiveTest) {
+		addLog(`   ⚠️  Destructive test - reduced timeout to ${timeoutMs / 1000}s`);
+	} else if (isLargeRagTest || isMediumRagTest || isSmallRagTest) {
+		addLog(`   📚 RAG test - extended timeout to ${timeoutMs / 1000}s`);
+	} else if (isLongPromptTest) {
+		addLog(`   📝 Long prompt test - extended timeout to ${timeoutMs / 1000}s`);
+	} else if (isTranscriptionTest) {
+		addLog(`   🎤 Transcription test - extended timeout to ${timeoutMs / 1000}s`);
+	}
 
 			// Execute the test with timeout
 				const testPromise = executor.executeTest(testId, modelId, params, expectation);
@@ -191,21 +257,27 @@ export default function BatchConsumer() {
 					testsFailed: outcome === "failure" ? prev.testsFailed + 1 : prev.testsFailed,
 				}));
 
-				// Send result to producer
-				client.publish(
-					"qvac/results",
-					JSON.stringify({
-						consumerId,
-						testId,
-						uniqueTestId,
-						outcome,
-						duration,
-						timestamp: new Date().toISOString(),
-						output: result.output,
-						error: result.passed ? undefined : result.output,
-					}),
-					{ qos: 1 }
-				);
+			// Format expected and actual values for debugging
+			const expected = formatExpectation(expectation);
+			const actual = result.output || "No output";
+			
+			// Send result to producer
+			client.publish(
+				"qvac/results",
+				JSON.stringify({
+					consumerId,
+					testId,
+					uniqueTestId,
+					outcome,
+					duration,
+					timestamp: new Date().toISOString(),
+					output: result.output,
+					error: result.passed ? undefined : result.output,
+					expected: outcome === "failure" ? expected : undefined,
+					actual: outcome === "failure" ? actual : undefined,
+				}),
+				{ qos: 1 }
+			);
 		} catch (error: any) {
 			const duration = Date.now() - startTime;
 			const errorMsg = error.message || "Unknown error";
@@ -226,21 +298,27 @@ export default function BatchConsumer() {
 				testsFailed: prev.testsFailed + 1,
 			}));
 
-			// Send failure result
-			client.publish(
-				"qvac/results",
-				JSON.stringify({
-					consumerId,
-					testId,
-					uniqueTestId,
-					outcome: "failure",
-					duration,
-					timestamp: new Date().toISOString(),
-					error: errorMsg,
-					sdkCrash: isSdkCrash ? true : undefined,
-				}),
-				{ qos: 1 }
-			);
+		// Format expected for error case
+		const expected = formatExpectation(expectation);
+		const actual = `Error: ${errorMsg}`;
+		
+		// Send failure result
+		client.publish(
+			"qvac/results",
+			JSON.stringify({
+				consumerId,
+				testId,
+				uniqueTestId,
+				outcome: "failure",
+				duration,
+				timestamp: new Date().toISOString(),
+				error: errorMsg,
+				expected,
+				actual,
+				sdkCrash: isSdkCrash ? true : undefined,
+			}),
+			{ qos: 1 }
+		);
 		}
 
 			isProcessingTest = false;
@@ -282,6 +360,11 @@ export default function BatchConsumer() {
 					modelType: "whisper",
 					downloadOnly: true,
 				});
+				
+				// Ensure FileSystem.documentDirectory is available
+				if (!FileSystem.documentDirectory) {
+					throw new Error("FileSystem.documentDirectory is not available");
+				}
 				const vadModelPath = `${FileSystem.documentDirectory}.qvac/models/ggml-silero-v5.1.2.bin`;
 
 				whisperModelId = await loadModel({
@@ -363,15 +446,15 @@ export default function BatchConsumer() {
 							registered = true;
 							setStats((prev) => ({ ...prev, totalTests: message.totalTests }));
 							requestNextTest();
-						} else if (topic === `qvac/test-assigned/${consumerId}`) {
-							if (message.status === "queue-empty") {
-								addLog("📭 No more tests in queue");
-								return;
-							}
+					} else if (topic === `qvac/test-assigned/${consumerId}`) {
+						if (message.status === "queue-empty") {
+							addLog("📭 No more tests in queue");
+							return;
+						}
 
-							if (message.status === "assigned" && message.test && message.uniqueTestId) {
-								await executeTest(message.uniqueTestId, message.test);
-							}
+						if (message.status === "assigned" && message.test && message.uniqueTestId) {
+							await executeTest(message.uniqueTestId, message.test);
+						}
 						} else if (topic === "qvac/batch-complete") {
 							addLog("\n🎉 Batch complete!");
 							addLog(`📊 Total: ${message.totalTests}`);
