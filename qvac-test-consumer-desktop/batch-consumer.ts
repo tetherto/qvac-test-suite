@@ -162,6 +162,7 @@ export class BatchConsumer {
 		// Determine which model to use based on test type (models kept loaded for speed)
 	let modelId: string | null = null;
 	
+	// Determine which model to use based on test type
 	if (testId.startsWith("transcription")) {
 		modelId = this.whisperModelId;
 	} else if (testId.startsWith("translation")) {
@@ -170,6 +171,20 @@ export class BatchConsumer {
 		modelId = this.embeddingModelId;
 	} else if (testId.startsWith("completion") || testId.startsWith("model-load") || testId.startsWith("model-unload") || testId.startsWith("model-switch") || testId.startsWith("model-reload")) {
 		modelId = this.llmModelId;
+	} 
+	// Handle error and parameter validation tests
+	else if (testId.startsWith("error-") || testId.startsWith("param-")) {
+		// Determine model based on test content
+		if (testId.includes("completion") || testId.includes("translation") || testId.includes("malformed")) {
+			modelId = this.llmModelId;
+		} else if (testId.includes("embedding") || testId.includes("rag")) {
+			modelId = this.embeddingModelId;
+		} else if (testId.includes("transcription")) {
+			modelId = this.whisperModelId;
+		} else {
+			// Default to LLM for generic error tests
+			modelId = this.llmModelId;
+		}
 	}
 
 	// Set timeout based on test type

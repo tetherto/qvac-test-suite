@@ -154,6 +154,7 @@ export default function BatchConsumer() {
 			// Determine which model to use (models kept loaded for speed)
 		let modelId: string | null = null;
 		
+		// Determine which model to use based on test type
 		if (testId.startsWith("transcription")) {
 			modelId = whisperModelId;
 		} else if (testId.startsWith("translation")) {
@@ -168,6 +169,20 @@ export default function BatchConsumer() {
 			testId.startsWith("model-reload")
 		) {
 			modelId = llmModelId;
+		} 
+		// Handle error and parameter validation tests
+		else if (testId.startsWith("error-") || testId.startsWith("param-")) {
+			// Determine model based on test content
+			if (testId.includes("completion") || testId.includes("translation") || testId.includes("malformed")) {
+				modelId = llmModelId;
+			} else if (testId.includes("embedding") || testId.includes("rag")) {
+				modelId = embeddingModelId;
+			} else if (testId.includes("transcription")) {
+				modelId = whisperModelId;
+			} else {
+				// Default to LLM for generic error tests
+				modelId = llmModelId;
+			}
 		}
 
 	// Set timeout based on test type
