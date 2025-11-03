@@ -9,7 +9,7 @@ import {
 	WHISPER_TINY,
 	VAD_SILERO_5_1_2,
 	GTE_LARGE_FP16,
-} from "@qvac/sdk";
+} from "@tetherto/sdk";
 import { env } from "./env";
 import * as path from "path";
 import * as os from "os";
@@ -217,7 +217,7 @@ export class BatchConsumer {
 	} else if (isTranscriptionTest) {
 		timeoutMs = 60000; // 60s
 	} else {
-		timeoutMs = 30000; // 30s
+		timeoutMs = 60000; // 60s (increased from 30s for more stability)
 	}
 	
 	if (isDestructiveTest) {

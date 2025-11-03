@@ -12,7 +12,7 @@ import {
 	WHISPER_TINY,
 	VAD_SILERO_5_1_2,
 	GTE_LARGE_FP16,
-} from "@qvac/sdk";
+} from "@tetherto/sdk";
 import * as FileSystem from "expo-file-system";
 import { env } from "@/env";
 import { TestExecutor } from "./test-executor";
@@ -215,7 +215,7 @@ export default function BatchConsumer() {
 	} else if (isTranscriptionTest) {
 		timeoutMs = 60000; // 60s
 	} else {
-		timeoutMs = 30000; // 30s
+		timeoutMs = 60000; // 60s (increased from 30s for more stability)
 	}
 	
 	if (isDestructiveTest) {

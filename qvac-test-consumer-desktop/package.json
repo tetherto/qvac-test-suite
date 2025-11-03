@@ -6,7 +6,7 @@
 		"batch": "bun run batch-consumer.ts"
 	},
 	"dependencies": {
-		"@qvac/sdk": "0.2.0",
+		"@tetherto/sdk": "0.3.4-tmp.runid-19032732680",
 		"bare-abort-controller": "^1.0.0",
 		"bare-events": "^2.8.1",
 		"bare-fetch": "^2.5.0",

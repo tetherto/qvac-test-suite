@@ -8,7 +8,7 @@ import {
 	ragSaveEmbeddings,
 	LLAMA_3_2_1B_INST_Q4_0,
 	GTE_LARGE_FP16,
-} from "@qvac/sdk";
+} from "@tetherto/sdk";
 import * as path from "path";
 
 interface TestResult {
