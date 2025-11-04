@@ -4,7 +4,14 @@
 	"type": "module",
 	"private": true,
 	"scripts": {
-		"batch": "bun run batch-orchestrator.ts"
+		"batch": "bun run batch-orchestrator.ts",
+		"batch:transcription": "bun run batch-orchestrator.ts --section=transcription",
+    "batch:completion": "bun run batch-orchestrator.ts --section=completion",
+    "batch:embedding": "bun run batch-orchestrator.ts --section=embedding",
+    "batch:rag": "bun run batch-orchestrator.ts --section=rag",
+    "batch:model": "bun run batch-orchestrator.ts --section=model",
+    "batch:translation": "bun run batch-orchestrator.ts --section=translation",
+    "batch:error": "bun run batch-orchestrator.ts --section=error"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",
