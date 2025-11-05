@@ -185,10 +185,10 @@ completion({
 
 ---
 
-## TICKET 8: [SDK] Seed Parameter Not Reproducible
+## TICKET 8: [SDK] Seed Parameter Not Reproducible ⚠️ **QUESTIONABLE**
 
-**Priority:** 🟠 P1 High  
-**Labels:** `bug`, `sdk`, `p1`, `completion`, `api`  
+**Priority:** 🟡 P3 Low (Needs Clarification)  
+**Labels:** `question`, `sdk`, `completion`, `api`, `needs-clarification`  
 **Test:** `completion-seed-reproducibility`
 
 **Description:**
@@ -205,10 +205,27 @@ completion({
 // Run 3: Different again
 ```
 
-**Impact:** Cannot reproduce results for testing/debugging
+**⚠️ IMPORTANT - This may NOT be a bug:**
+
+LLM seed reproducibility is **notoriously difficult** and depends on:
+- ✅ Model implementation (llamacpp)
+- ✅ GPU non-determinism (Vulkan/CUDA operations)
+- ✅ KV cache state (not controlled by seed alone)
+- ✅ EXACT same sampling params (temperature, topP, topK, etc.)
+- ✅ Floating-point math variations
+
+**Most production LLM APIs do NOT guarantee seed reproducibility:**
+- OpenAI: "best-effort, not guaranteed"
+- Anthropic: No seed parameter
+- Llama.cpp docs: "deterministic behavior not guaranteed"
+
+**REQUIRED ACTION BEFORE FILING:**
+**Ask SDK team:** "Does QVAC SDK claim to support seed-based reproducibility?"
+- If **NO** → Close ticket, remove test (unrealistic expectation)
+- If **YES** → Investigate implementation
 
 **SDK:** @qvac/sdk@0.2.0  
-**Note:** Likely same root cause as Tickets #5-7
+**Status:** ⏸️ **PAUSED - Awaiting SDK team clarification**
 
 ---
 

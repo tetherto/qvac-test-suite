@@ -9,7 +9,7 @@ import {
 	WHISPER_TINY,
 	VAD_SILERO_5_1_2,
 	GTE_LARGE_FP16,
-} from "@tetherto/sdk";
+} from "@tetherto/sdk-dev";
 import { env } from "./env";
 import * as path from "path";
 import * as os from "os";
@@ -48,6 +48,12 @@ export class BatchConsumer {
 		this.platform = platform;
 		this.client = mqtt.connect(brokerUrl);
 		this.executor = new TestExecutor();
+		
+		// Handle unhandled promise rejections (e.g., async RPC errors from SDK)
+		process.on("unhandledRejection", (reason: any) => {
+			console.warn(`⚠️  Unhandled promise rejection: ${reason?.message || reason}`);
+			// Don't crash - just log it and continue
+		});
 		this.setupMqttHandlers();
 	}
 

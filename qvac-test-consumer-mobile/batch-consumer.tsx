@@ -12,7 +12,7 @@ import {
 	WHISPER_TINY,
 	VAD_SILERO_5_1_2,
 	GTE_LARGE_FP16,
-} from "@tetherto/sdk";
+} from "@tetherto/sdk-dev";
 import * as FileSystem from "expo-file-system";
 import { env } from "@/env";
 import { TestExecutor } from "./test-executor";
