@@ -36,6 +36,9 @@ cd ../qvac-test-consumer-desktop
 npm install
 
 cd ../qvac-test-consumer-mobile
+# On Windows, use the Windows install script to avoid patchelf issues:
+# npm run install:windows
+# On Linux/macOS, use regular install:
 npm install --legacy-peer-deps
 ```
 

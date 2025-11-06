@@ -6,7 +6,7 @@ const envSchema = z.object({
   WHISPER_MODEL_URL: z.string().optional(),
   // MQTT config (optional, for legacy support)
   EXPO_PUBLIC_MQTT_SSL: z.enum(["true", "false"]).default("false"),
-  EXPO_PUBLIC_MQTT_HOST: z.string().default("10.0.2.2"),
+  EXPO_PUBLIC_MQTT_HOST: z.string().default("10.0.2.2"), // Emulator default, override in .env for physical device
   EXPO_PUBLIC_MQTT_PORT: z.coerce.number().int().positive().default(8080),
   EXPO_PUBLIC_MQTT_PORT_SSL: z.coerce.number().int().positive().default(8081),
   EXPO_PUBLIC_MQTT_PATH: z.string().default(""),

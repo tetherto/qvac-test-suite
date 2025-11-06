@@ -21,14 +21,14 @@ const MQTT_PORT = 1883;
 const WS_PORT = 8080;
 
 // MQTT TCP server (for desktop consumers and producer)
-server.listen(MQTT_PORT, () => {
-  console.log(`✅ MQTT broker listening on port ${MQTT_PORT} (mqtt://localhost:${MQTT_PORT})`);
+server.listen(MQTT_PORT, '0.0.0.0', () => {
+  console.log(`✅ MQTT broker listening on port ${MQTT_PORT} (mqtt://0.0.0.0:${MQTT_PORT})`);
 });
 
 // WebSocket server (for mobile consumers)
 ws.createServer({ server: httpServer }, aedes.handle);
-httpServer.listen(WS_PORT, () => {
-  console.log(`✅ WebSocket MQTT listening on port ${WS_PORT} (ws://localhost:${WS_PORT})`);
+httpServer.listen(WS_PORT, '0.0.0.0', () => {
+  console.log(`✅ WebSocket MQTT listening on port ${WS_PORT} (ws://0.0.0.0:${WS_PORT})`);
   console.log(`\n📱 Mobile devices should connect to: ws://YOUR_PC_IP:${WS_PORT}`);
   console.log(`   Example: ws://192.168.1.131:${WS_PORT}\n`);
 });
