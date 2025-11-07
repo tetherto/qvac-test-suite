@@ -374,7 +374,7 @@ export default function BatchConsumer() {
 
     // Function to load models on-demand (first test)
     const ensureModelsLoaded = async () => {
-      if (llmModelId || embeddingModelId || whisperModelId) {
+      if (llmModelId && embeddingModelId && whisperModelId) {
         return; // Already loaded
       }
 
@@ -405,6 +405,16 @@ export default function BatchConsumer() {
 				if (llmModelId) {
 					try {
 						addLog("   - Loading Whisper...");
+						
+						// Check if FileSystem is available (try both legacy and new APIs)
+						const fsPath = FileSystem.documentDirectory || FileSystem.Paths?.document?.uri;
+						
+						if (!fsPath) {
+							throw new Error("expo-file-system not available - app needs rebuild (npx expo run:ios --device)");
+						}
+						
+						addLog(`   ℹ️  Using FileSystem path: ${fsPath.substring(0, 50)}...`);
+						
 						// Download VAD model first
 						await loadModel({
 							modelSrc: VAD_SILERO_5_1_2,
@@ -412,11 +422,7 @@ export default function BatchConsumer() {
 							downloadOnly: true,
 						});
 						
-						// Ensure FileSystem.documentDirectory is available
-						if (!FileSystem.documentDirectory) {
-							throw new Error("FileSystem.documentDirectory is not available");
-						}
-						const vadModelPath = `${FileSystem.documentDirectory}.qvac/models/ggml-silero-v5.1.2.bin`;
+						const vadModelPath = `${fsPath}.qvac/models/ggml-silero-v5.1.2.bin`;
 
 						whisperModelId = await loadModel({
 							modelSrc: WHISPER_TINY,
@@ -502,12 +508,14 @@ export default function BatchConsumer() {
 							"qvac/batch-complete",
 						],
 						{ qos: 1 },
-						(err) => {
+						async (err) => {
 							if (err) {
 								addLog(`❌ Failed to subscribe: ${err.message}`);
 								return;
 							}
 							addLog("📡 Subscribed to topics\n");
+
+							await ensureModelsLoaded();
 
 							// Register with producer
 							addLog(`🔌 Registering with producer...`);
