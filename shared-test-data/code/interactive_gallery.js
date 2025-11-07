@@ -2,7 +2,7 @@
 
 class PhotoGallery {
     constructor(containerId) {
-        this.container = document.getElementById(containerId);
+        this.containerId = containerId;
         this.currentIndex = 0;
         this.images = [
             'sunset.jpg',
@@ -10,48 +10,36 @@ class PhotoGallery {
             'ocean.jpg',
             'forest.jpg'
         ];
-        this.init();
     }
     
-    init() {
-        this.createGallery();
-        this.bindEvents();
-    }
-    
-    createGallery() {
-        const galleryHTML = `
+    getGalleryHTML() {
+        return `
             <div class="gallery-container">
-                <img id="current-image" src="${this.images[0]}" alt="Gallery Image">
+                <img id="current-image" src="${this.images[this.currentIndex]}" alt="Gallery Image">
                 <div class="controls">
                     <button id="prev-btn">← Previous</button>
                     <button id="next-btn">Next →</button>
                 </div>
             </div>
         `;
-        this.container.innerHTML = galleryHTML;
-    }
-    
-    bindEvents() {
-        document.getElementById('prev-btn').addEventListener('click', () => this.prevImage());
-        document.getElementById('next-btn').addEventListener('click', () => this.nextImage());
     }
     
     nextImage() {
         this.currentIndex = (this.currentIndex + 1) % this.images.length;
-        this.updateImage();
+        return this.images[this.currentIndex];
     }
     
     prevImage() {
         this.currentIndex = (this.currentIndex - 1 + this.images.length) % this.images.length;
-        this.updateImage();
+        return this.images[this.currentIndex];
     }
     
-    updateImage() {
-        document.getElementById('current-image').src = this.images[this.currentIndex];
+    getCurrentImage() {
+        return this.images[this.currentIndex];
     }
 }
 
-// Initialize gallery when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    new PhotoGallery('gallery');
-});
+// Export for module systems
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = PhotoGallery;
+}
