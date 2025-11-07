@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView } from "react-native";
 import Constants from "expo-constants";
-import mqtt, { type MqttClient } from "mqtt";
+import type { MqttClient } from "mqtt";
 
 // Import SDK functions - suppress RPC init errors
 let loadModel: any;
@@ -372,14 +372,11 @@ export default function BatchConsumer() {
 			}
 		};
 
-		(async () => {
-			try {
-				addLog("🔧 Initializing consumer...");
-				addLog(`📱 Device: ${Constants.deviceName || "Unknown"}`);
-				addLog(`🆔 ID: ${consumerId.substring(0, 30)}...\n`);
-
-				// Initialize executor
-				executor = new TestExecutor();
+    // Function to load models on-demand (first test)
+    const ensureModelsLoaded = async () => {
+      if (llmModelId || embeddingModelId || whisperModelId) {
+        return; // Already loaded
+      }
 
 				// Load models
 				addLog("📦 Loading models...");
@@ -457,6 +454,22 @@ export default function BatchConsumer() {
 				} else {
 					addLog(`⚠️ Skipping remaining models due to RPC unavailability\n`);
 				}
+		};
+
+		// Main startup - just connect to MQTT
+		(async () => {
+			try {
+				addLog("🔧 Initializing consumer...");
+				addLog(`📱 Device: ${Constants.deviceName || "Unknown"}`);
+				addLog(`🆔 ID: ${consumerId.substring(0, 30)}...\n`);
+
+				// Initialize executor
+				executor = new TestExecutor();
+
+				// Dynamically import MQTT to ensure WebSocket is ready
+				addLog("📦 Loading MQTT client...");
+				const mqttModule = await import("mqtt");
+				const mqtt = mqttModule.default || mqttModule;
 
 				// Connect to MQTT
 				const protocol = env.useSsl ? "wss" : "ws";
