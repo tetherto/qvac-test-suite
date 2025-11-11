@@ -6,7 +6,7 @@
 		"batch": "bun run batch-consumer.ts"
 	},
 	"dependencies": {
-		"@tetherto/sdk-dev": "0.5.2-tmp.runid-19075465516",
+		"@tetherto/sdk-dev": "1.1.0-tmp.runid-19260252142",
 		"hyperdb": "^4.19.1",
 		"llm-splitter": "~0.2.0",
 		"mqtt": "^5.14.1"

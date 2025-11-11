@@ -9,7 +9,7 @@
     "postinstall": "node scripts/postinstall.js"
   },
   "dependencies": {
-    "@tetherto/sdk-dev": "1.0.0-tmp.runid-19174557600",
+    "@tetherto/sdk-dev": "1.1.0-tmp.runid-19260252142",
     "bare-abort-controller": "^1.0.0",
     "bare-buffer": "^3.3.0",
     "bare-crypto": "^1.9.2",

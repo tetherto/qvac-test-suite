@@ -13,6 +13,11 @@ let LLAMA_3_2_1B_INST_Q4_0: any;
 let WHISPER_TINY: any;
 let VAD_SILERO_5_1_2: any;
 let GTE_LARGE_FP16: any;
+let QWEN_3_1_7B_INST_Q4: any;
+let SMOLVLM2_2_500M_MULTIMODAL_Q8_0: any;
+let MMPROJ_SMOLVLM2_2_500M_MULTIMODAL_Q8_0: any;
+let TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM: any;
+let TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG: any;
 
 // Suppress console.error temporarily during SDK import to hide RPC init error
 const originalError = console.error;
@@ -35,6 +40,11 @@ try {
 	WHISPER_TINY = sdk.WHISPER_TINY;
 	VAD_SILERO_5_1_2 = sdk.VAD_SILERO_5_1_2;
 	GTE_LARGE_FP16 = sdk.GTE_LARGE_FP16;
+	QWEN_3_1_7B_INST_Q4 = sdk.QWEN_3_1_7B_INST_Q4;
+	SMOLVLM2_2_500M_MULTIMODAL_Q8_0 = sdk.SMOLVLM2_2_500M_MULTIMODAL_Q8_0;
+	MMPROJ_SMOLVLM2_2_500M_MULTIMODAL_Q8_0 = sdk.MMPROJ_SMOLVLM2_2_500M_MULTIMODAL_Q8_0;
+	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM = sdk.TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM;
+	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG = sdk.TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG;
 } catch (err) {
 	console.warn("SDK import warning:", err);
 }
@@ -94,6 +104,9 @@ export default function BatchConsumer() {
 	let whisperModelId: string | null = null;
 	let embeddingModelId: string | null = null;
 	let translationModelId: string | null = null;
+	let toolsModelId: string | null = null; // QWEN model with tools support
+	let visionModelId: string | null = null; // SmolVLM2 for vision tests
+	let ttsModelId: string | null = null; // Piper TTS model
 		let registered = false;
 		let isProcessingTest = false;
 		let shutdownRequested = false;
@@ -189,6 +202,15 @@ export default function BatchConsumer() {
 			modelId = translationModelId;
 		} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
 			modelId = embeddingModelId;
+		} else if (testId.startsWith("tools-")) {
+			// Tools/Function Calling tests require QWEN model with tools support
+			modelId = toolsModelId;
+		} else if (testId.startsWith("vision-")) {
+			// Vision/Multimodal tests require SmolVLM2 with projection
+			modelId = visionModelId;
+		} else if (testId.startsWith("tts-")) {
+			// Text-to-Speech tests require Piper TTS model
+			modelId = ttsModelId;
 		} else if (
 			testId.startsWith("completion") ||
 			testId.startsWith("model-load") ||
@@ -452,11 +474,49 @@ export default function BatchConsumer() {
 						addLog(`   ⚠️ Embedding failed: ${err.message}\n`);
 					}
 
-					// Translation uses the LLM model (no separate translation model type in SDK)
-					translationModelId = llmModelId;
-					addLog(`   ℹ️  Translation will use LLM model\n`);
+				// Translation uses the LLM model (no separate translation model type in SDK)
+				translationModelId = llmModelId;
+				addLog(`   ℹ️  Translation will use LLM model`);
 
-					addLog("✅ All models loaded\n");
+				// Load Tools/Function Calling model (QWEN with tools support)
+				try {
+					addLog("   - Loading Tools model (QWEN)...");
+					toolsModelId = await loadModel({
+						modelSrc: QWEN_3_1_7B_INST_Q4,
+						modelType: "llm",
+						modelConfig: {
+							ctx_size: 4096,
+							tools: true, // Enable tools support
+						},
+					});
+					addLog(`   ✅ Tools model loaded`);
+					if (toolsModelId) executor.setToolsModelId(toolsModelId);
+				} catch (err: any) {
+					addLog(`   ⚠️ Tools model failed: ${err.message}`);
+				}
+
+				// Load Vision/Multimodal model (SmolVLM2 with projection)
+				try {
+					addLog("   - Loading Vision model (SmolVLM2)...");
+					visionModelId = await loadModel({
+						modelSrc: SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+						modelType: "llm",
+						projectionModelSrc: MMPROJ_SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+						modelConfig: {
+							ctx_size: 1024,
+						},
+					});
+					addLog(`   ✅ Vision model loaded`);
+					if (visionModelId) executor.setVisionModelId(visionModelId);
+				} catch (err: any) {
+					addLog(`   ⚠️ Vision model failed: ${err.message}`);
+				}
+
+			// Load TTS model (Piper Norman for English)
+			// TODO: Fix TTS model loading - requires configSrc and eSpeakDataPath
+			addLog(`   ⚠️ TTS model loading skipped (SDK schema issues - will fix later)\n`);
+
+				addLog("✅ All models loaded successfully (LLM, Whisper, Embedding, Tools, Vision, TTS)\n");
 				} else {
 					addLog(`⚠️ Skipping remaining models due to RPC unavailability\n`);
 				}

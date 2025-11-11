@@ -9,6 +9,11 @@ import {
 	WHISPER_TINY,
 	VAD_SILERO_5_1_2,
 	GTE_LARGE_FP16,
+	QWEN_3_1_7B_INST_Q4,
+	SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+	MMPROJ_SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM,
+	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG,
 } from "@tetherto/sdk-dev";
 import { env } from "./env";
 import * as path from "path";
@@ -37,6 +42,9 @@ export class BatchConsumer {
 	private whisperModelId: string | null = null;
 	private embeddingModelId: string | null = null;
 	private translationModelId: string | null = null;
+	private toolsModelId: string | null = null; // QWEN model with tools support
+	private visionModelId: string | null = null; // SmolVLM2 for vision tests
+	private ttsModelId: string | null = null; // Piper TTS model
 	private executor: TestExecutor;
 	private registered = false;
 	private testsCompleted = 0;
@@ -175,6 +183,15 @@ export class BatchConsumer {
 		modelId = this.translationModelId;
 	} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
 		modelId = this.embeddingModelId;
+	} else if (testId.startsWith("tools-")) {
+		// Tools/Function Calling tests require QWEN model with tools support
+		modelId = this.toolsModelId;
+	} else if (testId.startsWith("vision-")) {
+		// Vision/Multimodal tests require SmolVLM2 with projection
+		modelId = this.visionModelId;
+	} else if (testId.startsWith("tts-")) {
+		// Text-to-Speech tests require Piper TTS model
+		modelId = this.ttsModelId;
 	} else if (testId.startsWith("completion") || testId.startsWith("model-load") || testId.startsWith("model-unload") || testId.startsWith("model-switch") || testId.startsWith("model-reload")) {
 		modelId = this.llmModelId;
 	} 
@@ -449,13 +466,55 @@ export class BatchConsumer {
 		modelSrc: GTE_LARGE_FP16,
 		modelType: "embeddings",
 	});
-	console.log(`   ✅ Embedding loaded: ${this.embeddingModelId}\n`);
+	console.log(`   ✅ Embedding loaded: ${this.embeddingModelId}`);
 
 	// Translation uses the LLM model (no separate translation model type in SDK)
 	this.translationModelId = this.llmModelId;
-	console.log(`   ℹ️  Translation will use LLM model\n`);
+	console.log(`   ℹ️  Translation will use LLM model`);
 
-	console.log("✅ All models loaded successfully\n");
+	// Load Tools/Function Calling model (QWEN with tools support)
+	console.log("   - Loading Tools model (QWEN with function calling)...");
+	this.toolsModelId = await loadModel({
+		modelSrc: QWEN_3_1_7B_INST_Q4,
+		modelType: "llm",
+		modelConfig: {
+			ctx_size: 4096,
+			tools: true, // Enable tools support
+		},
+	});
+	console.log(`   ✅ Tools model loaded: ${this.toolsModelId}`);
+	this.executor.setToolsModelId(this.toolsModelId);
+
+	// Load Vision/Multimodal model (SmolVLM2 with projection)
+	console.log("   - Loading Vision model (SmolVLM2 with multimodal)...");
+	this.visionModelId = await loadModel({
+		modelSrc: SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+		modelType: "llm",
+		projectionModelSrc: MMPROJ_SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+		modelConfig: {
+			ctx_size: 1024,
+		},
+	});
+	console.log(`   ✅ Vision model loaded: ${this.visionModelId}`);
+	this.executor.setVisionModelId(this.visionModelId);
+
+	// Load TTS model (Piper Norman for English)
+	// TODO: Fix TTS model loading - requires configSrc and eSpeakDataPath
+	// console.log("   - Loading TTS model (Piper Norman)...");
+	// this.ttsModelId = await loadModel({
+	// 	modelSrc: TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM,
+	// 	modelType: "tts",
+	// 	modelConfig: {
+	// 		language: "en",
+	// 	},
+	// 	configSrc: TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG,
+	// 	eSpeakDataPath: "/path/to/espeak-ng-data", // Need to determine correct path
+	// });
+	// console.log(`   ✅ TTS model loaded: ${this.ttsModelId}\n`);
+	console.log(`   ⚠️ TTS model loading skipped (SDK schema issues - will fix later)\n`);
+
+	console.log("✅ Models loaded successfully (LLM, Whisper, Embedding, Tools, Vision)\n");
+	console.log("⚠️  TTS tests will be skipped this run (15 tests)\n");
 
 			// Wait a bit for MQTT to be fully connected
 			await new Promise(resolve => setTimeout(resolve, 1000));
