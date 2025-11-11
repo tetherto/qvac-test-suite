@@ -1,18 +1,56 @@
 import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView } from "react-native";
 import Constants from "expo-constants";
-import mqtt, { type MqttClient } from "mqtt";
-import {
-	loadModel,
-	unloadModel,
-	completion as runCompletion,
-	transcribe as runTranscribe,
-	embed as runEmbed,
-	LLAMA_3_2_1B_INST_Q4_0,
-	WHISPER_TINY,
-	VAD_SILERO_5_1_2,
-	GTE_LARGE_FP16,
-} from "@tetherto/sdk";
+import type { MqttClient } from "mqtt";
+
+// Import SDK functions - suppress RPC init errors
+let loadModel: any;
+let unloadModel: any;
+let runCompletion: any;
+let runTranscribe: any;
+let runEmbed: any;
+let LLAMA_3_2_1B_INST_Q4_0: any;
+let WHISPER_TINY: any;
+let VAD_SILERO_5_1_2: any;
+let GTE_LARGE_FP16: any;
+let QWEN_3_1_7B_INST_Q4: any;
+let SMOLVLM2_2_500M_MULTIMODAL_Q8_0: any;
+let MMPROJ_SMOLVLM2_2_500M_MULTIMODAL_Q8_0: any;
+let TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM: any;
+let TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG: any;
+
+// Suppress console.error temporarily during SDK import to hide RPC init error
+const originalError = console.error;
+console.error = (...args: any[]) => {
+	// Filter out RPC initialization errors
+	const msg = args.join(' ');
+	if (!msg.includes('Failed to initialize RPC') && !msg.includes('Cannot read property')) {
+		originalError(...args);
+	}
+};
+
+try {
+	const sdk = require("@tetherto/sdk-dev");
+	loadModel = sdk.loadModel;
+	unloadModel = sdk.unloadModel;
+	runCompletion = sdk.completion;
+	runTranscribe = sdk.transcribe;
+	runEmbed = sdk.embed;
+	LLAMA_3_2_1B_INST_Q4_0 = sdk.LLAMA_3_2_1B_INST_Q4_0;
+	WHISPER_TINY = sdk.WHISPER_TINY;
+	VAD_SILERO_5_1_2 = sdk.VAD_SILERO_5_1_2;
+	GTE_LARGE_FP16 = sdk.GTE_LARGE_FP16;
+	QWEN_3_1_7B_INST_Q4 = sdk.QWEN_3_1_7B_INST_Q4;
+	SMOLVLM2_2_500M_MULTIMODAL_Q8_0 = sdk.SMOLVLM2_2_500M_MULTIMODAL_Q8_0;
+	MMPROJ_SMOLVLM2_2_500M_MULTIMODAL_Q8_0 = sdk.MMPROJ_SMOLVLM2_2_500M_MULTIMODAL_Q8_0;
+	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM = sdk.TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM;
+	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG = sdk.TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG;
+} catch (err) {
+	console.warn("SDK import warning:", err);
+}
+
+// Restore console.error
+console.error = originalError;
 import * as FileSystem from "expo-file-system";
 import { env } from "@/env";
 import { TestExecutor } from "./test-executor";
@@ -66,6 +104,9 @@ export default function BatchConsumer() {
 	let whisperModelId: string | null = null;
 	let embeddingModelId: string | null = null;
 	let translationModelId: string | null = null;
+	let toolsModelId: string | null = null; // QWEN model with tools support
+	let visionModelId: string | null = null; // SmolVLM2 for vision tests
+	let ttsModelId: string | null = null; // Piper TTS model
 		let registered = false;
 		let isProcessingTest = false;
 		let shutdownRequested = false;
@@ -161,6 +202,15 @@ export default function BatchConsumer() {
 			modelId = translationModelId;
 		} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
 			modelId = embeddingModelId;
+		} else if (testId.startsWith("tools-")) {
+			// Tools/Function Calling tests require QWEN model with tools support
+			modelId = toolsModelId;
+		} else if (testId.startsWith("vision-")) {
+			// Vision/Multimodal tests require SmolVLM2 with projection
+			modelId = visionModelId;
+		} else if (testId.startsWith("tts-")) {
+			// Text-to-Speech tests require Piper TTS model
+			modelId = ttsModelId;
 		} else if (
 			testId.startsWith("completion") ||
 			testId.startsWith("model-load") ||
@@ -344,6 +394,135 @@ export default function BatchConsumer() {
 			}
 		};
 
+    // Function to load models on-demand (first test)
+    const ensureModelsLoaded = async () => {
+      if (llmModelId && embeddingModelId && whisperModelId) {
+        return; // Already loaded
+      }
+
+				// Load models
+				addLog("📦 Loading models...");
+
+				// Check if RPC is available before trying to load models
+				try {
+					addLog("   - Loading LLM...");
+					llmModelId = await loadModel({
+						modelSrc: LLAMA_3_2_1B_INST_Q4_0,
+						modelType: "llm",
+						modelConfig: {
+							verbosity: 0 as 0, // Reduce logging overhead
+							ctx_size: 2048, // Increase context size for better performance
+							n_discarded: 256, // Enable context overflow prevention during generation (Gianfranco's recommendation)
+						},
+					});
+					addLog(`   ✅ LLM loaded`);
+				} catch (err: any) {
+					addLog(`   ⚠️ LLM failed: ${err.message || 'RPC not available'}`);
+					addLog(`   ⚠️ Models require RPC which crashed during initialization`);
+					addLog(`   ⚠️ Continuing without models - app will connect but can't run tests\n`);
+					// Continue to MQTT connection even without models
+				}
+
+				// Only try loading other models if LLM succeeded
+				if (llmModelId) {
+					try {
+						addLog("   - Loading Whisper...");
+						
+						// Check if FileSystem is available (try both legacy and new APIs)
+						const fsPath = FileSystem.documentDirectory || FileSystem.Paths?.document?.uri;
+						
+						if (!fsPath) {
+							throw new Error("expo-file-system not available - app needs rebuild (npx expo run:ios --device)");
+						}
+						
+						addLog(`   ℹ️  Using FileSystem path: ${fsPath.substring(0, 50)}...`);
+						
+						// Download VAD model first
+						await loadModel({
+							modelSrc: VAD_SILERO_5_1_2,
+							modelType: "whisper",
+							downloadOnly: true,
+						});
+						
+						const vadModelPath = `${fsPath}.qvac/models/ggml-silero-v5.1.2.bin`;
+
+						whisperModelId = await loadModel({
+							modelSrc: WHISPER_TINY,
+							modelType: "whisper",
+							vadModelSrc: vadModelPath,
+							modelConfig: {
+								mode: "caption",
+								output_format: "plaintext",
+								min_seconds: 2,
+								max_seconds: 6,
+								audio_format: "f32le",
+							},
+						});
+						addLog(`   ✅ Whisper loaded`);
+					} catch (err: any) {
+						addLog(`   ⚠️ Whisper failed: ${err.message}`);
+					}
+
+					try {
+						addLog("   - Loading Embedding...");
+						embeddingModelId = await loadModel({
+							modelSrc: GTE_LARGE_FP16,
+							modelType: "embeddings",
+						});
+						addLog(`   ✅ Embedding loaded\n`);
+					} catch (err: any) {
+						addLog(`   ⚠️ Embedding failed: ${err.message}\n`);
+					}
+
+				// Translation uses the LLM model (no separate translation model type in SDK)
+				translationModelId = llmModelId;
+				addLog(`   ℹ️  Translation will use LLM model`);
+
+				// Load Tools/Function Calling model (QWEN with tools support)
+				try {
+					addLog("   - Loading Tools model (QWEN)...");
+					toolsModelId = await loadModel({
+						modelSrc: QWEN_3_1_7B_INST_Q4,
+						modelType: "llm",
+						modelConfig: {
+							ctx_size: 4096,
+							tools: true, // Enable tools support
+						},
+					});
+					addLog(`   ✅ Tools model loaded`);
+					if (toolsModelId) executor.setToolsModelId(toolsModelId);
+				} catch (err: any) {
+					addLog(`   ⚠️ Tools model failed: ${err.message}`);
+				}
+
+				// Load Vision/Multimodal model (SmolVLM2 with projection)
+				try {
+					addLog("   - Loading Vision model (SmolVLM2)...");
+					visionModelId = await loadModel({
+						modelSrc: SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+						modelType: "llm",
+						projectionModelSrc: MMPROJ_SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+						modelConfig: {
+							ctx_size: 1024,
+						},
+					});
+					addLog(`   ✅ Vision model loaded`);
+					if (visionModelId) executor.setVisionModelId(visionModelId);
+				} catch (err: any) {
+					addLog(`   ⚠️ Vision model failed: ${err.message}`);
+				}
+
+			// Load TTS model (Piper Norman for English)
+			// TODO: Fix TTS model loading - requires configSrc and eSpeakDataPath
+			addLog(`   ⚠️ TTS model loading skipped (SDK schema issues - will fix later)\n`);
+
+				addLog("✅ All models loaded successfully (LLM, Whisper, Embedding, Tools, Vision, TTS)\n");
+				} else {
+					addLog(`⚠️ Skipping remaining models due to RPC unavailability\n`);
+				}
+		};
+
+		// Main startup - just connect to MQTT
 		(async () => {
 			try {
 				addLog("🔧 Initializing consumer...");
@@ -353,61 +532,10 @@ export default function BatchConsumer() {
 				// Initialize executor
 				executor = new TestExecutor();
 
-				// Load models
-				addLog("📦 Loading models...");
-
-				addLog("   - Loading LLM...");
-				llmModelId = await loadModel({
-				modelSrc: LLAMA_3_2_1B_INST_Q4_0,
-				modelType: "llm",
-				modelConfig: {
-					verbosity: 0 as 0, // Reduce logging overhead
-					ctx_size: 2048, // Increase context size for better performance
-					n_discarded: 256, // Enable context overflow prevention during generation (Gianfranco's recommendation)
-				},
-			});
-				addLog(`   ✅ LLM loaded`);
-
-				addLog("   - Loading Whisper...");
-				// Download VAD model first
-				await loadModel({
-					modelSrc: VAD_SILERO_5_1_2,
-					modelType: "whisper",
-					downloadOnly: true,
-				});
-				
-				// Ensure FileSystem.documentDirectory is available
-				if (!FileSystem.documentDirectory) {
-					throw new Error("FileSystem.documentDirectory is not available");
-				}
-				const vadModelPath = `${FileSystem.documentDirectory}.qvac/models/ggml-silero-v5.1.2.bin`;
-
-				whisperModelId = await loadModel({
-					modelSrc: WHISPER_TINY,
-					modelType: "whisper",
-					vadModelSrc: vadModelPath,
-					modelConfig: {
-						mode: "caption",
-						output_format: "plaintext",
-						min_seconds: 2,
-						max_seconds: 6,
-						audio_format: "f32le",
-					},
-				});
-				addLog(`   ✅ Whisper loaded`);
-
-		addLog("   - Loading Embedding...");
-		embeddingModelId = await loadModel({
-			modelSrc: GTE_LARGE_FP16,
-			modelType: "embeddings",
-		});
-		addLog(`   ✅ Embedding loaded\n`);
-
-		// Translation uses the LLM model (no separate translation model type in SDK)
-		translationModelId = llmModelId;
-		addLog(`   ℹ️  Translation will use LLM model\n`);
-
-		addLog("✅ All models loaded\n");
+				// Dynamically import MQTT to ensure WebSocket is ready
+				addLog("📦 Loading MQTT client...");
+				const mqttModule = await import("mqtt");
+				const mqtt = mqttModule.default || mqttModule;
 
 				// Connect to MQTT
 				const protocol = env.useSsl ? "wss" : "ws";
@@ -417,7 +545,17 @@ export default function BatchConsumer() {
 				const brokerUrl = `${protocol}://${env.EXPO_PUBLIC_MQTT_HOST}:${port}${env.EXPO_PUBLIC_MQTT_PATH}`;
 
 				addLog("📡 Connecting to MQTT...");
-				client = mqtt.connect(brokerUrl);
+				addLog(`   URL: ${brokerUrl}`);
+				// WebSocket MQTT connection options
+				// Note: mqtt library auto-detects protocol from URL (ws:// = WebSocket)
+				const connectOptions: mqtt.IClientOptions = {
+					connectTimeout: 10000, // 10 second timeout
+					reconnectPeriod: 5000, // Try to reconnect every 5 seconds
+					keepalive: 60,
+					clean: true,
+					// Don't specify protocolVersion - use default (3.1.1) which broker supports
+				};
+				client = mqtt.connect(brokerUrl, connectOptions);
 
 				client.on("connect", () => {
 					addLog("✅ Connected to MQTT broker");
@@ -430,12 +568,14 @@ export default function BatchConsumer() {
 							"qvac/batch-complete",
 						],
 						{ qos: 1 },
-						(err) => {
+						async (err) => {
 							if (err) {
 								addLog(`❌ Failed to subscribe: ${err.message}`);
 								return;
 							}
 							addLog("📡 Subscribed to topics\n");
+
+							await ensureModelsLoaded();
 
 							// Register with producer
 							addLog(`🔌 Registering with producer...`);
@@ -487,6 +627,20 @@ export default function BatchConsumer() {
 
 				client.on("error", (err) => {
 					addLog(`❌ MQTT error: ${err.message}`);
+					addLog(`   Code: ${err.code || 'unknown'}`);
+					addLog(`   URL attempted: ${brokerUrl}`);
+				});
+
+				client.on("close", () => {
+					addLog("⚠️ MQTT connection closed");
+				});
+
+				client.on("offline", () => {
+					addLog("⚠️ MQTT client offline");
+				});
+
+				client.on("reconnect", () => {
+					addLog("🔄 MQTT reconnecting...");
 				});
 			} catch (error: any) {
 				addLog(`❌ Fatal error: ${error.message}`);

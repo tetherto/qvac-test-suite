@@ -28,11 +28,10 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "static"
+      "output": "single"
     },
     "plugins": [
-      "expo-router",
-      "@qvac/sdk/expo-plugin",
+      "@tetherto/sdk-dev/expo-plugin",
       [
         "expo-build-properties",
         {
@@ -40,19 +39,9 @@
             "minSdkVersion": 29
           }
         }
-      ],
-      [
-        "expo-font",
-        {
-          "fonts": []
-        }
       ]
     ],
-    "experiments": {
-      "typedRoutes": true
-    },
     "extra": {
-      "router": {},
       "eas": {
         "projectId": "c2b7aa9b-abba-4af5-9133-6fde57f9d59a"
       }

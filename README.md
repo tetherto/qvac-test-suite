@@ -14,9 +14,14 @@ Comprehensive automated testing for the QVAC SDK across desktop and mobile platf
 
 ### Prerequisites
 
-1. **Bun runtime** installed: `https://bun.sh`
-2. **MQTT broker** running locally (Mosquitto recommended)
-3. **NPM token** set in environment:
+1. **Node.js v22.x (LTS)** - The repo includes `.nvmrc` for nvm users
+   ```bash
+   # With nvm installed:
+   nvm use
+   ```
+2. **Bun runtime v1.2+** installed: `https://bun.sh`
+3. **MQTT broker** running locally (Mosquitto recommended)
+4. **NPM token** set in environment:
    ```bash
    # Windows PowerShell
    $env:NPM_TOKEN="npm_YOUR_TOKEN_HERE"
@@ -36,6 +41,9 @@ cd ../qvac-test-consumer-desktop
 npm install
 
 cd ../qvac-test-consumer-mobile
+# On Windows, use the Windows install script to avoid patchelf issues:
+# npm run install:windows
+# On Linux/macOS, use regular install:
 npm install --legacy-peer-deps
 ```
 
