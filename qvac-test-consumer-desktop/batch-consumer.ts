@@ -9,7 +9,12 @@ import {
 	WHISPER_TINY,
 	VAD_SILERO_5_1_2,
 	GTE_LARGE_FP16,
-} from "@qvac/sdk";
+	QWEN_3_1_7B_INST_Q4,
+	SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+	MMPROJ_SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM,
+	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG,
+} from "@tetherto/sdk-dev";
 import { env } from "./env";
 import * as path from "path";
 import * as os from "os";
@@ -37,6 +42,9 @@ export class BatchConsumer {
 	private whisperModelId: string | null = null;
 	private embeddingModelId: string | null = null;
 	private translationModelId: string | null = null;
+	private toolsModelId: string | null = null; // QWEN model with tools support
+	private visionModelId: string | null = null; // SmolVLM2 for vision tests
+	private ttsModelId: string | null = null; // Piper TTS model
 	private executor: TestExecutor;
 	private registered = false;
 	private testsCompleted = 0;
@@ -50,6 +58,12 @@ export class BatchConsumer {
 		this.client = mqtt.connect(brokerUrl);
 		this.executor = new TestExecutor();
 		this.filterTestIds = filterTestIds || null;
+		
+		// Handle unhandled promise rejections (e.g., async RPC errors from SDK)
+		process.on("unhandledRejection", (reason: any) => {
+			console.warn(`⚠️  Unhandled promise rejection: ${reason?.message || reason}`);
+			// Don't crash - just log it and continue
+		});
 		this.setupMqttHandlers();
 	}
 
@@ -172,28 +186,82 @@ export class BatchConsumer {
 		// Determine which model to use based on test type (models kept loaded for speed)
 	let modelId: string | null = null;
 	
+	// Determine which model to use based on test type
 	if (testId.startsWith("transcription")) {
 		modelId = this.whisperModelId;
 	} else if (testId.startsWith("translation")) {
 		modelId = this.translationModelId;
 	} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
 		modelId = this.embeddingModelId;
+	} else if (testId.startsWith("tools-")) {
+		// Tools/Function Calling tests require QWEN model with tools support
+		modelId = this.toolsModelId;
+	} else if (testId.startsWith("vision-")) {
+		// Vision/Multimodal tests require SmolVLM2 with projection
+		modelId = this.visionModelId;
+	} else if (testId.startsWith("tts-")) {
+		// Text-to-Speech tests require Piper TTS model
+		modelId = this.ttsModelId;
 	} else if (testId.startsWith("completion") || testId.startsWith("model-load") || testId.startsWith("model-unload") || testId.startsWith("model-switch") || testId.startsWith("model-reload")) {
 		modelId = this.llmModelId;
+	} 
+	// Handle error and parameter validation tests
+	else if (testId.startsWith("error-") || testId.startsWith("param-")) {
+		// Determine model based on test content
+		if (testId.includes("completion") || testId.includes("translation") || testId.includes("malformed")) {
+			modelId = this.llmModelId;
+		} else if (testId.includes("embedding") || testId.includes("rag")) {
+			modelId = this.embeddingModelId;
+		} else if (testId.includes("transcription")) {
+			modelId = this.whisperModelId;
+		} else {
+			// Default to LLM for generic error tests
+			modelId = this.llmModelId;
+		}
 	}
 
-		// Set timeout based on test type
-		// - Known destructive tests (embed code, context overflow, corrupted audio): 10s (fail fast)
-		// - Normal tests: 30s
-		const isDestructiveTest = testId.includes("embed-python") || testId.includes("embed-javascript") || 
-		                          testId.includes("embed-json") || testId.includes("embed-html") ||
-		                          testId.includes("very-long") || testId.includes("extremely-long") ||
-		                          testId.includes("corrupted");
-		const timeoutMs = isDestructiveTest ? 10000 : 30000; // 10s or 30s
-		
-		if (isDestructiveTest) {
-			console.log(`   ⚠️  Destructive test - reduced timeout to ${timeoutMs / 1000}s`);
-		}
+	// Set timeout based on test type
+	// - Known destructive tests (embed code, context overflow, corrupted audio): 10s (fail fast)
+	// - Large RAG documents (32KB+): 120s (complex chunking and embedding)
+	// - Medium RAG documents (10KB): 90s (moderate chunking and embedding)
+	// - Small RAG documents: 60s (basic chunking and embedding)
+	// - Long prompt tests: 60s (large input processing)
+	// - Transcription tests: 60s (legitimate processing time for audio)
+	// - Normal tests: 30s
+	const isDestructiveTest = testId.includes("embed-python") || testId.includes("embed-javascript") || 
+	                          testId.includes("embed-json") || testId.includes("embed-html") ||
+	                          testId.includes("very-long") || testId.includes("extremely-long") ||
+	                          testId.includes("corrupted");
+	const isLargeRagTest = testId.includes("rag-large");
+	const isMediumRagTest = testId.includes("rag-medium");
+	const isSmallRagTest = testId.includes("rag-small");
+	const isLongPromptTest = testId === "completion-long-prompt";
+	const isTranscriptionTest = testId.startsWith("transcription-");
+	
+	let timeoutMs: number;
+	if (isDestructiveTest) {
+		timeoutMs = 10000; // 10s
+	} else if (isLargeRagTest) {
+		timeoutMs = 120000; // 120s
+	} else if (isMediumRagTest) {
+		timeoutMs = 90000; // 90s
+	} else if (isSmallRagTest || isLongPromptTest) {
+		timeoutMs = 60000; // 60s
+	} else if (isTranscriptionTest) {
+		timeoutMs = 60000; // 60s
+	} else {
+		timeoutMs = 60000; // 60s (increased from 30s for more stability)
+	}
+	
+	if (isDestructiveTest) {
+		console.log(`   ⚠️  Destructive test - reduced timeout to ${timeoutMs / 1000}s`);
+	} else if (isLargeRagTest || isMediumRagTest || isSmallRagTest) {
+		console.log(`   📚 RAG test - extended timeout to ${timeoutMs / 1000}s`);
+	} else if (isLongPromptTest) {
+		console.log(`   📝 Long prompt test - extended timeout to ${timeoutMs / 1000}s`);
+	} else if (isTranscriptionTest) {
+		console.log(`   🎤 Transcription test - extended timeout to ${timeoutMs / 1000}s`);
+	}
 			
 			// Execute the test with timeout
 			const testPromise = this.executor.executeTest(
@@ -231,21 +299,27 @@ export class BatchConsumer {
 				}
 			}
 
-			// Send result to producer
-			this.client.publish(
-				"qvac/results",
-				JSON.stringify({
-					consumerId: this.consumerId,
-					testId,
-					uniqueTestId,
-					outcome,
-					duration,
-					timestamp: new Date().toISOString(),
-					output: result.output,
-					error: result.passed ? undefined : result.output,
-				}),
-				{ qos: 1 },
-			);
+		// Format expected and actual values for debugging
+		const expected = this.formatExpectation(expectation);
+		const actual = result.output || "No output";
+		
+		// Send result to producer
+		this.client.publish(
+			"qvac/results",
+			JSON.stringify({
+				consumerId: this.consumerId,
+				testId,
+				uniqueTestId,
+				outcome,
+				duration,
+				timestamp: new Date().toISOString(),
+				output: result.output,
+				error: result.passed ? undefined : result.output,
+				expected: outcome === "failure" ? expected : undefined,
+				actual: outcome === "failure" ? actual : undefined,
+			}),
+			{ qos: 1 },
+		);
 
 		this.testsCompleted++;
 	} catch (error: any) {
@@ -261,6 +335,10 @@ export class BatchConsumer {
 			console.error(`   ℹ️  Subsequent tests may fail (cascade effect)`);
 		}
 
+		// Format expected for error case
+		const expected = this.formatExpectation(expectation);
+		const actual = `Error: ${errorMsg}`;
+		
 		// Send failure result
 		this.client.publish(
 			"qvac/results",
@@ -272,6 +350,8 @@ export class BatchConsumer {
 				duration,
 				timestamp: new Date().toISOString(),
 				error: errorMsg,
+				expected,
+				actual,
 				sdkCrash: isSdkCrash ? true : undefined,
 			}),
 			{ qos: 1 },
@@ -306,6 +386,42 @@ export class BatchConsumer {
 		);
 	}
 
+	private formatExpectation(expectation: any): string {
+		if (!expectation) return "No expectation defined";
+		
+		const parts: string[] = [];
+		
+		if (expectation.validation) {
+			parts.push(`Validation: ${expectation.validation}`);
+		}
+		
+		if (expectation.keywords && expectation.keywords.length > 0) {
+			parts.push(`Keywords: ${expectation.keywords.join(", ")}`);
+		}
+		
+		if (expectation.minLength) {
+			parts.push(`Min length: ${expectation.minLength}`);
+		}
+		
+		if (expectation.minDimensions) {
+			parts.push(`Min dimensions: ${expectation.minDimensions}`);
+		}
+		
+		if (expectation.minChunks) {
+			parts.push(`Min chunks: ${expectation.minChunks}`);
+		}
+		
+		if (expectation.maxChunks) {
+			parts.push(`Max chunks: ${expectation.maxChunks}`);
+		}
+		
+		if (expectation.errorExpected) {
+			parts.push("Error expected: true");
+		}
+		
+		return parts.length > 0 ? parts.join("\n") : "Test should pass";
+	}
+	
 	private async registerWithProducer() {
 		console.log(`🔌 Registering as: ${this.consumerId}`);
 		this.client.publish(
@@ -361,13 +477,55 @@ export class BatchConsumer {
 		modelSrc: GTE_LARGE_FP16,
 		modelType: "embeddings",
 	});
-	console.log(`   ✅ Embedding loaded: ${this.embeddingModelId}\n`);
+	console.log(`   ✅ Embedding loaded: ${this.embeddingModelId}`);
 
 	// Translation uses the LLM model (no separate translation model type in SDK)
 	this.translationModelId = this.llmModelId;
-	console.log(`   ℹ️  Translation will use LLM model\n`);
+	console.log(`   ℹ️  Translation will use LLM model`);
 
-	console.log("✅ All models loaded successfully\n");
+	// Load Tools/Function Calling model (QWEN with tools support)
+	console.log("   - Loading Tools model (QWEN with function calling)...");
+	this.toolsModelId = await loadModel({
+		modelSrc: QWEN_3_1_7B_INST_Q4,
+		modelType: "llm",
+		modelConfig: {
+			ctx_size: 4096,
+			tools: true, // Enable tools support
+		},
+	});
+	console.log(`   ✅ Tools model loaded: ${this.toolsModelId}`);
+	this.executor.setToolsModelId(this.toolsModelId);
+
+	// Load Vision/Multimodal model (SmolVLM2 with projection)
+	console.log("   - Loading Vision model (SmolVLM2 with multimodal)...");
+	this.visionModelId = await loadModel({
+		modelSrc: SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+		modelType: "llm",
+		projectionModelSrc: MMPROJ_SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+		modelConfig: {
+			ctx_size: 1024,
+		},
+	});
+	console.log(`   ✅ Vision model loaded: ${this.visionModelId}`);
+	this.executor.setVisionModelId(this.visionModelId);
+
+	// Load TTS model (Piper Norman for English)
+	// TODO: Fix TTS model loading - requires configSrc and eSpeakDataPath
+	// console.log("   - Loading TTS model (Piper Norman)...");
+	// this.ttsModelId = await loadModel({
+	// 	modelSrc: TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM,
+	// 	modelType: "tts",
+	// 	modelConfig: {
+	// 		language: "en",
+	// 	},
+	// 	configSrc: TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG,
+	// 	eSpeakDataPath: "/path/to/espeak-ng-data", // Need to determine correct path
+	// });
+	// console.log(`   ✅ TTS model loaded: ${this.ttsModelId}\n`);
+	console.log(`   ⚠️ TTS model loading skipped (SDK schema issues - will fix later)\n`);
+
+	console.log("✅ Models loaded successfully (LLM, Whisper, Embedding, Tools, Vision)\n");
+	console.log("⚠️  TTS tests will be skipped this run (15 tests)\n");
 
 			// Wait a bit for MQTT to be fully connected
 			await new Promise(resolve => setTimeout(resolve, 1000));

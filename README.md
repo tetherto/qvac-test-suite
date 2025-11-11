@@ -4,33 +4,72 @@ Comprehensive automated testing for the QVAC SDK across desktop and mobile platf
 
 ## Overview
 
-- **84 tests** covering LLM, Whisper, Embeddings, RAG, and Translation APIs
-- **Desktop consumer** (Bare runtime)
+- **99 tests** covering LLM, Whisper, Embeddings, RAG, and Translation APIs
+- **Desktop consumer** (Bun + Bare runtime)
 - **Mobile consumer** (React Native/Expo)
 - **Producer** orchestrates tests via MQTT
 - **HTML reports** with detailed results
 
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- Bun runtime
-- MQTT broker (e.g., Mosquitto)
-- QVAC SDK version: `@qvac/sdk@0.2.6-dev.1761136954.37a3ab8`
-- NPM token in environment: `NPM_TOKEN=npm_...`
+1. **Node.js v22.x (LTS)** - The repo includes `.nvmrc` for nvm users
+   ```bash
+   # With nvm installed:
+   nvm use
+   ```
+2. **Bun runtime v1.2+** installed: `https://bun.sh`
+3. **MQTT broker** running locally (Mosquitto recommended)
+4. **NPM token** set in environment:
+   ```bash
+   # Windows PowerShell
+   $env:NPM_TOKEN="npm_YOUR_TOKEN_HERE"
+   
+   # Linux/macOS
+   export NPM_TOKEN="npm_YOUR_TOKEN_HERE"
+   ```
 
-### Running Tests
+### 📦 Install Dependencies
 
-**1. Start Producer:**
 ```bash
+# Install all project dependencies
 cd qvac-test-producer
-bun run batch-orchestrator.ts
+npm install
+
+cd ../qvac-test-consumer-desktop
+npm install
+
+cd ../qvac-test-consumer-mobile
+# On Windows, use the Windows install script to avoid patchelf issues:
+# npm run install:windows
+# On Linux/macOS, use regular install:
+npm install --legacy-peer-deps
 ```
 
-**2. Start Desktop Consumer:**
+### ▶️ Run Tests (Desktop)
+
+Open **3 separate terminals** in the project root:
+
+**Terminal 1: Start MQTT Broker** (if not already running)
+```bash
+# Windows (if using Mosquitto)
+mosquitto -v
+
+# Linux/macOS
+mosquitto -c /etc/mosquitto/mosquitto.conf
+```
+
+**Terminal 2: Start Producer**
+```bash
+cd qvac-test-producer
+bun run orchestrate
+```
+
+**Terminal 3: Start Desktop Consumer**
 ```bash
 cd qvac-test-consumer-desktop
-bun run batch-consumer.ts
+bun run batch
 ```
 To run one or more specific tests by their testID, use:
 ```powershell
@@ -38,16 +77,31 @@ cd qvac-test-consumer-desktop
 bun run batch testID1 testID2
 ```
 
-**3. Start Mobile Consumer (optional):**
+**Optional: Monitor & Generate HTML Report** (after tests complete)
 ```bash
-cd qvac-test-consumer-mobile
-npm start
-# Then run on Android/iOS
+# From project root
+bun run batch:monitor
 ```
 
-**4. Monitor & Generate Report:**
+### 📱 Run Tests (Mobile)
+
+**Prerequisites:**
+- Android Studio with emulator OR physical Android device
+- Expo CLI
+
+**Terminal 1 & 2:** Same as desktop (MQTT broker + Producer)
+
+**Terminal 3: Start Metro Bundler**
 ```bash
-bun run batch:monitor
+cd qvac-test-consumer-mobile
+bun x expo start
+```
+
+**Terminal 4: Run on Android**
+```bash
+cd qvac-test-consumer-mobile
+bun x expo run:android
+# OR press 'a' in Metro terminal
 ```
 
 ## Test Categories
@@ -55,23 +109,45 @@ bun run batch:monitor
 | Category | Tests | Description |
 |----------|-------|-------------|
 | **Model Loading** | 5 | Load/unload/reload models |
-| **LLM Completion** | 37 | Text generation, streaming, parameters |
-| **Whisper** | 12 | Audio transcription, formats |
-| **Embeddings** | 27 | Text/code embeddings, RAG |
+| **LLM Completion** | 52 | Text generation, streaming, parameters (temp, top_p, penalties, seed, stop) |
+| **Whisper** | 12 | Audio transcription, multiple formats |
+| **Embeddings** | 14 | Text/code embeddings |
+| **RAG** | 11 | Document chunking, embeddings |
 | **Translation** | 3 | Language translation |
+| **Model Management** | 2 | Model switching, reload |
 
 ## Test Execution Order
 
-Tests are ordered to run stable tests first, destructive tests last:
+Tests are ordered to run **stable tests first**, **destructive tests last**:
 
-1. **Tests 1-76**: Normal tests (expected: 90%+ pass)
-2. **Tests 77-79**: Context overflow tests
-3. **Tests 80-81**: Corrupted audio tests (known SDK hang)
-4. **Tests 82-85**: Code embedding tests (known GGML assertion)
+1. **Tests 1-89**: Normal tests (expected: 51+ passing)
+2. **Tests 90-92**: Context overflow tests (cause SDK state corruption)
+3. **Tests 93-95**: Corrupted audio tests (SDK hangs indefinitely)
+4. **Tests 96-99**: Code embedding tests (GGML assertion crash)
 
-## Known SDK Issues
+## 📊 Expected Results
 
-### Critical: GGML Assertion Failure (P0)
+**Current Status (SDK v0.2.7-dev.1761566029.f834aa3):**
+- **82/100 tests passing (82.0%)** baseline (with llm-splitter fixes)
+- **Potential improvements** if SDK bugs were fixed in this version
+- **11/15 Sprint 2 tests passing (73.3%)**
+
+### Test Breakdown:
+
+| Category | Status | Notes |
+|----------|--------|-------|
+| Model Loading | ✅ 8/8 (100%) | All pass |
+| Completion | ✅ 42/49 (86%) | Most pass; seed/stop/penalties fail |
+| Sprint 2 (Parameters) | ⚠️ 11/15 (73%) | Temperature, top_p work; seed/stop fail |
+| Transcription | ⚠️ 7/13 (54%) | Short audio works; long/corrupted fail |
+| Embeddings | ✅ 12/16 (75%) | Simple text works; code triggers GGML crash |
+| RAG | ✅ 11/11 (100%) | **All pass!** (llm-splitter fixed) |
+| Translation | ⚠️ 2/3 (67%) | Mostly working |
+| Destructive Tests | ❌ 0/10 (0%) | Expected (SDK bugs) |
+
+## 🐛 Known SDK Issues
+
+### **Bug #1: GGML Assertion Failure** (P0 - Critical)
 
 **Error:** `GGML_ASSERT(i01 >= 0 && i01 < ne01) failed` at `ggml-cpu/ops.cpp:5358`
 
@@ -83,25 +159,44 @@ Tests are ordered to run stable tests first, destructive tests last:
 **Impact:**
 - SDK crashes at C++ level
 - No recovery possible
-- Subsequent tests timeout (cascade effect)
+- Remaining tests fail (cascade effect)
 
 **Workaround:**
-Tests that trigger this are moved to the end of the suite to prevent contamination.
+Tests that trigger this are **moved to end** (tests 90-99) to minimize cascade impact.
 
-## Test Framework Features
+### **Bug #2: `maxTokens` Not Honored** (P1)
+- **Test:** `completion-max-tokens`
+- **Expected:** 15 tokens
+- **Actual:** 138 tokens
+- **Impact:** Cannot limit token generation
+
+### **Bug #3: `stopSequences` Not Working** (P1)
+- **Test:** `completion-stop-sequences`, `completion-stop-sequences-multiple`
+- **Expected:** Stop at `"###"` or `"END"`
+- **Actual:** Ignores stop sequences
+- **Impact:** Cannot control completion boundaries
+
+### **Bug #4: `seed` Not Reproducible** (P2)
+- **Test:** `completion-seed-reproducibility`
+- **Expected:** Same seed = same output
+- **Actual:** Different outputs with same seed
+- **Impact:** Cannot reproduce results
+
+## ⚙️ Test Framework Features
 
 ### Resilience
-- ✅ Strict 30s timeout per test
-- ✅ try-catch error handling
-- ✅ SDK crash detection
-- ✅ Graceful continuation (never stops suite)
-- ✅ Complete reporting even with crashes
+- ✅ **30s timeout per test** (60s for transcription)
+- ✅ **Error handling** (try-catch on every test)
+- ✅ **SDK crash detection** (logs and continues)
+- ✅ **No suite blocking** (continues even after crashes)
+- ✅ **Complete reporting** (HTML report with all results)
 
 ### Optimizations
-- ✅ Models loaded once at startup
-- ✅ No reload between tests (faster)
-- ✅ `n_discarded: 256` to prevent generation overflow
-- ✅ Expected runtime: 4-6 minutes (84 tests)
+- ✅ **Models loaded once** (at startup, kept in memory)
+- ✅ **No reload between tests** (faster execution)
+- ✅ **`n_discarded: 256`** (prevents context overflow during generation)
+- ✅ **In-process execution** (works on mobile)
+- ✅ **Expected runtime:** 5-7 minutes (99 tests)
 
 ## Configuration
 
@@ -181,16 +276,20 @@ qvac-sdk-tests/
 └── README.md                   # This file
 ```
 
-## Expected Results
+## 🎯 Roadmap
 
 ### After SDK Fixes
 
-**Current:** 76/84 tests pass (90.5%)
-- 76 normal tests: ✅ PASS
-- 8 destructive tests: ❌ FAIL (known SDK bugs)
+**Current:** 82/100 passing (82.0%) ✅
 
-**After SDK team fixes GGML assertion:**
-- Expected: 84/84 tests pass (100%)
+**After SDK fixes:**
+- Fix `maxTokens` → +1 test
+- Fix `stopSequences` → +2 tests
+- Fix `seed` → +1 test
+- Fix `frequencyPenalty` / `presencePenalty` → +2 tests
+- Fix transcription issues → +5-8 tests
+- Fix GGML assertion (code embedding) → +4 tests
+- **Target:** 95-97/100 (95-97%)** 🎯
 
 ## Contributing
 

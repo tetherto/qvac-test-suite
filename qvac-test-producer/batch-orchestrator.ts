@@ -172,9 +172,9 @@ export class BatchOrchestrator {
 		const assignment: TestAssignment = {
 			testCase: nextTest,
 			consumerId,
-			assignedAt: Date.now(),
-			// Use max of: 2x estimate OR 40s (to match consumer 30s + 10s MQTT buffer)
-			timeoutMs: Math.max(nextTest.estimatedDurationMs * 2, 40000),
+		assignedAt: Date.now(),
+		// Use max of: 2x estimate OR 70s (to match consumer 60s + 10s MQTT buffer)
+		timeoutMs: Math.max(nextTest.estimatedDurationMs * 2, 70000),
 		};
 
 		this.assignedTests.set(nextTest.id, assignment);
@@ -424,11 +424,11 @@ export class BatchOrchestrator {
 		}
 	}
 
-	public buildTestQueue() {
-		console.log("🔨 Building test queue...\n");
+	public buildTestQueue(section: "all" | "transcription" | "completion" | "embedding" | "rag" | "model" | "translation" | "error" = "all") {
+		console.log(`🔨 Building test queue for section: "${section}"...\n`);
 
 		const builder = new TestBuilder();
-		const tests = builder.buildAllTests();
+		const tests = builder.buildTestsBySection([], section);
 
 		let counter = 0;
 		for (const test of tests) {
@@ -491,7 +491,14 @@ export class BatchOrchestrator {
 // Main execution
 const orchestrator = new BatchOrchestrator(env.MQTT_BROKER_URL);
 
-orchestrator.buildTestQueue();
+// Get section from command-line args or environment variable
+// Usage: bun run batch --section=transcription
+// Or: TEST_SECTION=transcription bun run batch
+const section = (process.argv.find(arg => arg.startsWith('--section='))?.split('=')[1] ||
+	process.env['QVAC_TEST_SECTION'] ||
+	'all') as "all" | "transcription" | "completion" | "embedding" | "rag" | "model" | "translation" | "error";
+
+orchestrator.buildTestQueue(section);
 
 // Wait for MQTT connection before starting
 setTimeout(() => {

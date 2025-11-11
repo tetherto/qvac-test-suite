@@ -34,7 +34,16 @@ interface TestInProgress {
 
 const consumers = new Map<string, ConsumerStats>();
 const testsInProgress = new Map<string, TestInProgress>();
-const completedTests: Array<{ testId: string; outcome: string; duration: number; consumerId: string; error?: string; output?: string }> = [];
+const completedTests: Array<{ 
+	testId: string; 
+	outcome: string; 
+	duration: number; 
+	consumerId: string; 
+	error?: string; 
+	output?: string;
+	expected?: string;
+	actual?: string;
+}> = [];
 
 let totalTestsInBatch = 0;
 let batchStartTime = Date.now();
@@ -198,6 +207,8 @@ client.on("message", (topic, payload) => {
 				consumerId: message.consumerId,
 				error: message.error,
 				output: message.output,
+				expected: message.expected,
+				actual: message.actual,
 			});
 			
 			const consumer = consumers.get(message.consumerId);
@@ -441,6 +452,46 @@ function generateHtmlReport() {
 			border-radius: 4px;
 			border: 1px solid #f3f4f6;
 		}
+		.comparison-container {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 12px;
+			margin: 12px 0;
+		}
+		.expected-box, .actual-box {
+			padding: 12px;
+			border-radius: 6px;
+			border: 2px solid;
+		}
+		.expected-box {
+			background: #f0fdf4;
+			border-color: #22c55e;
+		}
+		.actual-box {
+			background: #fef2f2;
+			border-color: #ef4444;
+		}
+		.box-label {
+			font-weight: 700;
+			font-size: 13px;
+			margin-bottom: 8px;
+			text-transform: uppercase;
+			letter-spacing: 0.5px;
+		}
+		.expected-box .box-label {
+			color: #166534;
+		}
+		.actual-box .box-label {
+			color: #991b1b;
+		}
+		.box-content {
+			font-family: 'Courier New', monospace;
+			font-size: 13px;
+			color: #1f2937;
+			white-space: pre-wrap;
+			word-wrap: break-word;
+			line-height: 1.5;
+		}
 		.log-section {
 			margin-top: 12px;
 			padding-top: 12px;
@@ -579,11 +630,33 @@ function generateHtmlReport() {
 							const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 							const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 							
-							// Build comprehensive error details with full log
+							// Build comprehensive error details with Expected vs Actual comparison
 							let errorDetailsHtml = '<div class="error-details">';
-							errorDetailsHtml += '<div class="error-label">❌ Error Details</div>';
-							errorDetailsHtml += '<div class="output-text">' + escapedError + '</div>';
+							errorDetailsHtml += '<div class="error-label">❌ Failure Analysis</div>';
 							
+							// Show Expected vs Actual if available
+							if (test.expected && test.actual) {
+								const escapedExpected = test.expected.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+								const escapedActual = test.actual.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+								errorDetailsHtml += '<div class="comparison-container">';
+								errorDetailsHtml += '<div class="expected-box">';
+								errorDetailsHtml += '<div class="box-label">✅ Expected</div>';
+								errorDetailsHtml += '<div class="box-content">' + escapedExpected + '</div>';
+								errorDetailsHtml += '</div>';
+								errorDetailsHtml += '<div class="actual-box">';
+								errorDetailsHtml += '<div class="box-label">❌ Actual</div>';
+								errorDetailsHtml += '<div class="box-content">' + escapedActual + '</div>';
+								errorDetailsHtml += '</div>';
+								errorDetailsHtml += '</div>';
+							}
+							
+							// Show error message
+							errorDetailsHtml += '<div class="log-section">';
+							errorDetailsHtml += '<div class="log-header">📋 Error Message</div>';
+							errorDetailsHtml += '<div class="output-text">' + escapedError + '</div>';
+							errorDetailsHtml += '</div>';
+							
+							// Show output if different from error
 							if (outputMsg !== errorMsg && outputMsg !== 'No output') {
 								errorDetailsHtml += '<div class="log-section">';
 								errorDetailsHtml += '<div class="log-header">📄 Test Output / Log</div>';
@@ -591,6 +664,7 @@ function generateHtmlReport() {
 								errorDetailsHtml += '</div>';
 							}
 							
+							// Show test information
 							errorDetailsHtml += '<div class="log-section">';
 							errorDetailsHtml += '<div class="log-header">ℹ️  Test Information</div>';
 							errorDetailsHtml += '<div class="output-text">';
@@ -658,14 +732,36 @@ function generateHtmlReport() {
 								const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 								const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 								
-								// Build comprehensive error details
+								// Build comprehensive error details with Expected vs Actual
 								let errorDetailsHtml = '<div class="error-details">';
-								errorDetailsHtml += '<div class="error-label">❌ Error Details</div>';
-								errorDetailsHtml += '<div class="output-text">' + escapedError + '</div>';
+								errorDetailsHtml += '<div class="error-label">❌ Failure Analysis</div>';
+								
+								// Show Expected vs Actual if available
+								if (test.expected && test.actual) {
+									const escapedExpected = test.expected.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+									const escapedActual = test.actual.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+									errorDetailsHtml += '<div class="comparison-container">';
+									errorDetailsHtml += '<div class="expected-box">';
+									errorDetailsHtml += '<div class="box-label">✅ Expected</div>';
+									errorDetailsHtml += '<div class="box-content">' + escapedExpected + '</div>';
+									errorDetailsHtml += '</div>';
+									errorDetailsHtml += '<div class="actual-box">';
+									errorDetailsHtml += '<div class="box-label">❌ Actual</div>';
+									errorDetailsHtml += '<div class="box-content">' + escapedActual + '</div>';
+									errorDetailsHtml += '</div>';
+									errorDetailsHtml += '</div>';
+								}
+								
+								// Show error message
+								errorDetailsHtml += '<div class="log-section"><div class="log-header">📋 Error Message</div>';
+								errorDetailsHtml += '<div class="output-text">' + escapedError + '</div></div>';
+								
+								// Show output if different
 								if (outputMsg !== errorMsg && outputMsg !== 'No output') {
 									errorDetailsHtml += '<div class="log-section"><div class="log-header">📄 Test Output / Log</div>';
 									errorDetailsHtml += '<div class="output-text">' + escapedOutput + '</div></div>';
 								}
+								
 								errorDetailsHtml += '<div class="log-section"><div class="log-header">ℹ️  Test Information</div>';
 								errorDetailsHtml += '<div class="output-text"><strong>Duration:</strong> ' + (test.duration / 1000).toFixed(2) + 's</div></div>';
 								errorDetailsHtml += '</div>';
@@ -709,14 +805,36 @@ function generateHtmlReport() {
 							const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 							const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 							
-							// Build comprehensive error details
+							// Build comprehensive error details with Expected vs Actual
 							let errorDetailsHtml = '<div class="error-details">';
-							errorDetailsHtml += '<div class="error-label">❌ Error Details</div>';
-							errorDetailsHtml += '<div class="output-text">' + escapedError + '</div>';
+							errorDetailsHtml += '<div class="error-label">❌ Failure Analysis</div>';
+							
+							// Show Expected vs Actual if available
+							if (test.expected && test.actual) {
+								const escapedExpected = test.expected.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+								const escapedActual = test.actual.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+								errorDetailsHtml += '<div class="comparison-container">';
+								errorDetailsHtml += '<div class="expected-box">';
+								errorDetailsHtml += '<div class="box-label">✅ Expected</div>';
+								errorDetailsHtml += '<div class="box-content">' + escapedExpected + '</div>';
+								errorDetailsHtml += '</div>';
+								errorDetailsHtml += '<div class="actual-box">';
+								errorDetailsHtml += '<div class="box-label">❌ Actual</div>';
+								errorDetailsHtml += '<div class="box-content">' + escapedActual + '</div>';
+								errorDetailsHtml += '</div>';
+								errorDetailsHtml += '</div>';
+							}
+							
+							// Show error message
+							errorDetailsHtml += '<div class="log-section"><div class="log-header">📋 Error Message</div>';
+							errorDetailsHtml += '<div class="output-text">' + escapedError + '</div></div>';
+							
+							// Show output if different
 							if (outputMsg !== errorMsg && outputMsg !== 'No output') {
 								errorDetailsHtml += '<div class="log-section"><div class="log-header">📄 Test Output / Log</div>';
 								errorDetailsHtml += '<div class="output-text">' + escapedOutput + '</div></div>';
 							}
+							
 							errorDetailsHtml += '<div class="log-section"><div class="log-header">ℹ️  Test Information</div>';
 							errorDetailsHtml += '<div class="output-text"><strong>Consumer:</strong> ' + test.consumerId + '<br>';
 							errorDetailsHtml += '<strong>Duration:</strong> ' + (test.duration / 1000).toFixed(2) + 's</div></div>';
