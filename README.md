@@ -71,6 +71,11 @@ bun run orchestrate
 cd qvac-test-consumer-desktop
 bun run batch
 ```
+To run one or more specific tests by their testID, use:
+```powershell
+cd qvac-test-consumer-desktop
+bun run batch testID1 testID2
+```
 
 **Optional: Monitor & Generate HTML Report** (after tests complete)
 ```bash

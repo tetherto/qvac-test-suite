@@ -7,3 +7,4 @@ reports/
 *.log
 *.apk
 
+**/.DS_Store
