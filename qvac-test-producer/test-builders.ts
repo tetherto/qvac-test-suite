@@ -1566,8 +1566,98 @@ export class TestBuilder {
 
 	buildAllTests(): TestDefinition[] {
 		const tests: TestDefinition[] = [];
+		return this.buildTestsBySection(tests, "all");
+	}
+
+	/**
+	 * Build tests filtered by section/category
+	 * @param section - "all", "transcription", "completion", "embedding", "rag", "model", "translation", or "error"
+	 */
+	buildTestsBySection(
+		tests: TestDefinition[],
+		section: "all" | "transcription" | "completion" | "embedding" | "rag" | "model" | "translation" | "error" = "all"
+	): TestDefinition[] {
+		tests = [];
 
 		// Model loading tests (no dependency - run first)
+		if (section === "all" || section === "model") {
+			tests.push(this.buildModelLoadLlmTest());
+			tests.push(this.buildModelLoadEmbeddingTest());
+			tests.push(this.buildModelLoadInvalidTest());
+			tests.push(this.buildModelUnloadTest());
+			tests.push(this.buildModelLoadConcurrentTest());
+			tests.push(this.buildModelReloadTest());
+		}
+
+		// LLM completion tests
+		if (section === "all" || section === "completion") {
+			tests.push(this.buildCompletionStreamingTest());
+			tests.push(this.buildCompletionContextSizeTest(512));
+			tests.push(this.buildCompletionContextSizeTest(2048));
+			tests.push(this.buildCompletionTemperatureTest(0.1));
+			tests.push(this.buildCompletionTemperatureTest(0.9));
+			tests.push(this.buildCompletionEmptyPromptTest());
+			tests.push(this.buildCompletionMultiTurnTest());
+			tests.push(this.buildCompletionInvalidModelTest());
+			tests.push(this.buildCompletionSystemMessageTest());
+			tests.push(this.buildCompletionMaxTokensTest());
+			tests.push(this.buildCompletionSpecialCharsTest());
+
+			// Phase 2: Advanced parameter tests
+			tests.push(this.buildCompletionStopSequencesTest());
+			tests.push(this.buildCompletionTopPTest());
+			tests.push(this.buildCompletionRepeatPenaltyTest());
+			tests.push(this.buildCompletionMinPTest());
+			tests.push(this.buildCompletionZeroTemperatureTest());
+
+			// Phase 3: Edge cases & advanced scenarios
+			tests.push(this.buildCompletionTopKTest());
+			tests.push(this.buildCompletionFrequencyPenaltyTest());
+			tests.push(this.buildCompletionPresencePenaltyTest());
+			tests.push(this.buildCompletionNegativeTemperatureTest());
+
+			// ========== PHASE 3.5: COMPREHENSIVE PARAMETER COVERAGE (Sprint 2) ==========
+			// Temperature variations
+			tests.push(this.buildCompletionTemperature00Test());
+			tests.push(this.buildCompletionTemperature05Test());
+			tests.push(this.buildCompletionTemperature10Test());
+			tests.push(this.buildCompletionTemperature15Test());
+
+			// top_p variations
+			tests.push(this.buildCompletionTopP01Test());
+			tests.push(this.buildCompletionTopP05Test());
+			tests.push(this.buildCompletionTopP10Test());
+
+			// Frequency penalty variations
+			tests.push(this.buildCompletionFrequencyPenaltyNeg10Test());
+			tests.push(this.buildCompletionFrequencyPenalty00Test());
+			tests.push(this.buildCompletionFrequencyPenalty10Test());
+
+			// Presence penalty variations
+			tests.push(this.buildCompletionPresencePenaltyNeg10Test());
+			tests.push(this.buildCompletionPresencePenalty00Test());
+			tests.push(this.buildCompletionPresencePenalty10Test());
+
+			// Seed (reproducibility) and stop sequences
+			tests.push(this.buildCompletionSeedReproducibilityTest());
+			tests.push(this.buildCompletionStopSequencesMultipleTest());
+		}
+
+		// Transcription tests
+		if (section === "all" || section === "transcription") {
+			tests.push(this.buildTranscriptionShortWavTest());
+			tests.push(this.buildTranscriptionShortMp3Test());
+			tests.push(this.buildTranscriptionAacTest());
+			tests.push(this.buildTranscriptionOggTest());
+			tests.push(this.buildTranscriptionSilenceTest());
+			tests.push(this.buildTranscriptionOnlyMusicTest());
+			tests.push(this.buildTranscriptionLongAudioTest());
+			tests.push(this.buildTranscriptionStreamingTest());
+			tests.push(this.buildTranscriptionVeryShortAudioTest());
+			tests.push(this.buildTranscriptionM4aTest());
+			tests.push(this.buildTranscriptionCorruptedMp3Test());
+			tests.push(this.buildTranscriptionCorruptedWavTest());
+		}
 		tests.push(this.buildModelLoadLlmTest());
 		tests.push(this.buildModelLoadEmbeddingTest());
 		tests.push(this.buildModelLoadInvalidTest());
@@ -1715,24 +1805,111 @@ export class TestBuilder {
 	tests.push(this.buildTranscriptionVeryShortAudioTest());
 
 		// Embedding tests
-		tests.push(this.buildEmbedSimpleTextTest());
-		tests.push(this.buildEmbedLongTextTest());
-		tests.push(this.buildEmbedEmptyTextTest());
-		tests.push(this.buildEmbedSimilarityTest());
-		tests.push(this.buildEmbedBatchTest());
-		tests.push(this.buildEmbedUnicodeTest());
-		tests.push(this.buildEmbedVeryShortTest());
-		tests.push(this.buildEmbedCodeSnippetTest());
-		tests.push(this.buildEmbedMultilingualTest());
-		tests.push(this.buildEmbedSpecialCharactersTest());
-	tests.push(this.buildEmbedNumbersOnlyTest());
-	// MOVED: Enhanced embedding tests with code files → END (trigger GGML assertion at ~852 tokens)
-	// MOVED: buildEmbedPythonCodeTest() → END
-	// MOVED: buildEmbedJavaScriptCodeTest() → END
-	// MOVED: buildEmbedJsonDataTest() → END
-	// MOVED: buildEmbedHtmlContentTest() → END
+		if (section === "all" || section === "embedding") {
+			tests.push(this.buildEmbedSimpleTextTest());
+			tests.push(this.buildEmbedLongTextTest());
+			tests.push(this.buildEmbedEmptyTextTest());
+			tests.push(this.buildEmbedSimilarityTest());
+			tests.push(this.buildEmbedBatchTest());
+			tests.push(this.buildEmbedUnicodeTest());
+			tests.push(this.buildEmbedVeryShortTest());
+			tests.push(this.buildEmbedCodeSnippetTest());
+			tests.push(this.buildEmbedMultilingualTest());
+			tests.push(this.buildEmbedSpecialCharactersTest());
+			tests.push(this.buildEmbedNumbersOnlyTest());
+			tests.push(this.buildEmbedSemanticSimilarityTest());
+			tests.push(this.buildEmbedPythonCodeTest());
+			tests.push(this.buildEmbedJavaScriptCodeTest());
+			tests.push(this.buildEmbedJsonDataTest());
+			tests.push(this.buildEmbedHtmlContentTest());
+		}
 
 		// Translation tests
+		if (section === "all" || section === "translation") {
+			tests.push(this.buildTranslationEnToEsTest());
+			tests.push(this.buildTranslationEsToEnTest());
+			tests.push(this.buildTranslationErrorTest());
+		}
+
+		// ========== PHASE 4: ROBUSTNESS & ADVANCED SCENARIOS ==========
+		if (section === "all" || section === "completion") {
+			tests.push(this.buildCompletionConcurrentRequestsTest());
+			tests.push(this.buildCompletionRepeatedTokensTest());
+			tests.push(this.buildCompletionWithWhitespaceTest());
+			tests.push(this.buildCompletionJsonFormatTest());
+			tests.push(this.buildCompletionCodeGenerationTest());
+
+			// ========== PHASE 5: REAL-WORLD SCENARIOS ==========
+			tests.push(this.buildCompletionConversationContextTest());
+			tests.push(this.buildCompletionSingleWordTest());
+			tests.push(this.buildCompletionListGenerationTest());
+			tests.push(this.buildCompletionQaFromContextTest());
+			tests.push(this.buildCompletionSimpleYesNoTest());
+			tests.push(this.buildCompletionSentenceCompletionTest());
+
+			// Long prompt tests
+			tests.push(this.buildCompletionLongPromptTest());
+			tests.push(this.buildCompletionVeryLongContextTest());
+			tests.push(this.buildCompletionExtremelyLongPromptTest());
+		}
+
+		// ========== PHASE 4: MODEL MANAGEMENT TESTS ==========
+		if (section === "all" || section === "model") {
+			tests.push(this.buildModelSwitchLlmTest());
+			tests.push(this.buildModelReloadAfterErrorTest());
+		}
+
+		// ========== PHASE 6: RAG (RETRIEVAL-AUGMENTED GENERATION) ==========
+		if (section === "all" || section === "rag") {
+			tests.push(this.buildRagEmbeddingsSmallTest());
+			tests.push(this.buildRagEmbeddingsMediumTest());
+			tests.push(this.buildRagEmbeddingsLargeTest());
+			tests.push(this.buildRagEmbeddingsTest(50, 10));
+			tests.push(this.buildRagEmbeddingsTest(100, 20));
+			tests.push(this.buildRagEmbeddingsTest(200, 50));
+			tests.push(this.buildRagEmbeddingsTest(500, 100));
+			// Enhanced RAG tests with real documents
+			tests.push(this.buildRagLargeDocumentTest());
+			tests.push(this.buildRagMediumDocumentTest());
+			tests.push(this.buildRagSmallDocumentTest());
+  		tests.push(this.buildRagCorruptedDocumentTest());
+		}
+
+		// ========== PHASE 5.5: ERROR HANDLING & PARAMETER VALIDATION (Sprint 1 - Priority 1) ==========
+		if (section === "all" || section === "error") {
+			console.log("\n✅ Adding Error Handling & Parameter Validation Tests (Priority 1)");
+
+			// Error handling tests (7 tests - removed 3 that crash/hang consumer)
+			tests.push(this.buildErrorCompletionNegativeTemperatureTest());
+			tests.push(this.buildErrorCompletionExcessiveTemperatureTest());
+			tests.push(this.buildErrorCompletionInvalidTopPTest());
+			tests.push(this.buildErrorCompletionNegativeMaxTokensTest());
+			tests.push(this.buildErrorEmbeddingEmptyInputTest());
+			// REMOVED: buildErrorTranslationInvalidLanguageTest() - SDK hangs 30s
+			// REMOVED: buildErrorModelInitInvalidPathTest() - SDK hangs 30s
+			tests.push(this.buildErrorUseUnloadedModelTest());
+			// REMOVED: buildErrorCompletionMalformedRequestTest() - Crashes consumer with ZodError
+			tests.push(this.buildErrorRagUnloadedModelTest());
+
+			// Parameter validation tests (5 tests)
+			tests.push(this.buildParamTemperatureMinTest());
+			tests.push(this.buildParamTemperatureMaxTest());
+			tests.push(this.buildParamTopPMinTest());
+			tests.push(this.buildParamTopPMaxTest());
+			tests.push(this.buildParamMaxTokensSmallTest());
+
+			// TODO placeholder tests (5 tests) - awaiting SDK documentation
+			console.log("\n⏳ Adding TODO placeholder tests (needs SDK documentation)");
+			tests.push(this.buildTodoAddonDiscoveryTest());
+			tests.push(this.buildTodoAddonMetadataTest());
+			tests.push(this.buildTodoLoadingProgressTest());
+			tests.push(this.buildTodoTypedErrorCodesTest());
+			tests.push(this.buildTodoAddonCrashDetectionTest());
+		}
+
+		console.log(`\n📊 Total tests built for section "${section}": ${tests.length} tests`);
+		return tests;
+	}
 		tests.push(this.buildTranslationEnToEsTest());
 		tests.push(this.buildTranslationEsToEnTest());
 		tests.push(this.buildTranslationErrorTest());
