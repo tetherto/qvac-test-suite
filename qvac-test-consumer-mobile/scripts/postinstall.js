@@ -49,4 +49,15 @@ if (isWindows) {
   console.log('✅ Postinstall complete (non-Windows platform)');
 }
 
+// Apply patches using patch-package
+console.log('📦 Applying patches...');
+try {
+  const { execSync } = require('child_process');
+  execSync('npx patch-package', { stdio: 'inherit', cwd: path.join(__dirname, '..') });
+  console.log('✅ Patches applied successfully');
+} catch (err) {
+  console.error('⚠️  Failed to apply patches:', err.message);
+  // Don't fail the install if patches fail
+}
+
 

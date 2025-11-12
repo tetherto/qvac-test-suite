@@ -1,4 +1,4 @@
-import mqtt, { type MqttClient } from "mqtt";
+import mqtt, { type IClientPublishOptions, type MqttClient } from "mqtt";
 import { env } from "./env";
 import { TestBuilder } from "./test-builders";
 
@@ -25,7 +25,6 @@ interface ConsumerInfo {
 	lastSeen: number;
 	testsCompleted: number;
 	testsRunning: number;
-	filterTestIds?: string[] | null;
 }
 
 interface TestResult {
@@ -107,9 +106,6 @@ export class BatchOrchestrator {
 
 	private handleConsumerRegistration(message: any) {
 		const { consumerId, platform } = message;
-		const filterTestIds: string[] | null = Array.isArray(message.filterTestIds) && message.filterTestIds.length > 0
-			? message.filterTestIds as string[]
-			: null;
 		const now = Date.now();
 		
 		this.consumers.set(consumerId, {
@@ -119,20 +115,15 @@ export class BatchOrchestrator {
 			lastSeen: now,
 			testsCompleted: 0,
 			testsRunning: 0,
-			filterTestIds,
 		});
 
 		console.log(`\n🔌 Consumer registered: ${consumerId} (${platform})`);
 		this.displayStatus();
 
-		// Send acknowledgment (include filtered total for this consumer if applicable)
-		const totalForConsumer = filterTestIds && filterTestIds.length > 0
-			? this.testQueue.filter(t => filterTestIds.includes(t.testId)).length
-			: this.testQueue.length;
-
+		// Send acknowledgment
 		this.client.publish(
 			`qvac/register-ack/${consumerId}`,
-			JSON.stringify({ status: "registered", totalTests: totalForConsumer }),
+			JSON.stringify({ status: "registered", totalTests: this.testQueue.length }),
 			{ qos: 1 },
 		);
 	}
@@ -152,19 +143,13 @@ export class BatchOrchestrator {
 		const nextTest = this.getNextTestForConsumer(consumerId);
 
 		if (!nextTest) {
-			// Check if there are any eligible tests for any consumer
-			const anyEligible = this.hasAnyEligibleTests();
-			// Signal queue empty for this consumer
+			// No more tests - signal queue empty
 			this.client.publish(
 				`qvac/test-assigned/${consumerId}`,
 				JSON.stringify({ status: "queue-empty" }),
 				{ qos: 1 },
 			);
-			console.log(`📭 No eligible tests for ${consumerId}`);
-			// If no eligible tests remain globally and nothing assigned, complete batch
-			if (!anyEligible && this.assignedTests.size === 0) {
-				this.completeBatch();
-			}
+			console.log(`📭 No more tests for ${consumerId}`);
 			return;
 		}
 
@@ -254,40 +239,17 @@ export class BatchOrchestrator {
 	}
 
 	private getNextTestForConsumer(consumerId: string): TestCase | null {
-		// If the consumer provided a filter, pick the first matching test; otherwise FIFO
-		const consumer = this.consumers.get(consumerId);
-		const filter = consumer?.filterTestIds && consumer.filterTestIds.length > 0 ? consumer.filterTestIds : null;
-		if (filter) {
-			const idx = this.testQueue.findIndex(t => filter.includes(t.testId));
-			if (idx >= 0) return this.testQueue[idx] ?? null;
-			return null;
-		}
-		return this.testQueue.length > 0 ? this.testQueue[0] ?? null : null;
+		// Simple FIFO for now - could be enhanced with dependency-aware scheduling
+		return this.testQueue.length > 0 ? this.testQueue[0] : null;
 	}
 
 	private checkBatchComplete() {
 		const queueEmpty = this.testQueue.length === 0;
 		const noAssignedTests = this.assignedTests.size === 0;
 
-		// If queue is not empty but contains no tests eligible for any consumer, treat as complete
-		const noEligibleForAnyConsumer = !queueEmpty && !this.hasAnyEligibleTests();
-
-		if ((queueEmpty || noEligibleForAnyConsumer) && noAssignedTests) {
+		if (queueEmpty && noAssignedTests) {
 			this.completeBatch();
 		}
-	}
-
-	private hasAnyEligibleTests(): boolean {
-		if (this.testQueue.length === 0) return false;
-		if (this.consumers.size === 0) return this.testQueue.length > 0;
-		// If any test in queue matches any consumer's filter (or consumer has no filter), it's eligible
-		for (const test of this.testQueue) {
-			for (const consumer of this.consumers.values()) {
-				const filter = consumer.filterTestIds && consumer.filterTestIds.length > 0 ? consumer.filterTestIds : null;
-				if (!filter || filter.includes(test.testId)) return true;
-			}
-		}
-		return false;
 	}
 
 	private checkTimeouts() {
@@ -400,7 +362,7 @@ export class BatchOrchestrator {
 			// Extract category from testId
 			let category = result.testId;
 			if (category.includes("-")) {
-				category = category.split("-")[0] ?? category;
+				category = category.split("-")[0];
 			}
 
 			if (!categories.has(category)) {
@@ -417,21 +379,39 @@ export class BatchOrchestrator {
 
 		for (const [category, stats] of categories) {
 			const total = stats.passed + stats.failed;
-			const rate = total > 0 ? ((stats.passed / total) * 100).toFixed(0) : "0";
+			const rate = ((stats.passed / total) * 100).toFixed(0);
 			console.log(
 				`   ${category.padEnd(20)} ${stats.passed}/${total} (${rate}%)`,
 			);
 		}
 	}
 
-	public buildTestQueue(section: "all" | "transcription" | "completion" | "embedding" | "rag" | "model" | "translation" | "error" = "all") {
-		console.log(`🔨 Building test queue for section: "${section}"...\n`);
+	public buildTestQueue() {
+		console.log("🔨 Building test queue...\n");
 
 		const builder = new TestBuilder();
-		const tests = builder.buildTestsBySection([], section);
+		const allTests = builder.buildAllTests();
+
+		// Apply test filtering if TEST_FILTER env var is set
+		const testFilter = env.TEST_FILTER;
+		let filteredTests = allTests;
+		
+		if (testFilter) {
+			const filters = testFilter.split(',').map(f => f.trim()).filter(Boolean);
+			console.log(`🔍 Filtering tests by: ${filters.join(', ')}`);
+			
+			filteredTests = allTests.filter(test => 
+				filters.some(filter => 
+					// Match by testId prefix OR by dependency (e.g., "llm", "whisper")
+					test.testId.startsWith(filter) || test.dependency === filter
+				)
+			);
+			
+			console.log(`📋 Filtered: ${filteredTests.length} of ${allTests.length} tests\n`);
+		}
 
 		let counter = 0;
-		for (const test of tests) {
+		for (const test of filteredTests) {
 			const testCase: TestCase = {
 				id: `test-${Date.now()}-${counter++}`,
 				testId: test.testId,
@@ -491,14 +471,7 @@ export class BatchOrchestrator {
 // Main execution
 const orchestrator = new BatchOrchestrator(env.MQTT_BROKER_URL);
 
-// Get section from command-line args or environment variable
-// Usage: bun run batch --section=transcription
-// Or: TEST_SECTION=transcription bun run batch
-const section = (process.argv.find(arg => arg.startsWith('--section='))?.split('=')[1] ||
-	process.env['QVAC_TEST_SECTION'] ||
-	'all') as "all" | "transcription" | "completion" | "embedding" | "rag" | "model" | "translation" | "error";
-
-orchestrator.buildTestQueue(section);
+orchestrator.buildTestQueue();
 
 // Wait for MQTT connection before starting
 setTimeout(() => {
