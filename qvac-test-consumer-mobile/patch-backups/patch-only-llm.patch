@@ -1,0 +1,90 @@
+diff --git a/node_modules/@tetherto/sdk-fix-openclv1/dist/server/bare/addons/llamacpp/create-model.js b/node_modules/@tetherto/sdk-fix-openclv1/dist/server/bare/addons/llamacpp/create-model.js
+index 96070de..0d0e99e 100644
+--- a/node_modules/@tetherto/sdk-fix-openclv1/dist/server/bare/addons/llamacpp/create-model.js
++++ b/node_modules/@tetherto/sdk-fix-openclv1/dist/server/bare/addons/llamacpp/create-model.js
+@@ -1,6 +1,21 @@
+-import LlmLlamacpp from "@tetherto/llm-llamacpp";
+-import EmbedLlamacpp from "@qvac/embed-llamacpp";
+ import { Readable } from "bare-stream";
++
++let LlmLlamacpp = null;
++let EmbedLlamacpp = null;
++async function getLlmLlamacpp() {
++    if (!LlmLlamacpp) {
++        const mod = await import("@tetherto/llm-llamacpp");
++        LlmLlamacpp = mod.default;
++    }
++    return LlmLlamacpp;
++}
++async function getEmbedLlamacpp() {
++    if (!EmbedLlamacpp) {
++        const mod = await import("@qvac/embed-llamacpp");
++        EmbedLlamacpp = mod.default;
++    }
++    return EmbedLlamacpp;
++}
+ import { createStreamLogger } from "../../../../logging/index.js";
+ import { parseModelPath } from "../../../utils/index.js";
+ // Mimic qvac-lib-dl-filesystem functionality
+@@ -32,7 +47,8 @@ function transformLlmConfig(llmConfig) {
+     }
+     return transformed;
+ }
+-export function createLlmModel(modelId, modelPath, llmConfig, projectionModelPath) {
++export async function createLlmModel(modelId, modelPath, llmConfig, projectionModelPath) {
++    const LlmClass = await getLlmLlamacpp();
+     const { dirPath, basePath } = parseModelPath(modelPath);
+     const dl = createFilesystemDLMimic();
+     const logger = createStreamLogger(modelId, "llamacpp:llm");
+@@ -49,9 +65,10 @@ export function createLlmModel(modelId, modelPath, llmConfig, projectionModelPat
+         modelPath,
+         modelConfig: llmConfigStrings,
+     };
+-    return new LlmLlamacpp(args, llmConfigStrings);
++    return new LlmClass(args, llmConfigStrings);
+ }
+-export function createEmbeddingsModel(modelId, modelPath, embedConfig) {
++export async function createEmbeddingsModel(modelId, modelPath, embedConfig) {
++    const EmbedClass = await getEmbedLlamacpp();
+     const { dirPath, basePath } = parseModelPath(modelPath);
+     const dl = createFilesystemDLMimic();
+     const logger = createStreamLogger(modelId, "llamacpp:embed");
+@@ -63,5 +80,5 @@ export function createEmbeddingsModel(modelId, modelPath, embedConfig) {
+         modelName: basePath,
+         modelPath,
+     };
+-    return new EmbedLlamacpp(args, embedConfig.config);
++    return new EmbedClass(args, embedConfig.config);
+ }
+diff --git a/node_modules/@tetherto/sdk-fix-openclv1/dist/server/bare/addons/load-model.js b/node_modules/@tetherto/sdk-fix-openclv1/dist/server/bare/addons/load-model.js
+index 3e82688..c0c73e6 100644
+--- a/node_modules/@tetherto/sdk-fix-openclv1/dist/server/bare/addons/load-model.js
++++ b/node_modules/@tetherto/sdk-fix-openclv1/dist/server/bare/addons/load-model.js
+@@ -34,22 +34,22 @@ export async function loadModel(params) {
+     let model;
+     switch (modelType) {
+         case "llm":
+-            model = createLlmModel(modelId, modelPath, modelConfig, projectionModelPath);
++            model = await createLlmModel(modelId, modelPath, modelConfig, projectionModelPath);
+             break;
+         case "whisper":
+-            model = createWhisperModel(modelId, modelPath, modelConfig, vadModelPath);
++            model = await createWhisperModel(modelId, modelPath, modelConfig, vadModelPath);
+             break;
+         case "embeddings":
+-            model = createEmbeddingsModel(modelId, modelPath, modelConfig);
++            model = await createEmbeddingsModel(modelId, modelPath, modelConfig);
+             break;
+         case "nmt":
+-            model = createNmtModel(modelId, modelPath, modelConfig);
++            model = await createNmtModel(modelId, modelPath, modelConfig);
+             break;
+         case "tts":
+             if (!eSpeakDataPath) {
+                 throw new Error("eSpeakDataPath is required for TTS models");
+             }
+-            model = createTtsModel(modelId, modelPath, modelConfig, ttsConfigModelPath, eSpeakDataPath);
++            model = await createTtsModel(modelId, modelPath, modelConfig, ttsConfigModelPath, eSpeakDataPath);
+             break;
+         default:
+             // Should never happen
