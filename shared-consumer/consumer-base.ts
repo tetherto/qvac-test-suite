@@ -1,0 +1,472 @@
+import type { MqttClient } from "mqtt";
+import type { TestExecutor } from "./types";
+
+export interface TestMessage {
+	testId: string;
+	params: any;
+	expectation: any;
+	expectedOutcome?: string;
+}
+
+export interface TestAssignment {
+	status: string;
+	uniqueTestId?: string;
+	test?: TestMessage;
+	totalTests?: number;
+}
+
+export interface ConsumerCallbacks {
+	log: (message: string) => void;
+	updateStats: (update: {
+		testsCompleted?: number;
+		testsPassed?: number;
+		testsFailed?: number;
+		totalTests?: number;
+		currentTest?: string;
+		isComplete?: boolean;
+	}) => void;
+	onShutdown?: () => void;
+}
+
+export abstract class ConsumerBase {
+	protected client: MqttClient;
+	protected consumerId: string;
+	protected platform: string;
+	protected llmModelId: string | null = null;
+	protected whisperModelId: string | null = null;
+	protected embeddingModelId: string | null = null;
+	protected translationModelId: string | null = null;
+	protected executor: any; // TestExecutor type
+	protected registered = false;
+	protected testsCompleted = 0;
+	protected testsPassed = 0;
+	protected testsFailed = 0;
+	protected isProcessingTest = false;
+	protected shutdownRequested = false;
+	protected callbacks: ConsumerCallbacks;
+
+	constructor(
+		client: MqttClient,
+		consumerId: string,
+		platform: string,
+		executor: any,
+		callbacks: ConsumerCallbacks
+	) {
+		this.client = client;
+		this.consumerId = consumerId;
+		this.platform = platform;
+		this.executor = executor;
+		this.callbacks = callbacks;
+	}
+
+	protected log(message: string) {
+		this.callbacks.log(message);
+	}
+
+	protected updateStats(update: Parameters<ConsumerCallbacks['updateStats']>[0]) {
+		this.callbacks.updateStats(update);
+	}
+
+	// Abstract methods that platforms must implement
+	protected abstract loadLlmModel(): Promise<string>;
+	protected abstract loadWhisperModel(): Promise<string>;
+	protected abstract loadEmbeddingModel(): Promise<string>;
+
+	// Determine which model type a test needs
+	protected getRequiredModelType(testId: string): 'llm' | 'whisper' | 'embedding' | 'translation' | null {
+		if (testId.startsWith("transcription")) {
+			return 'whisper';
+		} else if (testId.startsWith("translation")) {
+			return 'translation';
+		} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
+			return 'embedding';
+		} else if (
+			testId.startsWith("completion") ||
+			testId.startsWith("model-load") ||
+			testId.startsWith("model-unload") ||
+			testId.startsWith("model-switch") ||
+			testId.startsWith("model-reload")
+		) {
+			return 'llm';
+		} else if (testId.startsWith("error-") || testId.startsWith("param-")) {
+			if (testId.includes("completion") || testId.includes("translation") || testId.includes("malformed")) {
+				return 'llm';
+			} else if (testId.includes("embedding") || testId.includes("rag")) {
+				return 'embedding';
+			} else if (testId.includes("transcription")) {
+				return 'whisper';
+			} else {
+				return 'llm';
+			}
+		}
+		return null;
+	}
+
+	// Ensure required model is loaded for a test
+	protected async ensureModelForTest(testId: string): Promise<string | null> {
+		const requiredModelType = this.getRequiredModelType(testId);
+
+		if (requiredModelType === 'llm') {
+			if (!this.llmModelId) {
+				this.log(`   📦 Loading LLM model...`);
+				this.llmModelId = await this.loadLlmModel();
+			}
+			return this.llmModelId;
+		}
+
+		if (requiredModelType === 'embedding') {
+			if (!this.embeddingModelId) {
+				this.log(`   📦 Loading Embedding model...`);
+				this.embeddingModelId = await this.loadEmbeddingModel();
+			}
+			return this.embeddingModelId;
+		}
+
+		if (requiredModelType === 'whisper') {
+			if (!this.whisperModelId) {
+				this.log(`   📦 Loading Whisper model...`);
+				this.whisperModelId = await this.loadWhisperModel();
+			}
+			return this.whisperModelId;
+		}
+
+		if (requiredModelType === 'translation') {
+			// Translation uses the LLM model
+			if (!this.llmModelId) {
+				this.log(`   📦 Loading LLM model for translation...`);
+				this.llmModelId = await this.loadLlmModel();
+			}
+			this.translationModelId = this.llmModelId;
+			return this.llmModelId;
+		}
+
+		return null;
+	}
+
+	protected requestNextTest() {
+		if (!this.registered || this.isProcessingTest || this.shutdownRequested) {
+			return;
+		}
+
+		this.client.publish(
+			"qvac/request-test",
+			JSON.stringify({
+				consumerId: this.consumerId,
+				timestamp: new Date().toISOString(),
+			}),
+			{ qos: 1 }
+		);
+	}
+
+	public setupMqttHandlers() {
+		this.client.on("connect", () => {
+			this.log("✅ Connected to MQTT broker");
+
+			// Subscribe to consumer-specific topics
+			this.client.subscribe(
+				[
+					`qvac/register-ack/${this.consumerId}`,
+					`qvac/test-assigned/${this.consumerId}`,
+					"qvac/batch-complete",
+				],
+				{ qos: 1 },
+				(err) => {
+					if (err) {
+						this.log(`❌ Failed to subscribe: ${err.message}`);
+						return;
+					}
+					this.log("📡 Subscribed to topics\n");
+
+					// Register with producer (with retry)
+					this.sendRegistration();
+
+					const registrationInterval = setInterval(() => {
+						if (!this.registered) {
+							this.log(`🔄 Re-sending registration...`);
+							this.sendRegistration();
+						} else {
+							clearInterval(registrationInterval);
+						}
+					}, 3000);
+				}
+			);
+		});
+
+		this.client.on("message", async (topic, payload) => {
+			try {
+				const message = JSON.parse(payload.toString());
+
+				if (topic === `qvac/register-ack/${this.consumerId}`) {
+					this.handleRegistrationAck(message);
+				} else if (topic === `qvac/test-assigned/${this.consumerId}`) {
+					await this.handleTestAssignment(message);
+				} else if (topic === "qvac/batch-complete") {
+					this.handleBatchComplete(message);
+				}
+			} catch (error: any) {
+				this.log(`❌ Error handling ${topic}: ${error.message}`);
+			}
+		});
+
+		this.client.on("error", (err) => {
+			this.log(`❌ MQTT error: ${err.message}`);
+		});
+	}
+
+	protected sendRegistration() {
+		this.client.publish(
+			"qvac/register",
+			JSON.stringify({
+				consumerId: this.consumerId,
+				platform: this.platform,
+				timestamp: new Date().toISOString(),
+			}),
+			{ qos: 1 }
+		);
+	}
+
+	protected handleRegistrationAck(message: any) {
+		this.log(`🔌 Registration ack - ${message.totalTests} tests in queue\n`);
+		this.registered = true;
+		this.updateStats({ totalTests: message.totalTests });
+		this.requestNextTest();
+	}
+
+	protected async handleTestAssignment(assignment: TestAssignment) {
+		if (assignment.status === "queue-empty") {
+			this.log("📭 No more tests in queue");
+			if (!this.isProcessingTest) {
+				this.shutdown();
+			}
+			return;
+		}
+
+		if (assignment.status === "assigned" && assignment.test && assignment.uniqueTestId) {
+			await this.executeTest(assignment.uniqueTestId, assignment.test);
+		}
+	}
+
+	protected handleBatchComplete(message: any) {
+		this.log("\n🎉 Batch complete!");
+		this.log(`📊 Total: ${message.totalTests}`);
+		this.log(`✅ Passed: ${message.successCount}`);
+		this.log(`❌ Failed: ${message.failureCount}`);
+		this.log(`⏱️  Duration: ${(message.duration / 1000).toFixed(2)}s`);
+
+		this.shutdownRequested = true;
+		this.updateStats({ isComplete: true });
+		
+		if (!this.isProcessingTest) {
+			this.shutdown();
+		}
+	}
+
+	protected async executeTest(uniqueTestId: string, test: TestMessage) {
+		this.isProcessingTest = true;
+		const { testId, params, expectation } = test;
+
+		this.log(`▶️  ${testId}`);
+		this.updateStats({ currentTest: testId });
+
+		// Notify producer that test has started
+		this.client.publish(
+			"qvac/test-start",
+			JSON.stringify({
+				consumerId: this.consumerId,
+				uniqueTestId,
+				timestamp: new Date().toISOString(),
+			}),
+			{ qos: 1 }
+		);
+
+		const startTime = Date.now();
+
+		try {
+			// Ensure required model is loaded for this test
+			const modelId = await this.ensureModelForTest(testId);
+
+			// Calculate timeout based on test type
+			const timeoutMs = this.getTestTimeout(testId);
+
+			// Execute the test with timeout
+			const testPromise = this.executor.executeTest(testId, modelId, params, expectation);
+			const timeoutPromise = new Promise<never>((_, reject) => {
+				setTimeout(
+					() => reject(new Error(`Test timeout after ${timeoutMs / 1000}s`)),
+					timeoutMs
+				);
+			});
+
+			const result = await Promise.race([testPromise, timeoutPromise]);
+
+			const duration = Date.now() - startTime;
+			const outcome = result.passed ? "success" : "failure";
+
+			this.log(`${outcome === "success" ? "✅" : "❌"} ${testId} (${duration}ms)`);
+			if (!result.passed && result.output) {
+				this.log(`   ${result.output.substring(0, 100)}`);
+			}
+
+			// Update model ID if test returned a new one
+			if (result.modelId) {
+				if (testId.startsWith("model-load-llm") || testId.startsWith("model-switch") || testId.startsWith("model-reload") || testId.startsWith("completion")) {
+					this.llmModelId = result.modelId;
+				} else if (testId.startsWith("model-load-embedding")) {
+					this.embeddingModelId = result.modelId;
+				} else if (testId.startsWith("model-load-whisper")) {
+					this.whisperModelId = result.modelId;
+				}
+			}
+
+			// Update stats
+			this.testsCompleted++;
+			if (outcome === "success") {
+				this.testsPassed++;
+			} else {
+				this.testsFailed++;
+			}
+			
+			this.updateStats({
+				testsCompleted: this.testsCompleted,
+				testsPassed: this.testsPassed,
+				testsFailed: this.testsFailed,
+			});
+
+			// Send result to producer
+			this.client.publish(
+				"qvac/results",
+				JSON.stringify({
+					consumerId: this.consumerId,
+					testId,
+					uniqueTestId,
+					outcome,
+					duration,
+					timestamp: new Date().toISOString(),
+					error: result.passed ? undefined : result.output,
+				}),
+				{ qos: 1 }
+			);
+		} catch (error: any) {
+			const duration = Date.now() - startTime;
+			const errorMsg = error.message || "Unknown error";
+
+			this.log(`❌ ${testId} failed: ${errorMsg}`);
+
+			// Check if this looks like an SDK crash/hang
+			const isSdkCrash = errorMsg.includes("timeout") || errorMsg.includes("hung") || errorMsg.includes("GGML");
+			if (isSdkCrash) {
+				await this.attemptCrashRecovery();
+			}
+
+			// Update stats
+			this.testsCompleted++;
+			this.testsFailed++;
+			this.updateStats({
+				testsCompleted: this.testsCompleted,
+				testsFailed: this.testsFailed,
+			});
+
+			// Send failure result
+			this.client.publish(
+				"qvac/results",
+				JSON.stringify({
+					consumerId: this.consumerId,
+					testId,
+					uniqueTestId,
+					outcome: "failure",
+					duration,
+					timestamp: new Date().toISOString(),
+					error: errorMsg,
+					sdkCrash: isSdkCrash ? true : undefined,
+				}),
+				{ qos: 1 }
+			);
+		} finally {
+			this.isProcessingTest = false;
+
+			if (!this.shutdownRequested) {
+				setTimeout(() => this.requestNextTest(), 100);
+			}
+		}
+	}
+
+	protected getTestTimeout(testId: string): number {
+		const isDestructiveTest = testId.includes("embed-python") || testId.includes("embed-javascript") || 
+		                          testId.includes("embed-json") || testId.includes("embed-html") ||
+		                          testId.includes("very-long") || testId.includes("extremely-long") ||
+		                          testId.includes("corrupted");
+		const isLargeRagTest = testId.includes("rag-large");
+		const isMediumRagTest = testId.includes("rag-medium");
+		const isSmallRagTest = testId.includes("rag-small");
+		const isLongPromptTest = testId === "completion-long-prompt";
+		const isTranscriptionTest = testId.startsWith("transcription-");
+		
+		if (isDestructiveTest) {
+			return 10000; // 10s
+		} else if (isLargeRagTest) {
+			return 120000; // 120s
+		} else if (isMediumRagTest) {
+			return 90000; // 90s
+		} else if (isSmallRagTest || isLongPromptTest) {
+			return 60000; // 60s
+		} else if (isTranscriptionTest) {
+			return 60000; // 60s
+		} else {
+			return 60000; // 60s default
+		}
+	}
+
+	protected async attemptCrashRecovery() {
+		this.log(`   ⚠️  SDK CRASH DETECTED - attempting recovery...`);
+		try {
+			// Import unloadModel - must be provided by subclass
+			const { unloadModel } = await this.getSDKFunctions();
+
+			if (this.llmModelId) {
+				await unloadModel({ modelId: this.llmModelId });
+				this.llmModelId = null;
+				this.log(`   🔄 Unloaded LLM model`);
+			}
+			if (this.whisperModelId) {
+				await unloadModel({ modelId: this.whisperModelId });
+				this.whisperModelId = null;
+				this.log(`   🔄 Unloaded Whisper model`);
+			}
+			if (this.embeddingModelId) {
+				await unloadModel({ modelId: this.embeddingModelId });
+				this.embeddingModelId = null;
+				this.log(`   🔄 Unloaded Embedding model`);
+			}
+			if (this.translationModelId) {
+				await unloadModel({ modelId: this.translationModelId });
+				this.translationModelId = null;
+				this.log(`   🔄 Unloaded Translation model`);
+			}
+			this.log(`   ✅ Recovery complete - models will reload on next test`);
+		} catch (recoveryError: any) {
+			this.log(`   ⚠️  Recovery failed: ${recoveryError?.message || String(recoveryError)}`);
+			this.log(`   ℹ️  Subsequent tests may fail (cascade effect)`);
+		}
+	}
+
+	// Abstract method to get SDK functions (platform-specific)
+	protected abstract getSDKFunctions(): Promise<{ unloadModel: any }>;
+
+	protected shutdown() {
+		this.log("\n👋 Consumer shutting down...");
+		this.client.end(false, {}, () => {
+			if (this.callbacks.onShutdown) {
+				this.callbacks.onShutdown();
+			}
+		});
+	}
+
+	public forceShutdown() {
+		if (this.shutdownRequested) {
+			this.log("⚠️  Force shutdown - closing immediately");
+			this.shutdown();
+		}
+	}
+}
+
+
