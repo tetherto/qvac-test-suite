@@ -23,7 +23,7 @@
       "adaptiveIcon": {
         "backgroundColor": "#ffffff"
       },
-      "minSdkVersion": 29,
+      "minSdkVersion": 31,
       "edgeToEdgeEnabled": true
     },
     "web": {
@@ -36,7 +36,10 @@
         "expo-build-properties",
         {
           "android": {
-            "minSdkVersion": 29
+            "minSdkVersion": 31,
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "enableMinifyInReleaseBuilds": true
           }
         }
       ]
