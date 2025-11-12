@@ -1,0 +1,17 @@
+{
+	"name": "qvac-sdk-tests",
+	"version": "1.0.0",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"monitor": "bun run verify-tests.ts",
+		"batch:monitor": "bun run batch-monitor.ts",
+		"broker": "node mqtt-websocket-broker.cjs"
+	},
+	"dependencies": {
+		"aedes": "^0.51.3",
+		"canvas": "^3.2.0",
+		"mqtt": "^5.14.1",
+		"websocket-stream": "^5.5.2"
+	}
+}

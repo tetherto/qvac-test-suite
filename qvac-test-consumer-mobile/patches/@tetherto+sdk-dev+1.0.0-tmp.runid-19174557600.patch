@@ -1,0 +1,13 @@
+diff --git a/node_modules/@tetherto/sdk-dev/dist/client/rpc/expo-rpc-client.js b/node_modules/@tetherto/sdk-dev/dist/client/rpc/expo-rpc-client.js
+index 3c77a73..6bb5ea4 100644
+--- a/node_modules/@tetherto/sdk-dev/dist/client/rpc/expo-rpc-client.js
++++ b/node_modules/@tetherto/sdk-dev/dist/client/rpc/expo-rpc-client.js
+@@ -21,7 +21,7 @@ export const getRPC = async () => {
+             // We need require here or the contents of the bundle will be interpreted as a module
+             mobileBundle =
+                 // eslint-disable-next-line @typescript-eslint/no-require-imports
+-                require("@qvac/sdk/worker.mobile.bundle");
++                require("@tetherto/sdk-dev/worker.mobile.bundle");
+         }
+         catch (error) {
+             const message = "Failed to load mobile worker bundle. Make sure the QVAC Expo plugin is configured. " +
