@@ -1,0 +1,10 @@
+node_modules/
+.npmrc
+.env
+bun.lock
+package-lock.json
+reports/
+*.log
+*.apk
+
+**/.DS_Store
