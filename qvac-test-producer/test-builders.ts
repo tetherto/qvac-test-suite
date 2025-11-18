@@ -280,8 +280,8 @@ export class TestBuilder {
 					validation: "empty-or-minimal",
 					maxLength: 0,
 				},
-				expectedOutcome: "fail", // Changed from "pass" - SDK regression
-				debugInfo: "🐛 QVAC-8288: Whisper hallucinating on music. PR #241 VAD config issue.",
+				expectedOutcome: "pass", // Test should pass when SDK handles music properly
+				debugInfo: "🐛 QVAC-8288: Whisper hallucinating on music. PR #241 VAD config issue. Currently failing.",
 			}),
 			dependency: "whisper",
 			estimatedDurationMs: 60000,
@@ -413,8 +413,8 @@ export class TestBuilder {
 					validation: "handles-error",
 					shouldThrowError: true,
 				},
-				expectedOutcome: "fail", // Changed from "pass" - SDK bug
-				debugInfo: "🐛 QVAC-8288 (related): Hangs on corrupted MP3. Needs file validation in SDK.",
+				expectedOutcome: "pass", // Test should pass when SDK throws proper error
+				debugInfo: "🐛 QVAC-8288 (related): Hangs on corrupted MP3. Needs file validation in SDK. Currently failing.",
 			}),
 			dependency: "whisper",
 			estimatedDurationMs: 10000,
@@ -439,8 +439,8 @@ export class TestBuilder {
 					validation: "handles-error",
 					shouldThrowError: true,
 				},
-				expectedOutcome: "fail", // Changed from "pass" - SDK bug
-				debugInfo: "🐛 QVAC-8288 (related): Hangs on corrupted WAV. Needs file validation in SDK.",
+				expectedOutcome: "pass", // Test should pass when SDK throws proper error
+				debugInfo: "🐛 QVAC-8288 (related): Hangs on corrupted WAV. Needs file validation in SDK. Currently failing.",
 			}),
 			dependency: "whisper",
 			estimatedDurationMs: 10000,
@@ -816,8 +816,8 @@ export class TestBuilder {
 					validation: "contains-keywords",
 					keywords: ["guten", "wie", "geht"],
 				},
-				expectedOutcome: "fail", // Changed from "pass" - model limitation
-				debugInfo: "🤖 QVAC-8289: 1B model insufficient for FR→DE translation. Needs larger multilingual model.",
+				expectedOutcome: "pass", // Test should pass with proper multilingual model
+				debugInfo: "🤖 QVAC-8289: 1B model insufficient for FR→DE translation. Needs larger multilingual model. Currently failing.",
 			}),
 			dependency: "translation",
 			estimatedDurationMs: 10000,
@@ -845,8 +845,8 @@ export class TestBuilder {
 					validation: "contains-keywords",
 					keywords: ["hello", "how", "are", "you"],
 				},
-				expectedOutcome: "fail", // Changed from "pass" - model limitation
-				debugInfo: "🤖 QVAC-8289: 1B model insufficient for FR→EN translation. Needs larger multilingual model.",
+				expectedOutcome: "pass", // Test should pass with proper multilingual model
+				debugInfo: "🤖 QVAC-8289: 1B model insufficient for FR→EN translation. Needs larger multilingual model. Currently failing.",
 			}),
 			dependency: "translation",
 			estimatedDurationMs: 10000,
@@ -1566,8 +1566,8 @@ export class TestBuilder {
 					validation: "rag-chunks-generated",
 					minChunks: 15,
 				},
-				expectedOutcome: "fail", // Changed from "pass" - critical SDK bug
-				debugInfo: "🐛 CRITICAL: GGML assertion failure on 32KB document. Crashes at C++ level. Needs P0 ticket.",
+				expectedOutcome: "pass", // Test should pass when SDK fixes GGML bug
+				debugInfo: "🐛 CRITICAL: GGML assertion failure on 32KB document. Crashes at C++ level. Needs P0 ticket. Currently failing.",
 			}),
 			dependency: "embeddings",
 			estimatedDurationMs: 120000, // Timeout before crash
@@ -1596,8 +1596,8 @@ export class TestBuilder {
 					validation: "rag-chunks-generated",
 					minChunks: 10,
 				},
-				expectedOutcome: "fail", // Changed from "pass" - cascade failure from previous crash
-				debugInfo: "🐛 CASCADE: Times out after GGML crash. Will pass once large doc bug fixed.",
+				expectedOutcome: "pass", // Test should pass when large doc GGML bug is fixed
+				debugInfo: "🐛 CASCADE: Times out after GGML crash. Will pass once large doc bug fixed. Currently failing.",
 			}),
 			dependency: "embeddings",
 			estimatedDurationMs: 90000, // Timeout before cascade failure
