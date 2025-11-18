@@ -27,6 +27,7 @@ export default function BatchConsumer() {
 	const [consumerId] = useState(
 		`consumer-mobile-${Constants.deviceName || Constants.sessionId || "unknown"}-${Date.now()}`
 	);
+	const [runId] = useState(env.RUN_ID);
 	const consumerRef = useRef<MobileConsumer | null>(null);
 
 	const addLog = (message: string) => {
@@ -45,7 +46,8 @@ export default function BatchConsumer() {
 			try {
 				addLog("🔧 Initializing consumer...");
 				addLog(`📱 Device: ${Constants.deviceName || "Unknown"}`);
-				addLog(`🆔 ID: ${consumerId.substring(0, 30)}...\n`);
+				addLog(`🆔 ID: ${consumerId.substring(0, 30)}...`);
+				addLog(`🔑 Run ID: ${runId}\n`);
 
 				const executor = new TestExecutor();
 
@@ -71,6 +73,7 @@ export default function BatchConsumer() {
 					client,
 					consumerId,
 					`mobile-${Platform.OS}`,
+					runId,
 					executor,
 					{
 						log: addLog,

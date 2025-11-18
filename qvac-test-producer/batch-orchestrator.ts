@@ -40,6 +40,8 @@ interface TestResult {
 
 export class BatchOrchestrator {
 	private client: MqttClient;
+	private runId: string;
+	private allowWildcardConsumers: boolean;
 	private testQueue: TestCase[] = [];
 	private assignedTests = new Map<string, TestAssignment>(); // uniqueTestId -> assignment
 	private completedTests = new Map<string, TestResult>(); // uniqueTestId -> result
@@ -48,14 +50,18 @@ export class BatchOrchestrator {
 	private batchStarted = false;
 	private shutdownTimer?: NodeJS.Timeout;
 
-	constructor(brokerUrl: string) {
+	constructor(brokerUrl: string, runId: string, allowWildcardConsumers: boolean = false) {
 		this.client = mqtt.connect(brokerUrl);
+		this.runId = runId;
+		this.allowWildcardConsumers = allowWildcardConsumers;
 		this.setupMqttHandlers();
 	}
 
 	private setupMqttHandlers() {
 		this.client.on("connect", () => {
 			console.log("✅ Producer connected to MQTT broker");
+			console.log(`🔑 Run ID: ${this.runId}`);
+			console.log(`🌐 Wildcard consumers: ${this.allowWildcardConsumers ? 'allowed' : 'disabled'}`);
 			
 			// Subscribe to all coordination topics
 			this.client.subscribe([
@@ -76,6 +82,13 @@ export class BatchOrchestrator {
 		this.client.on("message", (topic, payload) => {
 			try {
 				const message = JSON.parse(payload.toString());
+				
+				const isWildcardConsumer = message.runId === '*';
+				const isMatchingRunId = message.runId === this.runId;
+				
+				if (!isMatchingRunId && !(isWildcardConsumer && this.allowWildcardConsumers)) {
+					return;
+				}
 				
 				switch (topic) {
 					case "qvac/register":
@@ -123,7 +136,7 @@ export class BatchOrchestrator {
 		// Send acknowledgment
 		this.client.publish(
 			`qvac/register-ack/${consumerId}`,
-			JSON.stringify({ status: "registered", totalTests: this.testQueue.length }),
+			JSON.stringify({ runId: this.runId, status: "registered", totalTests: this.testQueue.length }),
 			{ qos: 1 },
 		);
 	}
@@ -146,7 +159,7 @@ export class BatchOrchestrator {
 			// No more tests - signal queue empty
 			this.client.publish(
 				`qvac/test-assigned/${consumerId}`,
-				JSON.stringify({ status: "queue-empty" }),
+				JSON.stringify({ runId: this.runId, status: "queue-empty" }),
 				{ qos: 1 },
 			);
 			console.log(`📭 No more tests for ${consumerId}`);
@@ -172,6 +185,7 @@ export class BatchOrchestrator {
 		this.client.publish(
 			`qvac/test-assigned/${consumerId}`,
 			JSON.stringify({
+				runId: this.runId,
 				status: "assigned",
 				uniqueTestId: nextTest.id,
 				test: JSON.parse(nextTest.payload),
@@ -341,6 +355,7 @@ export class BatchOrchestrator {
 
 		// Signal all consumers to shutdown
 		this.client.publish("qvac/batch-complete", JSON.stringify({ 
+			runId: this.runId,
 			status: "complete",
 			totalTests,
 			successCount,
@@ -469,7 +484,7 @@ export class BatchOrchestrator {
 }
 
 // Main execution
-const orchestrator = new BatchOrchestrator(env.MQTT_BROKER_URL);
+const orchestrator = new BatchOrchestrator(env.MQTT_BROKER_URL, env.RUN_ID, env.ALLOW_WILDCARD_CONSUMERS);
 
 orchestrator.buildTestQueue();
 

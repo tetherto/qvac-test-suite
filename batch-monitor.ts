@@ -1,7 +1,9 @@
 import mqtt from "mqtt";
 import os from "os";
+import { getArgValue } from "./shared-utils/args";
 
-// Simple monitoring dashboard for batch orchestration
+const runId = getArgValue('run-id') || process.env.RUN_ID || '*';
+const isWildcard = runId === '*';
 
 const client = mqtt.connect("mqtt://127.0.0.1:1883");
 
@@ -32,9 +34,7 @@ interface TestInProgress {
 	startedAt: Date;
 }
 
-const consumers = new Map<string, ConsumerStats>();
-const testsInProgress = new Map<string, TestInProgress>();
-const completedTests: Array<{ 
+interface TestResult {
 	testId: string; 
 	outcome: string; 
 	duration: number; 
@@ -43,11 +43,39 @@ const completedTests: Array<{
 	output?: string;
 	expected?: string;
 	actual?: string;
-}> = [];
+}
 
-let totalTestsInBatch = 0;
-let batchStartTime = Date.now();
-let batchComplete = false;
+interface RunData {
+	runId: string;
+	consumers: Map<string, ConsumerStats>;
+	testsInProgress: Map<string, TestInProgress>;
+	completedTests: TestResult[];
+	totalTestsInBatch: number;
+	batchStartTime: number;
+	batchComplete: boolean;
+}
+
+// Track data per runId when in wildcard mode
+const runs = new Map<string, RunData>();
+
+// Helper to get or create run data
+function getRunData(runId: string): RunData {
+	if (!runs.has(runId)) {
+		runs.set(runId, {
+			runId,
+			consumers: new Map(),
+			testsInProgress: new Map(),
+			completedTests: [],
+			totalTestsInBatch: 0,
+			batchStartTime: Date.now(),
+			batchComplete: false,
+		});
+	}
+	return runs.get(runId)!;
+}
+
+// For non-wildcard mode, use a single run
+const singleRunId = isWildcard ? null : runId;
 
 function clearScreen() {
 	console.clear();
@@ -56,96 +84,95 @@ function clearScreen() {
 function displayDashboard() {
 	clearScreen();
 	
-	const elapsed = (Date.now() - batchStartTime) / 1000;
-	const completed = completedTests.length;
-	const running = testsInProgress.size;
-	const successCount = completedTests.filter(t => t.outcome === "success").length;
-	const failureCount = completed - successCount;
-	
 	console.log("╔════════════════════════════════════════════════════════════════╗");
 	console.log("║           QVAC BATCH TEST ORCHESTRATION MONITOR                ║");
-	console.log("╚════════════════════════════════════════════════════════════════╝\n");
+	console.log("╚════════════════════════════════════════════════════════════════╝");
+	console.log(`🔑 Run ID: ${runId}${isWildcard ? ' (monitoring all runs)' : ''}\n`);
 	
-	console.log(`⏱️  Elapsed Time: ${elapsed.toFixed(1)}s`);
-	console.log(`📊 Progress: ${completed}/${totalTestsInBatch || '?'} completed | ${running} running`);
-	
-	if (totalTestsInBatch > 0) {
-		const progress = Math.floor((completed / totalTestsInBatch) * 100);
-		const barLength = 50;
-		const filledLength = Math.floor((progress / 100) * barLength);
-		const bar = '█'.repeat(filledLength) + '░'.repeat(barLength - filledLength);
-		console.log(`📈 [${bar}] ${progress}%`);
+	if (isWildcard && runs.size === 0) {
+		console.log("⏳ Waiting for test runs...\n");
+		console.log("─".repeat(64));
+		console.log("Press Ctrl+C to exit monitor");
+		return;
 	}
 	
-	console.log(`✅ Passed: ${successCount} | ❌ Failed: ${failureCount}`);
+	// Display each run separately
+	const runList = isWildcard ? Array.from(runs.values()) : [getRunData(runId)];
 	
-	if (completed > 0) {
-		const successRate = ((successCount / completed) * 100).toFixed(1);
-		console.log(`📈 Success Rate: ${successRate}%`);
-	}
-	
-	console.log("\n👥 ACTIVE CONSUMERS:");
-	console.log("─".repeat(64));
-	
-	if (consumers.size === 0) {
-		console.log("   (No consumers registered)");
-	} else {
-		for (const consumer of consumers.values()) {
-			const timeSinceLastSeen = (Date.now() - consumer.lastSeen.getTime()) / 1000;
-			const status = timeSinceLastSeen > 30 ? "⚠️  STALE" : "✅ ACTIVE";
-			console.log(`   ${status} ${consumer.consumerId}`);
-			console.log(`           Platform: ${consumer.platform} | Tests: ${consumer.testsCompleted}`);
+	for (const run of runList) {
+		if (isWildcard && runs.size > 1) {
+			console.log(`\n${"=".repeat(64)}`);
+			console.log(`RUN: ${run.runId}`);
+			console.log("=".repeat(64));
 		}
-	}
-	
-	console.log("\n🔄 TESTS IN PROGRESS:");
-	console.log("─".repeat(64));
-	
-	if (testsInProgress.size === 0) {
-		console.log("   (No tests currently running)");
-	} else {
-		for (const test of testsInProgress.values()) {
-			const duration = (Date.now() - test.startedAt.getTime()) / 1000;
-			console.log(`   ▶️  ${test.testId} (${duration.toFixed(1)}s)`);
-			console.log(`       Consumer: ${test.consumerId}`);
+		
+		const elapsed = (Date.now() - run.batchStartTime) / 1000;
+		const completed = run.completedTests.length;
+		const running = run.testsInProgress.size;
+		const successCount = run.completedTests.filter(t => t.outcome === "success").length;
+		const failureCount = completed - successCount;
+		
+		console.log(`⏱️  Elapsed Time: ${elapsed.toFixed(1)}s`);
+		console.log(`📊 Progress: ${completed}/${run.totalTestsInBatch || '?'} completed | ${running} running`);
+		
+		if (run.totalTestsInBatch > 0) {
+			const progress = Math.floor((completed / run.totalTestsInBatch) * 100);
+			const barLength = 50;
+			const filledLength = Math.floor((progress / 100) * barLength);
+			const bar = '█'.repeat(filledLength) + '░'.repeat(barLength - filledLength);
+			console.log(`📈 [${bar}] ${progress}%`);
 		}
-	}
-	
-	console.log("\n❌ FAILURES:");
-	console.log("─".repeat(64));
-	
-	const failures = completedTests.filter(t => t.outcome === "failure");
-	if (failures.length === 0) {
-		console.log("   (No failures yet)");
-	} else {
-		const recentFailures = failures.slice(-5).reverse();
-		for (const test of recentFailures) {
-			const durationSec = (test.duration / 1000).toFixed(1);
-			console.log(`   ❌ ${test.testId} (${durationSec}s) - ${test.consumerId}`);
+		
+		console.log(`✅ Passed: ${successCount} | ❌ Failed: ${failureCount}`);
+		
+		if (completed > 0) {
+			const successRate = ((successCount / completed) * 100).toFixed(1);
+			console.log(`📈 Success Rate: ${successRate}%`);
 		}
-		if (failures.length > 5) {
-			console.log(`   ... and ${failures.length - 5} more failures`);
+		
+		console.log("\n👥 ACTIVE CONSUMERS:");
+		console.log("─".repeat(64));
+		
+		if (run.consumers.size === 0) {
+			console.log("   (No consumers registered)");
+		} else {
+			for (const consumer of run.consumers.values()) {
+				const timeSinceLastSeen = (Date.now() - consumer.lastSeen.getTime()) / 1000;
+				const status = timeSinceLastSeen > 30 ? "⚠️  STALE" : "✅ ACTIVE";
+				console.log(`   ${status} ${consumer.consumerId}`);
+				console.log(`           Platform: ${consumer.platform} | Tests: ${consumer.testsCompleted}`);
+			}
 		}
-	}
-	
-	console.log("\n📋 RECENT COMPLETIONS:");
-	console.log("─".repeat(64));
-	
-	const recent = completedTests.slice(-5).reverse();
-	if (recent.length === 0) {
-		console.log("   (No completed tests yet)");
-	} else {
-		for (const test of recent) {
-			const icon = test.outcome === "success" ? "✅" : "❌";
-			const durationSec = (test.duration / 1000).toFixed(1);
-			console.log(`   ${icon} ${test.testId} (${durationSec}s) - ${test.consumerId}`);
+		
+		if (run.testsInProgress.size > 0) {
+			console.log("\n🔄 TESTS IN PROGRESS:");
+			console.log("─".repeat(64));
+			for (const test of run.testsInProgress.values()) {
+				const duration = (Date.now() - test.startedAt.getTime()) / 1000;
+				console.log(`   ▶️  ${test.testId} (${duration.toFixed(1)}s)`);
+				console.log(`       Consumer: ${test.consumerId}`);
+			}
 		}
-	}
-	
-	if (batchComplete) {
-		console.log("\n╔════════════════════════════════════════════════════════════════╗");
-		console.log("║                    🎉 BATCH COMPLETE! 🎉                       ║");
-		console.log("╚════════════════════════════════════════════════════════════════╝");
+		
+		const failures = run.completedTests.filter(t => t.outcome === "failure");
+		if (failures.length > 0) {
+			console.log("\n❌ RECENT FAILURES:");
+			console.log("─".repeat(64));
+			const recentFailures = failures.slice(-3).reverse();
+			for (const test of recentFailures) {
+				const durationSec = (test.duration / 1000).toFixed(1);
+				console.log(`   ❌ ${test.testId} (${durationSec}s) - ${test.consumerId}`);
+			}
+			if (failures.length > 3) {
+				console.log(`   ... and ${failures.length - 3} more failures`);
+			}
+		}
+		
+		if (run.batchComplete) {
+			console.log("\n╔════════════════════════════════════════════════════════════════╗");
+			console.log("║                    🎉 BATCH COMPLETE! 🎉                       ║");
+			console.log("╚════════════════════════════════════════════════════════════════╝");
+		}
 	}
 	
 	console.log("\n─".repeat(64));
@@ -171,8 +198,15 @@ client.on("message", (topic, payload) => {
 	try {
 		const message = JSON.parse(payload.toString());
 		
+		if (!isWildcard && message.runId !== runId) {
+			return;
+		}
+		
+		const msgRunId = message.runId || runId;
+		const run = getRunData(msgRunId);
+		
 		if (topic === "qvac/register") {
-			consumers.set(message.consumerId, {
+			run.consumers.set(message.consumerId, {
 				consumerId: message.consumerId,
 				platform: message.platform,
 				testsCompleted: 0,
@@ -180,27 +214,28 @@ client.on("message", (topic, payload) => {
 			});
 		} else if (topic.startsWith("qvac/test-assigned/")) {
 			if (message.status === "assigned") {
-				const consumer = consumers.get(message.test ? topic.split("/")[2] : "");
+				const consumerId = topic.split("/")[2]; // After qvac/test-assigned/
+				const consumer = run.consumers.get(consumerId);
 				if (consumer) {
 					consumer.lastSeen = new Date();
 				}
 			}
 		} else if (topic === "qvac/test-start") {
-			testsInProgress.set(message.uniqueTestId, {
+			run.testsInProgress.set(message.uniqueTestId, {
 				uniqueTestId: message.uniqueTestId,
 				testId: message.uniqueTestId.split("-").slice(0, -2).join("-") || "unknown",
 				consumerId: message.consumerId,
 				startedAt: new Date(),
 			});
 			
-			const consumer = consumers.get(message.consumerId);
+			const consumer = run.consumers.get(message.consumerId);
 			if (consumer) {
 				consumer.lastSeen = new Date();
 			}
 		} else if (topic === "qvac/results") {
-			testsInProgress.delete(message.uniqueTestId);
+			run.testsInProgress.delete(message.uniqueTestId);
 			
-			completedTests.push({
+			run.completedTests.push({
 				testId: message.testId,
 				outcome: message.outcome,
 				duration: message.duration,
@@ -211,27 +246,28 @@ client.on("message", (topic, payload) => {
 				actual: message.actual,
 			});
 			
-			const consumer = consumers.get(message.consumerId);
+			const consumer = run.consumers.get(message.consumerId);
 			if (consumer) {
 				consumer.testsCompleted++;
 				consumer.lastSeen = new Date();
 			}
 		} else if (topic === "qvac/batch-complete") {
-			totalTestsInBatch = message.totalTests;
-			batchComplete = true;
+			run.totalTestsInBatch = message.totalTests;
+			run.batchComplete = true;
 			displayDashboard();
 			
-			// Generate HTML report
-			generateHtmlReport();
+			// Generate HTML report for this run
+			generateHtmlReport(run);
 			
-			// Don't call displayDashboard() again after batch complete
-			// to avoid clearing the HTML report path message
-			setTimeout(() => {
-				console.log("\n\n👋 Monitor shutting down...\n");
-				client.end();
-				process.exit(0);
-			}, 5000);
-			return; // Exit early to prevent displayDashboard() call below
+			// If not in wildcard mode or all runs complete, shutdown
+			if (!isWildcard || Array.from(runs.values()).every(r => r.batchComplete)) {
+				setTimeout(() => {
+					console.log("\n\n👋 Monitor shutting down...\n");
+					client.end();
+					process.exit(0);
+				}, 5000);
+				return;
+			}
 		}
 		
 		displayDashboard();
@@ -245,7 +281,7 @@ client.on("error", (err) => {
 	process.exit(1);
 });
 
-function generateHtmlReport() {
+function generateHtmlReport(run: RunData) {
 	const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 	const fs = require('fs');
 	
@@ -254,16 +290,16 @@ function generateHtmlReport() {
 		fs.mkdirSync('reports');
 	}
 	
-	const filename = `reports/batch-report-${timestamp}.html`;
+	const filename = `reports/batch-report-${run.runId}-${timestamp}.html`;
 	
-	const elapsed = (Date.now() - batchStartTime) / 1000;
-	const successCount = completedTests.filter(t => t.outcome === "success").length;
-	const failureCount = completedTests.filter(t => t.outcome === "failure").length;
-	const successRate = completedTests.length > 0 ? ((successCount / completedTests.length) * 100).toFixed(1) : "0.0";
+	const elapsed = (Date.now() - run.batchStartTime) / 1000;
+	const successCount = run.completedTests.filter(t => t.outcome === "success").length;
+	const failureCount = run.completedTests.filter(t => t.outcome === "failure").length;
+	const successRate = run.completedTests.length > 0 ? ((successCount / run.completedTests.length) * 100).toFixed(1) : "0.0";
 	
 	// Group tests by consumer
-	const testsByConsumer = new Map<string, typeof completedTests>();
-	for (const test of completedTests) {
+	const testsByConsumer = new Map<string, TestResult[]>();
+	for (const test of run.completedTests) {
 		if (!testsByConsumer.has(test.consumerId)) {
 			testsByConsumer.set(test.consumerId, []);
 		}
@@ -271,8 +307,8 @@ function generateHtmlReport() {
 	}
 	
 	// Group tests by category
-	const testsByCategory = new Map<string, typeof completedTests>();
-	for (const test of completedTests) {
+	const testsByCategory = new Map<string, TestResult[]>();
+	for (const test of run.completedTests) {
 		const category = test.testId.split("-")[0];
 		if (!testsByCategory.has(category)) {
 			testsByCategory.set(category, []);
@@ -285,7 +321,7 @@ function generateHtmlReport() {
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>QVAC Batch Test Report - ${new Date().toLocaleString()}</title>
+	<title>QVAC Batch Test Report - ${run.runId} - ${new Date().toLocaleString()}</title>
 	<style>
 		* { margin: 0; padding: 0; box-sizing: border-box; }
 		body { 
@@ -527,6 +563,7 @@ function generateHtmlReport() {
 	<div class="container">
 		<div class="header">
 			<h1>🧪 QVAC Batch Test Report</h1>
+			<p>Run ID: ${run.runId}</p>
 			<p>Generated: ${new Date().toLocaleString()}</p>
 		</div>
 
@@ -547,7 +584,7 @@ function generateHtmlReport() {
 		<div class="stats">
 			<div class="stat-card info">
 				<h3>Total Tests</h3>
-				<div class="value">${completedTests.length}</div>
+				<div class="value">${run.completedTests.length}</div>
 			</div>
 			<div class="stat-card success">
 				<h3>Passed</h3>
@@ -567,7 +604,7 @@ function generateHtmlReport() {
 			</div>
 			<div class="stat-card info">
 				<h3>Consumers</h3>
-				<div class="value">${consumers.size}</div>
+				<div class="value">${run.consumers.size}</div>
 			</div>
 		</div>
 
@@ -623,7 +660,7 @@ function generateHtmlReport() {
 						</tr>
 					</thead>
 					<tbody>
-						${completedTests.filter(t => t.outcome === "failure").map((test, idx) => {
+						${run.completedTests.filter(t => t.outcome === "failure").map((test, idx) => {
 							const errorMsg = test.error || 'No error message';
 							const outputMsg = test.output || 'No output';
 							const detailsId = 'details-' + idx;
@@ -696,7 +733,7 @@ function generateHtmlReport() {
 
 			<!-- Consumer Tabs -->
 			${Array.from(testsByConsumer.entries()).map(([consumerId, tests], idx) => {
-				const consumer = consumers.get(consumerId);
+				const consumer = run.consumers.get(consumerId);
 				const passed = tests.filter(t => t.outcome === "success").length;
 				const failed = tests.filter(t => t.outcome === "failure").length;
 				const avgDuration = tests.reduce((sum, t) => sum + t.duration, 0) / tests.length;
@@ -798,7 +835,7 @@ function generateHtmlReport() {
 						</tr>
 					</thead>
 					<tbody>
-						${completedTests.map((test, allIdx) => {
+						${run.completedTests.map((test, allIdx) => {
 							const detailsId = 'all-test-' + allIdx;
 							const errorMsg = test.error || 'No error message';
 							const outputMsg = test.output || 'No output';

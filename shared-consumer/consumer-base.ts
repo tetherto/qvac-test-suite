@@ -32,6 +32,8 @@ export abstract class ConsumerBase {
 	protected client: MqttClient;
 	protected consumerId: string;
 	protected platform: string;
+	protected runId: string;
+	protected isWildcard: boolean;
 	protected llmModelId: string | null = null;
 	protected whisperModelId: string | null = null;
 	protected embeddingModelId: string | null = null;
@@ -49,12 +51,15 @@ export abstract class ConsumerBase {
 		client: MqttClient,
 		consumerId: string,
 		platform: string,
+		runId: string,
 		executor: any,
 		callbacks: ConsumerCallbacks
 	) {
 		this.client = client;
 		this.consumerId = consumerId;
 		this.platform = platform;
+		this.runId = runId;
+		this.isWildcard = runId === '*';
 		this.executor = executor;
 		this.callbacks = callbacks;
 	}
@@ -151,6 +156,7 @@ export abstract class ConsumerBase {
 		this.client.publish(
 			"qvac/request-test",
 			JSON.stringify({
+				runId: this.runId,
 				consumerId: this.consumerId,
 				timestamp: new Date().toISOString(),
 			}),
@@ -161,6 +167,7 @@ export abstract class ConsumerBase {
 	public setupMqttHandlers() {
 		this.client.on("connect", () => {
 			this.log("✅ Connected to MQTT broker");
+			this.log(`🔑 Run ID: ${this.runId}${this.isWildcard ? ' (wildcard mode)' : ''}`);
 
 			// Subscribe to consumer-specific topics
 			this.client.subscribe(
@@ -196,6 +203,10 @@ export abstract class ConsumerBase {
 			try {
 				const message = JSON.parse(payload.toString());
 
+				if (!this.isWildcard && message.runId !== this.runId) {
+					return;
+				}
+
 				if (topic === `qvac/register-ack/${this.consumerId}`) {
 					this.handleRegistrationAck(message);
 				} else if (topic === `qvac/test-assigned/${this.consumerId}`) {
@@ -217,6 +228,7 @@ export abstract class ConsumerBase {
 		this.client.publish(
 			"qvac/register",
 			JSON.stringify({
+				runId: this.runId,
 				consumerId: this.consumerId,
 				platform: this.platform,
 				timestamp: new Date().toISOString(),
@@ -272,6 +284,7 @@ export abstract class ConsumerBase {
 		this.client.publish(
 			"qvac/test-start",
 			JSON.stringify({
+				runId: this.runId,
 				consumerId: this.consumerId,
 				uniqueTestId,
 				timestamp: new Date().toISOString(),
@@ -336,6 +349,7 @@ export abstract class ConsumerBase {
 			this.client.publish(
 				"qvac/results",
 				JSON.stringify({
+					runId: this.runId,
 					consumerId: this.consumerId,
 					testId,
 					uniqueTestId,
@@ -370,6 +384,7 @@ export abstract class ConsumerBase {
 			this.client.publish(
 				"qvac/results",
 				JSON.stringify({
+					runId: this.runId,
 					consumerId: this.consumerId,
 					testId,
 					uniqueTestId,

@@ -14,10 +14,11 @@ export class DesktopConsumer extends ConsumerBase {
 		client: MqttClient,
 		consumerId: string,
 		platform: string,
+		runId: string,
 		executor: any,
 		callbacks: ConsumerCallbacks
 	) {
-		super(client, consumerId, platform, executor, callbacks);
+		super(client, consumerId, platform, runId, executor, callbacks);
 	}
 
 	protected async loadLlmModel(): Promise<string> {
