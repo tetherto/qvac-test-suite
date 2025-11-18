@@ -12,7 +12,7 @@
 		"bare-net": "^2.2.0",
 		"bare-rpc": "^1.0.0",
 		"bare-runtime": "^1.23.6",
-		"@tetherto/sdk-dev": "1.1.0-tmp.runid-19260252142",
+		"@tetherto/sdk-dev": "0.4.0-tmp.runid-19465852809",
 		"hyperdb": "^4.19.1",
 		"llm-splitter": "~0.2.0",
 		"mqtt": "^5.14.1"

@@ -33,11 +33,23 @@ export class MobileConsumer extends ConsumerBase {
 			modelType: "whisper",
 			vadModelSrc: VAD_SILERO_5_1_2,
 			modelConfig: {
-				mode: "caption",
-				output_format: "plaintext",
-				min_seconds: 2,
-				max_seconds: 6,
 				audio_format: "f32le",
+				strategy: "greedy",
+				language: "en",
+				translate: false,
+				no_timestamps: false,
+				single_segment: false,
+				temperature: 0.0,
+				suppress_blank: true,
+				suppress_nst: true,
+				vad_params: {
+					threshold: 0.35,
+					min_speech_duration_ms: 200,
+					min_silence_duration_ms: 150,
+					max_speech_duration_s: 30.0,
+					speech_pad_ms: 600,
+					samples_overlap: 0.3,
+				},
 			},
 		});
 	}

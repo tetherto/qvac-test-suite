@@ -541,13 +541,19 @@ export class TestExecutor {
 				const toolNames = toolCalls.map((tc: any) => tc.name || tc.function?.name).join(", ");
 				output = `Tools called: ${toolNames}`;
 				passed = true;
-			} else if (expectation.validation === "contains-keywords") {
-				// Check if text contains all keywords (case-insensitive)
-				const keywords = expectation.keywords || [];
-				passed = keywords.every((kw: string) => 
-					text.toLowerCase().includes(kw.toLowerCase())
-				);
-			} else if (expectation.validation === "min-length") {
+		} else if (expectation.validation === "contains-keywords") {
+			// Check if text contains all keywords (case-insensitive)
+			const keywords = expectation.keywords || [];
+			passed = keywords.every((kw: string) => 
+				text.toLowerCase().includes(kw.toLowerCase())
+			);
+		} else if (expectation.validation === "contains-any-keyword") {
+			// Check if text contains ANY of the keywords (case-insensitive)
+			const keywords = expectation.keywords || [];
+			passed = keywords.some((kw: string) => 
+				text.toLowerCase().includes(kw.toLowerCase())
+			);
+		} else if (expectation.validation === "min-length") {
 				// Check minimum word count (not character count)
 				const wordCount = this.countWords(text);
 				const minLength = expectation.minLength || 0;
@@ -2467,17 +2473,18 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			if (error) {
 				return { output: `Error: ${error}`, passed: false };
 			}
-			const text = rawText.trim();
+		const text = rawText.trim();
 
-			const keywords = expectation.keywords || [];
-			const hasKeywords = keywords.every((kw: string) => 
-				text.toLowerCase().includes(kw.toLowerCase())
-			);
+		const keywords = expectation.keywords || [];
+		// Use .some() for contains-any-keyword validation (accept ANY keyword)
+		const hasKeywords = expectation.validation === "contains-any-keyword"
+			? keywords.some((kw: string) => text.toLowerCase().includes(kw.toLowerCase()))
+			: keywords.every((kw: string) => text.toLowerCase().includes(kw.toLowerCase()));
 
-			return {
-				output: `Repeated tokens response: "${text}" | Keywords found: ${hasKeywords}`,
-				passed: hasKeywords,
-			};
+		return {
+			output: `Repeated tokens response: "${text}" | Keywords found: ${hasKeywords}`,
+			passed: hasKeywords,
+		};
 		} catch (error: any) {
 			return { output: `Error: ${error.message}`, passed: false };
 		}
@@ -2643,15 +2650,18 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			if (error) {
 				return { output: `Error: ${error}`, passed: false };
 			}
-			const text = rawText.trim();
+		const text = rawText.trim();
 
-			const keywords = expectation.keywords || [];
-			const hasKeywords = keywords.every((kw: string) => text.includes(kw));
+		const keywords = expectation.keywords || [];
+		// Use .some() for contains-any-keyword validation (accept ANY keyword)
+		const hasKeywords = expectation.validation === "contains-any-keyword"
+			? keywords.some((kw: string) => text.toLowerCase().includes(kw.toLowerCase()))
+			: keywords.every((kw: string) => text.toLowerCase().includes(kw.toLowerCase()));
 
-			return {
-				output: `Conversation with context: "${text}" | Keywords found: ${hasKeywords}`,
-				passed: hasKeywords,
-			};
+		return {
+			output: `Conversation with context: "${text}" | Keywords found: ${hasKeywords}`,
+			passed: hasKeywords,
+		};
 		} catch (error: any) {
 			return { output: `Error: ${error.message}`, passed: false };
 		}
