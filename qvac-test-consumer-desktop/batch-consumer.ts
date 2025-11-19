@@ -7,7 +7,7 @@ import { DesktopConsumer } from "./consumer-logic";
 export class BatchConsumer {
 	private consumer: DesktopConsumer;
 
-	constructor(brokerUrl: string, platform: string = "desktop") {
+	constructor(brokerUrl: string, runId: string, platform: string = "desktop") {
 		const consumerId = `consumer-${platform}-${os.hostname()}-${Date.now()}`;
 		const client = mqtt.connect(brokerUrl);
 		const executor = new TestExecutor();
@@ -16,6 +16,7 @@ export class BatchConsumer {
 			client,
 			consumerId,
 			platform,
+			runId,
 			executor,
 			{
 				log: (msg) => console.log(msg),
@@ -34,7 +35,8 @@ export class BatchConsumer {
 	public async initialize() {
 		console.log("🔧 Initializing consumer...");
 		console.log(`📱 Platform: desktop`);
-		console.log(`🆔 Consumer ID: ${this.consumer['consumerId']}\n`);
+		console.log(`🆔 Consumer ID: ${this.consumer['consumerId']}`);
+		console.log(`🔑 Run ID: ${this.consumer['runId']}\n`);
 	}
 
 	public forceShutdown() {
@@ -42,7 +44,7 @@ export class BatchConsumer {
 	}
 }
 
-const consumer = new BatchConsumer(env.MQTT_BROKER_URL);
+const consumer = new BatchConsumer(env.MQTT_BROKER_URL, env.RUN_ID);
 
 consumer.initialize().catch((err) => {
 	console.error("❌ Fatal error:", err);

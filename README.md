@@ -63,13 +63,23 @@ mosquitto -c /etc/mosquitto/mosquitto.conf
 **Terminal 2: Start Producer**
 ```bash
 cd qvac-test-producer
-bun run orchestrate
+bun run batch
+
+# With specific run ID:
+bun run batch -- --run-id=my-test-run
+# OR using environment variable:
+RUN_ID=my-test-run bun run batch
 ```
 
 **Terminal 3: Start Desktop Consumer**
 ```bash
 cd qvac-test-consumer-desktop
 bun run batch
+
+# With specific run ID (must match producer):
+bun run batch -- --run-id=my-test-run
+# OR using environment variable:
+RUN_ID=my-test-run bun run batch
 ```
 To run one or more specific tests by their testID, use:
 ```powershell
@@ -81,6 +91,11 @@ bun run batch testID1 testID2
 ```bash
 # From project root
 bun run batch:monitor
+
+# Monitor specific run:
+bun run batch:monitor -- --run-id=my-test-run
+# Monitor all runs:
+bun run batch:monitor -- --run-id='*'
 ```
 
 ### 📱 Run Tests (Mobile)
@@ -102,6 +117,37 @@ bun x expo start
 cd qvac-test-consumer-mobile
 bun x expo run:android
 # OR press 'a' in Metro terminal
+```
+
+## 🔑 Run Isolation with RUN_ID
+
+Multiple test runs can share the same MQTT broker using unique `runId` values. Each message includes `runId` in its payload, and components filter messages by runId at the application level.
+
+**Usage:**
+```bash
+# Producer with specific runId
+bun run batch -- --run-id=test-123
+
+# Consumer joining specific run
+bun run batch -- --run-id=test-123
+
+# Consumer in wildcard mode (accepts all runs)
+bun run batch -- --run-id='*'
+
+# Monitor all concurrent runs
+bun run batch:monitor -- --run-id='*'
+```
+
+**Configuration priority:** CLI arg > Environment variable > Default
+- Producer: Auto-generates `run-<timestamp>` if not specified
+- Consumer: Defaults to `*` (wildcard mode)
+- Mobile: Set `EXPO_PUBLIC_RUN_ID` in `.env` file
+
+**Wildcard Consumers:**
+By default, producers reject wildcard consumers (strict mode). Enable with:
+```bash
+bun run batch -- --allow-wildcard-consumers
+# Or: ALLOW_WILDCARD_CONSUMERS=true
 ```
 
 ## Test Categories
@@ -206,7 +252,10 @@ Tests that trigger this are **moved to end** (tests 90-99) to minimize cascade i
 - `NPM_TOKEN` - npm registry authentication
 
 **Optional:**
-- `MQTT_BROKER` - MQTT broker URL (default: `mqtt://localhost:1883`)
+- `MQTT_BROKER_URL` - MQTT broker URL (default: `mqtt://127.0.0.1:1883`)
+- `RUN_ID` - Run identifier for test isolation (default: auto-generated for producer, `*` for consumer)
+- `TEST_FILTER` - Comma-separated test prefixes to filter (e.g., `transcription,translation`)
+- `ALLOW_WILDCARD_CONSUMERS` - Allow consumers with `runId='*'` to register (default: `false`, producer only)
 
 ### Model Configuration
 

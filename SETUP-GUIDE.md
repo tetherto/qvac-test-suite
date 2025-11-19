@@ -199,7 +199,7 @@ adb install path/to/app-release.apk
 
 **MQTT Broker not starting:**
 - Check if port 1883 is already in use: `lsof -i :1883`
-- Try a different port and update `MQTT_BROKER` env var
+- Try a different port and update `MQTT_BROKER_URL` env var
 
 **NPM_TOKEN errors:**
 - Verify token is set: `echo $NPM_TOKEN` (macOS/Linux) or `echo $env:NPM_TOKEN` (Windows)
