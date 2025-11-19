@@ -374,7 +374,7 @@ export function generateHtmlReport(data: ReportData): string {
 				<button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
 				${Array.from(testsByConsumer.keys()).map((consumerId, idx) => {
 					const shortId = consumerId.split('-').slice(1, 3).join('-');
-					return `<button class="tab" onclick="switchTab('consumer-${idx}')">${shortId}</button>`;
+					return `<button class="tab" onclick="switchTab('consumer-${idx}')" title="${consumerId}">${shortId}</button>`;
 				}).join('')}
 				<button class="tab" onclick="switchTab('all-tests')">📋 All Tests</button>
 			</div>
@@ -476,7 +476,7 @@ export function generateHtmlReport(data: ReportData): string {
 							return `
 						<tr class="failure-highlight">
 							<td><strong>${test.testId}</strong></td>
-							<td>${test.consumerId.split('-').slice(1, 3).join('-')}</td>
+							<td title="${test.consumerId}">${test.consumerId.split('-').slice(1, 3).join('-')}</td>
 							<td>${(test.duration / 1000).toFixed(2)}s</td>
 							<td>
 								<span class="details-toggle" onclick="toggleDetails('${detailsId}')">📋 View Complete Log</span>
@@ -504,6 +504,7 @@ export function generateHtmlReport(data: ReportData): string {
 				<div id="consumer-${idx}" class="tab-content">
 					<div class="consumer-header">
 						<h3>Consumer: ${shortId}</h3>
+						<div style="font-size: 12px; color: #6b7280; margin-top: 4px; font-family: monospace;">Full ID: ${consumerId}</div>
 						<div class="consumer-stats">
 							<span>Platform: ${consumer?.platform || "unknown"}</span>
 							<span>Total Tests: ${tests.length}</span>
@@ -644,7 +645,7 @@ export function generateHtmlReport(data: ReportData): string {
 							return `
 						<tr class="${test.outcome === 'failure' ? 'failure-highlight' : ''}">
 							<td>${test.testId}</td>
-							<td>${test.consumerId.split('-').slice(1, 3).join('-')}</td>
+							<td title="${test.consumerId}">${test.consumerId.split('-').slice(1, 3).join('-')}</td>
 							<td><span class="badge ${test.outcome}">${test.outcome.toUpperCase()}</span></td>
 							<td>${(test.duration / 1000).toFixed(2)}s</td>
 							<td>${detailsCell}</td>
