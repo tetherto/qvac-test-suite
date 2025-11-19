@@ -1,11 +1,29 @@
-import mqtt from "mqtt";
-import os from "os";
-import { getArgValue } from "./shared-utils/args";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 
-const runId = getArgValue('run-id') || process.env.RUN_ID || '*';
-const isWildcard = runId === '*';
+export interface ReportTestResult {
+	testId: string;
+	consumerId: string;
+	outcome: "success" | "failure";
+	duration: number;
+	error?: string;
+	output?: string;
+	expected?: string;
+	actual?: string;
+}
 
-const client = mqtt.connect("mqtt://127.0.0.1:1883");
+export interface ReportConsumerInfo {
+	consumerId: string;
+	platform: string;
+}
+
+export interface ReportData {
+	runId: string;
+	completedTests: ReportTestResult[];
+	consumers: Map<string, ReportConsumerInfo>;
+	startTime: number;
+}
 
 // Collect system information for the report
 const systemInfo = {
@@ -20,286 +38,29 @@ const systemInfo = {
 	nodeVersion: process.version,
 };
 
-interface ConsumerStats {
-	consumerId: string;
-	platform: string;
-	testsCompleted: number;
-	lastSeen: Date;
-}
-
-interface TestInProgress {
-	uniqueTestId: string;
-	testId: string;
-	consumerId: string;
-	startedAt: Date;
-}
-
-interface TestResult {
-	testId: string; 
-	outcome: string; 
-	duration: number; 
-	consumerId: string; 
-	error?: string; 
-	output?: string;
-	expected?: string;
-	actual?: string;
-}
-
-interface RunData {
-	runId: string;
-	consumers: Map<string, ConsumerStats>;
-	testsInProgress: Map<string, TestInProgress>;
-	completedTests: TestResult[];
-	totalTestsInBatch: number;
-	batchStartTime: number;
-	batchComplete: boolean;
-}
-
-// Track data per runId when in wildcard mode
-const runs = new Map<string, RunData>();
-
-// Helper to get or create run data
-function getRunData(runId: string): RunData {
-	if (!runs.has(runId)) {
-		runs.set(runId, {
-			runId,
-			consumers: new Map(),
-			testsInProgress: new Map(),
-			completedTests: [],
-			totalTestsInBatch: 0,
-			batchStartTime: Date.now(),
-			batchComplete: false,
-		});
-	}
-	return runs.get(runId)!;
-}
-
-// For non-wildcard mode, use a single run
-const singleRunId = isWildcard ? null : runId;
-
-function clearScreen() {
-	console.clear();
-}
-
-function displayDashboard() {
-	clearScreen();
-	
-	console.log("╔════════════════════════════════════════════════════════════════╗");
-	console.log("║           QVAC BATCH TEST ORCHESTRATION MONITOR                ║");
-	console.log("╚════════════════════════════════════════════════════════════════╝");
-	console.log(`🔑 Run ID: ${runId}${isWildcard ? ' (monitoring all runs)' : ''}\n`);
-	
-	if (isWildcard && runs.size === 0) {
-		console.log("⏳ Waiting for test runs...\n");
-		console.log("─".repeat(64));
-		console.log("Press Ctrl+C to exit monitor");
-		return;
-	}
-	
-	// Display each run separately
-	const runList = isWildcard ? Array.from(runs.values()) : [getRunData(runId)];
-	
-	for (const run of runList) {
-		if (isWildcard && runs.size > 1) {
-			console.log(`\n${"=".repeat(64)}`);
-			console.log(`RUN: ${run.runId}`);
-			console.log("=".repeat(64));
-		}
-		
-		const elapsed = (Date.now() - run.batchStartTime) / 1000;
-		const completed = run.completedTests.length;
-		const running = run.testsInProgress.size;
-		const successCount = run.completedTests.filter(t => t.outcome === "success").length;
-		const failureCount = completed - successCount;
-		
-		console.log(`⏱️  Elapsed Time: ${elapsed.toFixed(1)}s`);
-		console.log(`📊 Progress: ${completed}/${run.totalTestsInBatch || '?'} completed | ${running} running`);
-		
-		if (run.totalTestsInBatch > 0) {
-			const progress = Math.floor((completed / run.totalTestsInBatch) * 100);
-			const barLength = 50;
-			const filledLength = Math.floor((progress / 100) * barLength);
-			const bar = '█'.repeat(filledLength) + '░'.repeat(barLength - filledLength);
-			console.log(`📈 [${bar}] ${progress}%`);
-		}
-		
-		console.log(`✅ Passed: ${successCount} | ❌ Failed: ${failureCount}`);
-		
-		if (completed > 0) {
-			const successRate = ((successCount / completed) * 100).toFixed(1);
-			console.log(`📈 Success Rate: ${successRate}%`);
-		}
-		
-		console.log("\n👥 ACTIVE CONSUMERS:");
-		console.log("─".repeat(64));
-		
-		if (run.consumers.size === 0) {
-			console.log("   (No consumers registered)");
-		} else {
-			for (const consumer of run.consumers.values()) {
-				const timeSinceLastSeen = (Date.now() - consumer.lastSeen.getTime()) / 1000;
-				const status = timeSinceLastSeen > 30 ? "⚠️  STALE" : "✅ ACTIVE";
-				console.log(`   ${status} ${consumer.consumerId}`);
-				console.log(`           Platform: ${consumer.platform} | Tests: ${consumer.testsCompleted}`);
-			}
-		}
-		
-		if (run.testsInProgress.size > 0) {
-			console.log("\n🔄 TESTS IN PROGRESS:");
-			console.log("─".repeat(64));
-			for (const test of run.testsInProgress.values()) {
-				const duration = (Date.now() - test.startedAt.getTime()) / 1000;
-				console.log(`   ▶️  ${test.testId} (${duration.toFixed(1)}s)`);
-				console.log(`       Consumer: ${test.consumerId}`);
-			}
-		}
-		
-		const failures = run.completedTests.filter(t => t.outcome === "failure");
-		if (failures.length > 0) {
-			console.log("\n❌ RECENT FAILURES:");
-			console.log("─".repeat(64));
-			const recentFailures = failures.slice(-3).reverse();
-			for (const test of recentFailures) {
-				const durationSec = (test.duration / 1000).toFixed(1);
-				console.log(`   ❌ ${test.testId} (${durationSec}s) - ${test.consumerId}`);
-			}
-			if (failures.length > 3) {
-				console.log(`   ... and ${failures.length - 3} more failures`);
-			}
-		}
-		
-		if (run.batchComplete) {
-			console.log("\n╔════════════════════════════════════════════════════════════════╗");
-			console.log("║                    🎉 BATCH COMPLETE! 🎉                       ║");
-			console.log("╚════════════════════════════════════════════════════════════════╝");
-		}
-	}
-	
-	console.log("\n─".repeat(64));
-	console.log("Press Ctrl+C to exit monitor");
-}
-
-client.on("connect", () => {
-	console.log("📡 Connected to MQTT broker - Monitoring batch orchestration...\n");
-	
-	client.subscribe([
-		"qvac/register",
-		"qvac/test-assigned/+",
-		"qvac/test-start",
-		"qvac/results",
-		"qvac/batch-complete",
-	], { qos: 0 });
-	
-	// Update display every second
-	setInterval(displayDashboard, 1000);
-});
-
-client.on("message", (topic, payload) => {
-	try {
-		const message = JSON.parse(payload.toString());
-		
-		if (!isWildcard && message.runId !== runId) {
-			return;
-		}
-		
-		const msgRunId = message.runId || runId;
-		const run = getRunData(msgRunId);
-		
-		if (topic === "qvac/register") {
-			run.consumers.set(message.consumerId, {
-				consumerId: message.consumerId,
-				platform: message.platform,
-				testsCompleted: 0,
-				lastSeen: new Date(),
-			});
-		} else if (topic.startsWith("qvac/test-assigned/")) {
-			if (message.status === "assigned") {
-				const consumerId = topic.split("/")[2]; // After qvac/test-assigned/
-				const consumer = run.consumers.get(consumerId);
-				if (consumer) {
-					consumer.lastSeen = new Date();
-				}
-			}
-		} else if (topic === "qvac/test-start") {
-			run.testsInProgress.set(message.uniqueTestId, {
-				uniqueTestId: message.uniqueTestId,
-				testId: message.uniqueTestId.split("-").slice(0, -2).join("-") || "unknown",
-				consumerId: message.consumerId,
-				startedAt: new Date(),
-			});
-			
-			const consumer = run.consumers.get(message.consumerId);
-			if (consumer) {
-				consumer.lastSeen = new Date();
-			}
-		} else if (topic === "qvac/results") {
-			run.testsInProgress.delete(message.uniqueTestId);
-			
-			run.completedTests.push({
-				testId: message.testId,
-				outcome: message.outcome,
-				duration: message.duration,
-				consumerId: message.consumerId,
-				error: message.error,
-				output: message.output,
-				expected: message.expected,
-				actual: message.actual,
-			});
-			
-			const consumer = run.consumers.get(message.consumerId);
-			if (consumer) {
-				consumer.testsCompleted++;
-				consumer.lastSeen = new Date();
-			}
-		} else if (topic === "qvac/batch-complete") {
-			run.totalTestsInBatch = message.totalTests;
-			run.batchComplete = true;
-			displayDashboard();
-			
-			// Generate HTML report for this run
-			generateHtmlReport(run);
-			
-			// If not in wildcard mode or all runs complete, shutdown
-			if (!isWildcard || Array.from(runs.values()).every(r => r.batchComplete)) {
-				setTimeout(() => {
-					console.log("\n\n👋 Monitor shutting down...\n");
-					client.end();
-					process.exit(0);
-				}, 5000);
-				return;
-			}
-		}
-		
-		displayDashboard();
-	} catch (error) {
-		// Ignore parse errors
-	}
-});
-
-client.on("error", (err) => {
-	console.error("❌ MQTT error:", err);
-	process.exit(1);
-});
-
-function generateHtmlReport(run: RunData) {
-	const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-	const fs = require('fs');
-	
+export function generateHtmlReport(data: ReportData): string {
 	// Create reports directory if it doesn't exist
 	if (!fs.existsSync('reports')) {
 		fs.mkdirSync('reports');
 	}
 	
-	const filename = `reports/batch-report-${run.runId}-${timestamp}.html`;
+	// Try filename with run ID first
+	let filename = `reports/batch-report-${data.runId}.html`;
 	
-	const elapsed = (Date.now() - run.batchStartTime) / 1000;
-	const successCount = run.completedTests.filter(t => t.outcome === "success").length;
-	const failureCount = run.completedTests.filter(t => t.outcome === "failure").length;
-	const successRate = run.completedTests.length > 0 ? ((successCount / run.completedTests.length) * 100).toFixed(1) : "0.0";
+	// If file exists, add timestamp to make it unique
+	if (fs.existsSync(filename)) {
+		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+		filename = `reports/batch-report-${data.runId}-${timestamp}.html`;
+	}
+	
+	const elapsed = (Date.now() - data.startTime) / 1000;
+	const successCount = data.completedTests.filter(t => t.outcome === "success").length;
+	const failureCount = data.completedTests.filter(t => t.outcome === "failure").length;
+	const successRate = data.completedTests.length > 0 ? ((successCount / data.completedTests.length) * 100).toFixed(1) : "0.0";
 	
 	// Group tests by consumer
-	const testsByConsumer = new Map<string, TestResult[]>();
-	for (const test of run.completedTests) {
+	const testsByConsumer = new Map<string, ReportTestResult[]>();
+	for (const test of data.completedTests) {
 		if (!testsByConsumer.has(test.consumerId)) {
 			testsByConsumer.set(test.consumerId, []);
 		}
@@ -307,8 +68,8 @@ function generateHtmlReport(run: RunData) {
 	}
 	
 	// Group tests by category
-	const testsByCategory = new Map<string, TestResult[]>();
-	for (const test of run.completedTests) {
+	const testsByCategory = new Map<string, ReportTestResult[]>();
+	for (const test of data.completedTests) {
 		const category = test.testId.split("-")[0];
 		if (!testsByCategory.has(category)) {
 			testsByCategory.set(category, []);
@@ -321,7 +82,7 @@ function generateHtmlReport(run: RunData) {
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>QVAC Batch Test Report - ${run.runId} - ${new Date().toLocaleString()}</title>
+	<title>QVAC Batch Test Report - ${data.runId} - ${new Date().toLocaleString()}</title>
 	<style>
 		* { margin: 0; padding: 0; box-sizing: border-box; }
 		body { 
@@ -563,7 +324,7 @@ function generateHtmlReport(run: RunData) {
 	<div class="container">
 		<div class="header">
 			<h1>🧪 QVAC Batch Test Report</h1>
-			<p>Run ID: ${run.runId}</p>
+			<p>Run ID: ${data.runId}</p>
 			<p>Generated: ${new Date().toLocaleString()}</p>
 		</div>
 
@@ -584,7 +345,7 @@ function generateHtmlReport(run: RunData) {
 		<div class="stats">
 			<div class="stat-card info">
 				<h3>Total Tests</h3>
-				<div class="value">${run.completedTests.length}</div>
+				<div class="value">${data.completedTests.length}</div>
 			</div>
 			<div class="stat-card success">
 				<h3>Passed</h3>
@@ -604,7 +365,7 @@ function generateHtmlReport(run: RunData) {
 			</div>
 			<div class="stat-card info">
 				<h3>Consumers</h3>
-				<div class="value">${run.consumers.size}</div>
+				<div class="value">${data.consumers.size}</div>
 			</div>
 		</div>
 
@@ -613,7 +374,7 @@ function generateHtmlReport(run: RunData) {
 				<button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
 				${Array.from(testsByConsumer.keys()).map((consumerId, idx) => {
 					const shortId = consumerId.split('-').slice(1, 3).join('-');
-					return `<button class="tab" onclick="switchTab('consumer-${idx}')">${shortId}</button>`;
+					return `<button class="tab" onclick="switchTab('consumer-${idx}')" title="${consumerId}">${shortId}</button>`;
 				}).join('')}
 				<button class="tab" onclick="switchTab('all-tests')">📋 All Tests</button>
 			</div>
@@ -660,7 +421,7 @@ function generateHtmlReport(run: RunData) {
 						</tr>
 					</thead>
 					<tbody>
-						${run.completedTests.filter(t => t.outcome === "failure").map((test, idx) => {
+						${data.completedTests.filter(t => t.outcome === "failure").map((test, idx) => {
 							const errorMsg = test.error || 'No error message';
 							const outputMsg = test.output || 'No output';
 							const detailsId = 'details-' + idx;
@@ -715,7 +476,7 @@ function generateHtmlReport(run: RunData) {
 							return `
 						<tr class="failure-highlight">
 							<td><strong>${test.testId}</strong></td>
-							<td>${test.consumerId.split('-').slice(1, 3).join('-')}</td>
+							<td title="${test.consumerId}">${test.consumerId.split('-').slice(1, 3).join('-')}</td>
 							<td>${(test.duration / 1000).toFixed(2)}s</td>
 							<td>
 								<span class="details-toggle" onclick="toggleDetails('${detailsId}')">📋 View Complete Log</span>
@@ -733,7 +494,7 @@ function generateHtmlReport(run: RunData) {
 
 			<!-- Consumer Tabs -->
 			${Array.from(testsByConsumer.entries()).map(([consumerId, tests], idx) => {
-				const consumer = run.consumers.get(consumerId);
+				const consumer = data.consumers.get(consumerId);
 				const passed = tests.filter(t => t.outcome === "success").length;
 				const failed = tests.filter(t => t.outcome === "failure").length;
 				const avgDuration = tests.reduce((sum, t) => sum + t.duration, 0) / tests.length;
@@ -743,6 +504,7 @@ function generateHtmlReport(run: RunData) {
 				<div id="consumer-${idx}" class="tab-content">
 					<div class="consumer-header">
 						<h3>Consumer: ${shortId}</h3>
+						<div style="font-size: 12px; color: #6b7280; margin-top: 4px; font-family: monospace;">Full ID: ${consumerId}</div>
 						<div class="consumer-stats">
 							<span>Platform: ${consumer?.platform || "unknown"}</span>
 							<span>Total Tests: ${tests.length}</span>
@@ -835,7 +597,7 @@ function generateHtmlReport(run: RunData) {
 						</tr>
 					</thead>
 					<tbody>
-						${run.completedTests.map((test, allIdx) => {
+						${data.completedTests.map((test, allIdx) => {
 							const detailsId = 'all-test-' + allIdx;
 							const errorMsg = test.error || 'No error message';
 							const outputMsg = test.output || 'No output';
@@ -883,7 +645,7 @@ function generateHtmlReport(run: RunData) {
 							return `
 						<tr class="${test.outcome === 'failure' ? 'failure-highlight' : ''}">
 							<td>${test.testId}</td>
-							<td>${test.consumerId.split('-').slice(1, 3).join('-')}</td>
+							<td title="${test.consumerId}">${test.consumerId.split('-').slice(1, 3).join('-')}</td>
 							<td><span class="badge ${test.outcome}">${test.outcome.toUpperCase()}</span></td>
 							<td>${(test.duration / 1000).toFixed(2)}s</td>
 							<td>${detailsCell}</td>
@@ -896,7 +658,7 @@ function generateHtmlReport(run: RunData) {
 		</div>
 
 		<div class="footer">
-			<p>Generated by QVAC Batch Test Monitor</p>
+			<p>Generated by QVAC Batch Test Producer</p>
 			<p>Total execution time: ${elapsed.toFixed(1)} seconds</p>
 		</div>
 	</div>
@@ -931,20 +693,13 @@ function generateHtmlReport(run: RunData) {
 </html>`;
 
 	try {
-		const path = require('path');
 		const absolutePath = path.resolve(filename);
-		require('fs').writeFileSync(filename, html);
+		fs.writeFileSync(filename, html);
 		console.log(`\n✅ HTML report generated: ${absolutePath}\n`);
+		return filename;
 	} catch (error) {
 		console.error(`\n❌ Failed to generate HTML report:`, error);
+		throw error;
 	}
 }
-
-// Handle shutdown (interruption - no report)
-process.on("SIGINT", () => {
-	console.log("\n\n⚠️  Monitor interrupted - no report generated");
-	console.log("👋 Monitor shutting down...\n");
-	client.end();
-	process.exit(0);
-});
 

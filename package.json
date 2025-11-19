@@ -4,8 +4,6 @@
 	"type": "module",
 	"private": true,
 	"scripts": {
-		"monitor": "bun run verify-tests.ts",
-		"batch:monitor": "bun run batch-monitor.ts",
 		"broker": "node mqtt-websocket-broker.cjs"
 	},
 	"dependencies": {

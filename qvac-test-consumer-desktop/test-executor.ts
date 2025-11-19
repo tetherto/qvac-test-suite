@@ -54,21 +54,21 @@ export class TestExecutor {
 		this.testHandlers.set("model-unload", this.modelUnload.bind(this));
 
 		// LLM completion tests
-	this.testHandlers.set("completion", this.completion.bind(this));
-	this.testHandlers.set("completion-streaming", this.completionStreaming.bind(this));
-	this.testHandlers.set("completion-context-size", this.completionContextSize.bind(this));
-	this.testHandlers.set("completion-context-size-512", this.completionContextSize.bind(this));
-	this.testHandlers.set("completion-context-size-2048", this.completionContextSize.bind(this));
-	this.testHandlers.set("completion-temperature", this.completionTemperature.bind(this));
-	this.testHandlers.set("completion-temperature-01", this.completionTemperature.bind(this));
-	this.testHandlers.set("completion-temperature-09", this.completionTemperature.bind(this));
-	this.testHandlers.set("completion-empty-prompt", this.completionEmptyPrompt.bind(this));
+		this.testHandlers.set("completion", this.completion.bind(this));
+		this.testHandlers.set("completion-streaming", this.completionStreaming.bind(this));
+		this.testHandlers.set("completion-context-size", this.completionContextSize.bind(this));
+		this.testHandlers.set("completion-context-size-512", this.completionContextSize.bind(this));
+		this.testHandlers.set("completion-context-size-2048", this.completionContextSize.bind(this));
+		this.testHandlers.set("completion-temperature", this.completionTemperature.bind(this));
+		this.testHandlers.set("completion-temperature-01", this.completionTemperature.bind(this));
+		this.testHandlers.set("completion-temperature-09", this.completionTemperature.bind(this));
+		this.testHandlers.set("completion-empty-prompt", this.completionEmptyPrompt.bind(this));
 		this.testHandlers.set("completion-long-prompt", this.completionLongPrompt.bind(this));
 		this.testHandlers.set("completion-multi-turn", this.completionMultiTurn.bind(this));
 		this.testHandlers.set("completion-system-message", this.completionSystemMessage.bind(this));
 		this.testHandlers.set("completion-max-tokens", this.completionMaxTokens.bind(this));
 		this.testHandlers.set("completion-special-chars", this.completionSpecialChars.bind(this));
-		
+
 		// Phase 2: Advanced parameter tests
 		this.testHandlers.set("completion-stop-sequences", this.completionStopSequences.bind(this));
 		this.testHandlers.set("completion-top-p", this.completionTopP.bind(this));
@@ -76,34 +76,34 @@ export class TestExecutor {
 		this.testHandlers.set("completion-min-p", this.completionMinP.bind(this));
 		this.testHandlers.set("completion-very-long-context", this.completionVeryLongContext.bind(this));
 		this.testHandlers.set("completion-zero-temperature", this.completionZeroTemperature.bind(this));
-		
-	// Phase 3: Edge cases & advanced scenarios
-	this.testHandlers.set("completion-top-k", this.completionTopK.bind(this));
-	this.testHandlers.set("completion-frequency-penalty", this.completionFrequencyPenalty.bind(this));
-	this.testHandlers.set("completion-presence-penalty", this.completionPresencePenalty.bind(this));
-	this.testHandlers.set("completion-negative-temperature", this.completionNegativeTemperature.bind(this));
 
-	// Phase 3.5: Sprint 2 - Comprehensive parameter coverage
-	// Temperature variations
-	this.testHandlers.set("completion-temperature-00", this.completion.bind(this));
-	this.testHandlers.set("completion-temperature-05", this.completion.bind(this));
-	this.testHandlers.set("completion-temperature-10", this.completion.bind(this));
-	this.testHandlers.set("completion-temperature-15", this.completion.bind(this));
-	// top_p variations
-	this.testHandlers.set("completion-top-p-01", this.completion.bind(this));
-	this.testHandlers.set("completion-top-p-05", this.completion.bind(this));
-	this.testHandlers.set("completion-top-p-10", this.completion.bind(this));
-	// Frequency penalty variations
-	this.testHandlers.set("completion-frequency-penalty-neg10", this.completion.bind(this));
-	this.testHandlers.set("completion-frequency-penalty-00", this.completion.bind(this));
-	this.testHandlers.set("completion-frequency-penalty-10", this.completion.bind(this));
-	// Presence penalty variations
-	this.testHandlers.set("completion-presence-penalty-neg10", this.completion.bind(this));
-	this.testHandlers.set("completion-presence-penalty-00", this.completion.bind(this));
-	this.testHandlers.set("completion-presence-penalty-10", this.completion.bind(this));
-	// Seed and stop sequences
-	this.testHandlers.set("completion-seed-reproducibility", this.completionSeedReproducibility.bind(this));
-	this.testHandlers.set("completion-stop-sequences-multiple", this.completionStopSequencesMultiple.bind(this));
+		// Phase 3: Edge cases & advanced scenarios
+		this.testHandlers.set("completion-top-k", this.completionTopK.bind(this));
+		this.testHandlers.set("completion-frequency-penalty", this.completionFrequencyPenalty.bind(this));
+		this.testHandlers.set("completion-presence-penalty", this.completionPresencePenalty.bind(this));
+		this.testHandlers.set("completion-negative-temperature", this.completionNegativeTemperature.bind(this));
+
+		// Phase 3.5: Sprint 2 - Comprehensive parameter coverage
+		// Temperature variations
+		this.testHandlers.set("completion-temperature-00", this.completion.bind(this));
+		this.testHandlers.set("completion-temperature-05", this.completion.bind(this));
+		this.testHandlers.set("completion-temperature-10", this.completion.bind(this));
+		this.testHandlers.set("completion-temperature-15", this.completion.bind(this));
+		// top_p variations
+		this.testHandlers.set("completion-top-p-01", this.completion.bind(this));
+		this.testHandlers.set("completion-top-p-05", this.completion.bind(this));
+		this.testHandlers.set("completion-top-p-10", this.completion.bind(this));
+		// Frequency penalty variations
+		this.testHandlers.set("completion-frequency-penalty-neg10", this.completion.bind(this));
+		this.testHandlers.set("completion-frequency-penalty-00", this.completion.bind(this));
+		this.testHandlers.set("completion-frequency-penalty-10", this.completion.bind(this));
+		// Presence penalty variations
+		this.testHandlers.set("completion-presence-penalty-neg10", this.completion.bind(this));
+		this.testHandlers.set("completion-presence-penalty-00", this.completion.bind(this));
+		this.testHandlers.set("completion-presence-penalty-10", this.completion.bind(this));
+		// Seed and stop sequences
+		this.testHandlers.set("completion-seed-reproducibility", this.completionSeedReproducibility.bind(this));
+		this.testHandlers.set("completion-stop-sequences-multiple", this.completionStopSequencesMultiple.bind(this));
 
 		// Tools/Function Calling tests
 		this.testHandlers.set("tools-simple-function", this.toolsCall.bind(this));
@@ -123,28 +123,28 @@ export class TestExecutor {
 		this.testHandlers.set("tools-no-function-match", this.toolsCall.bind(this));
 		this.testHandlers.set("tools-streaming-with-tools", this.toolsCall.bind(this));
 		this.testHandlers.set("tools-description-clarity", this.toolsCall.bind(this));
-	this.testHandlers.set("tools-with-system-message", this.toolsCall.bind(this));
-	this.testHandlers.set("tools-ambiguous-intent", this.toolsCall.bind(this));
-	this.testHandlers.set("tools-chained-execution", this.toolsCall.bind(this));
+		this.testHandlers.set("tools-with-system-message", this.toolsCall.bind(this));
+		this.testHandlers.set("tools-ambiguous-intent", this.toolsCall.bind(this));
+		this.testHandlers.set("tools-chained-execution", this.toolsCall.bind(this));
 
-	// Vision / Multimodal tests
-	this.testHandlers.set("vision-simple-image", this.visionMultimodal.bind(this));
-	this.testHandlers.set("vision-object-detection", this.visionMultimodal.bind(this));
-	this.testHandlers.set("vision-text-extraction", this.visionMultimodal.bind(this));
-	this.testHandlers.set("vision-multiple-images", this.visionMultimodal.bind(this));
-	this.testHandlers.set("vision-image-format-png", this.visionMultimodal.bind(this));
-	this.testHandlers.set("vision-image-format-webp", this.visionMultimodal.bind(this));
-	this.testHandlers.set("vision-large-image", this.visionMultimodal.bind(this));
-	this.testHandlers.set("vision-color-analysis", this.visionMultimodal.bind(this));
-	this.testHandlers.set("vision-scene-understanding", this.visionMultimodal.bind(this));
-	this.testHandlers.set("vision-image-and-text", this.visionMultimodal.bind(this));
-	this.testHandlers.set("vision-multi-turn-with-image", this.visionMultimodal.bind(this));
-	this.testHandlers.set("vision-error-corrupted-image", this.visionMultimodal.bind(this));
-	this.testHandlers.set("vision-error-unsupported-format", this.visionMultimodal.bind(this));
-	this.testHandlers.set("vision-error-missing-image", this.visionMultimodal.bind(this));
-	this.testHandlers.set("vision-image-base64", this.visionMultimodal.bind(this));
+		// Vision / Multimodal tests
+		this.testHandlers.set("vision-simple-image", this.visionMultimodal.bind(this));
+		this.testHandlers.set("vision-object-detection", this.visionMultimodal.bind(this));
+		this.testHandlers.set("vision-text-extraction", this.visionMultimodal.bind(this));
+		this.testHandlers.set("vision-multiple-images", this.visionMultimodal.bind(this));
+		this.testHandlers.set("vision-image-format-png", this.visionMultimodal.bind(this));
+		this.testHandlers.set("vision-image-format-webp", this.visionMultimodal.bind(this));
+		this.testHandlers.set("vision-large-image", this.visionMultimodal.bind(this));
+		this.testHandlers.set("vision-color-analysis", this.visionMultimodal.bind(this));
+		this.testHandlers.set("vision-scene-understanding", this.visionMultimodal.bind(this));
+		this.testHandlers.set("vision-image-and-text", this.visionMultimodal.bind(this));
+		this.testHandlers.set("vision-multi-turn-with-image", this.visionMultimodal.bind(this));
+		this.testHandlers.set("vision-error-corrupted-image", this.visionMultimodal.bind(this));
+		this.testHandlers.set("vision-error-unsupported-format", this.visionMultimodal.bind(this));
+		this.testHandlers.set("vision-error-missing-image", this.visionMultimodal.bind(this));
+		this.testHandlers.set("vision-image-base64", this.visionMultimodal.bind(this));
 
-	// Transcription tests
+		// Transcription tests
 		this.testHandlers.set("transcription", this.transcription.bind(this));
 		this.testHandlers.set("transcription-short-wav", this.transcriptionFormat.bind(this));
 		this.testHandlers.set("transcription-short-mp3", this.transcriptionFormat.bind(this));
@@ -190,19 +190,19 @@ export class TestExecutor {
 		this.testHandlers.set("rag-large-document-32kb", this.ragEmbeddings.bind(this));
 		this.testHandlers.set("rag-medium-document-10kb", this.ragEmbeddings.bind(this));
 
-	// Translation tests
-	this.testHandlers.set("translation-en-to-es", this.translation.bind(this));
-	this.testHandlers.set("translation-es-to-en", this.translation.bind(this));
-	this.testHandlers.set("translation-error", this.translationError.bind(this));
-	// Marian translation models (QVAC-7927)
-	this.testHandlers.set("translation-en-to-fr", this.translation.bind(this));
-	this.testHandlers.set("translation-de-to-fr", this.translation.bind(this));
-	this.testHandlers.set("translation-it-to-fr", this.translation.bind(this));
-	this.testHandlers.set("translation-es-to-fr", this.translation.bind(this));
-	this.testHandlers.set("translation-fr-to-es", this.translation.bind(this));
-	this.testHandlers.set("translation-fr-to-de", this.translation.bind(this));
-	this.testHandlers.set("translation-fr-to-en", this.translation.bind(this));
-	this.testHandlers.set("translation-en-to-pt", this.translation.bind(this));
+		// Translation tests
+		this.testHandlers.set("translation-en-to-es", this.translation.bind(this));
+		this.testHandlers.set("translation-es-to-en", this.translation.bind(this));
+		this.testHandlers.set("translation-error", this.translationError.bind(this));
+		// Marian translation models (QVAC-7927)
+		this.testHandlers.set("translation-en-to-fr", this.translation.bind(this));
+		this.testHandlers.set("translation-de-to-fr", this.translation.bind(this));
+		this.testHandlers.set("translation-it-to-fr", this.translation.bind(this));
+		this.testHandlers.set("translation-es-to-fr", this.translation.bind(this));
+		this.testHandlers.set("translation-fr-to-es", this.translation.bind(this));
+		this.testHandlers.set("translation-fr-to-de", this.translation.bind(this));
+		this.testHandlers.set("translation-fr-to-en", this.translation.bind(this));
+		this.testHandlers.set("translation-en-to-pt", this.translation.bind(this));
 
 		// Model management tests
 		this.testHandlers.set("model-load-concurrent", this.modelLoadConcurrent.bind(this));
@@ -218,7 +218,7 @@ export class TestExecutor {
 		this.testHandlers.set("completion-whitespace", this.completionWhitespace.bind(this));
 		this.testHandlers.set("completion-json-format", this.completionJsonFormat.bind(this));
 		this.testHandlers.set("completion-code-generation", this.completionCodeGeneration.bind(this));
-		
+
 		// Phase 5: Real-world scenarios
 		this.testHandlers.set("completion-conversation-context", this.completionConversationContext.bind(this));
 		this.testHandlers.set("completion-single-word", this.completionSingleWord.bind(this));
@@ -285,7 +285,7 @@ export class TestExecutor {
 				// Silently handle stats rejection
 			});
 		}
-		
+
 		// Also catch the tokenStream if it exists (for streaming completions)
 		if (result.tokenStream && typeof result.tokenStream.return === 'function') {
 			// Ensure the stream is properly closed on error
@@ -293,7 +293,7 @@ export class TestExecutor {
 				// This will be called if the stream errors
 			});
 		}
-		
+
 		try {
 			const text = await result.text;
 			// Also extract toolCalls if present (for function calling)
@@ -302,11 +302,11 @@ export class TestExecutor {
 		} catch (error: any) {
 			// Catch text promise rejection
 			console.log(`   🔴 Completion error: ${error.message}`);
-			
+
 			// CRITICAL: Add a small delay to allow SDK to clean up after error
 			// Context overflow can leave the inference engine in a bad state
 			await new Promise(resolve => setTimeout(resolve, 100));
-			
+
 			return { text: "", error: error.message || String(error) };
 		}
 	}
@@ -454,37 +454,37 @@ export class TestExecutor {
 
 			const result = runCompletion(completionParams);
 			const { text: rawText, toolCalls, error } = await this.safeAwaitCompletion(result);
-			
+
 			if (error) {
 				return { output: `Error: ${error}`, passed: false };
 			}
-			
+
 			const text = rawText.trim();
 
 			// Support multiple validation types
 			let passed = false;
 			let output = text;
-			
-		// Check if this is a tool-call expectation
-		if (expectation.type === "tool-call" || expectation.type === "tool-calls") {
-			// Check if text-only response is acceptable
-			if ((!toolCalls || toolCalls.length === 0) && expectation.validation === "function-called-or-text-response") {
-				// Text response is acceptable for this validation type
-				const passed = !!text && text.length > 0;
-				return { 
-					output: `Text response (allowed): ${text}`, 
-					passed 
-				};
-			}
-			
-			// Delegate to the dedicated toolsCall handler
-			if (!toolCalls || toolCalls.length === 0) {
-				return { 
-					output: `No tool calls made. Got text response: ${text}`, 
-					passed: false 
-				};
-			}
-				
+
+			// Check if this is a tool-call expectation
+			if (expectation.type === "tool-call" || expectation.type === "tool-calls") {
+				// Check if text-only response is acceptable
+				if ((!toolCalls || toolCalls.length === 0) && expectation.validation === "function-called-or-text-response") {
+					// Text response is acceptable for this validation type
+					const passed = !!text && text.length > 0;
+					return {
+						output: `Text response (allowed): ${text}`,
+						passed
+					};
+				}
+
+				// Delegate to the dedicated toolsCall handler
+				if (!toolCalls || toolCalls.length === 0) {
+					return {
+						output: `No tool calls made. Got text response: ${text}`,
+						passed: false
+					};
+				}
+
 				// For now, just check that we got tool calls
 				// The dedicated toolsCall method has more sophisticated validation
 				const toolNames = toolCalls.map((tc: any) => tc.name || tc.function?.name).join(", ");
@@ -493,7 +493,13 @@ export class TestExecutor {
 			} else if (expectation.validation === "contains-keywords") {
 				// Check if text contains all keywords (case-insensitive)
 				const keywords = expectation.keywords || [];
-				passed = keywords.every((kw: string) => 
+				passed = keywords.every((kw: string) =>
+					text.toLowerCase().includes(kw.toLowerCase())
+				);
+			} else if (expectation.validation === "contains-any-keyword") {
+				// Check if text contains ANY of the keywords (case-insensitive)
+				const keywords = expectation.keywords || [];
+				passed = keywords.some((kw: string) =>
 					text.toLowerCase().includes(kw.toLowerCase())
 				);
 			} else if (expectation.validation === "min-length") {
@@ -534,7 +540,7 @@ export class TestExecutor {
 			} catch (streamError: any) {
 				// Handle streaming errors
 				if (result.stats) {
-					result.stats.catch(() => {});
+					result.stats.catch(() => { });
 				}
 				return { output: `Streaming error: ${streamError.message}`, passed: false };
 			}
@@ -593,14 +599,14 @@ export class TestExecutor {
 			// Call runCompletion with tools parameters
 			const result = runCompletion(completionParams);
 			const { text, toolCalls, error } = await this.safeAwaitCompletion(result);
-			
+
 			if (error) {
 				// Check if this is an expected error test
 				if (expectation.type === "error" && expectation.validation === "throws-error") {
 					const passed = error.includes(expectation.errorContains || "");
-					return { 
-						output: `Expected error: ${error}`, 
-						passed 
+					return {
+						output: `Expected error: ${error}`,
+						passed
 					};
 				}
 				return { output: `Error: ${error}`, passed: false };
@@ -610,34 +616,34 @@ export class TestExecutor {
 			let passed = false;
 			let output = "";
 
-		switch (expectation.type) {
-			case "tool-call": {
-				// Single tool call expected
-				if (!toolCalls || toolCalls.length === 0) {
-					// Check if text-only response is acceptable for this validation type
-					if (expectation.validation === "function-called-or-text-response") {
-						const passed = !!text && text.length > 0;
-						return { 
-							output: `Text response (allowed by validation): ${text.substring(0, 200)}${text.length > 200 ? "..." : ""}`, 
-							passed 
+			switch (expectation.type) {
+				case "tool-call": {
+					// Single tool call expected
+					if (!toolCalls || toolCalls.length === 0) {
+						// Check if text-only response is acceptable for this validation type
+						if (expectation.validation === "function-called-or-text-response") {
+							const passed = !!text && text.length > 0;
+							return {
+								output: `Text response (allowed by validation): ${text.substring(0, 200)}${text.length > 200 ? "..." : ""}`,
+								passed
+							};
+						}
+						return {
+							output: `No tool calls made. Got text response: ${text}`,
+							passed: false
 						};
 					}
-					return { 
-						output: `No tool calls made. Got text response: ${text}`, 
-						passed: false 
-					};
-				}
 
-				const firstCall = toolCalls[0];
-				output = `Tool: ${firstCall.name}, Args: ${JSON.stringify(firstCall.arguments)}`;
+					const firstCall = toolCalls[0];
+					output = `Tool: ${firstCall.name}, Args: ${JSON.stringify(firstCall.arguments)}`;
 
-				// Validate based on specific checks
-				if (expectation.validation === "contains-function-call") {
+					// Validate based on specific checks
+					if (expectation.validation === "contains-function-call") {
 						passed = firstCall.name === expectation.functionName;
 					} else if (expectation.validation === "parameters-correct") {
 						const args = firstCall.arguments;
 						const expected = expectation.expectedParams;
-						passed = Object.keys(expected).every(key => 
+						passed = Object.keys(expected).every(key =>
 							args[key] === expected[key]
 						);
 					} else if (expectation.validation === "has-required-params") {
@@ -670,10 +676,10 @@ export class TestExecutor {
 						passed = firstCall.name === expectation.functionName;
 					} else if (expectation.validation === "reasonable-function-choice") {
 						passed = toolCalls.length > 0; // Any reasonable function choice is valid
-				} else if (expectation.validation === "function-called-or-text-response") {
-					// Either tool call OR text response is acceptable
-					passed = toolCalls.length > 0 || (!!text && text.length > 0);
-				} else if (expectation.validation === "uses-context") {
+					} else if (expectation.validation === "function-called-or-text-response") {
+						// Either tool call OR text response is acceptable
+						passed = toolCalls.length > 0 || (!!text && text.length > 0);
+					} else if (expectation.validation === "uses-context") {
 						const args = firstCall.arguments;
 						const expected = expectation.expectedParams;
 						passed = Object.keys(expected).every(key => args[key] === expected[key]);
@@ -686,9 +692,9 @@ export class TestExecutor {
 				case "tool-calls": {
 					// Multiple tool calls expected
 					if (!toolCalls || toolCalls.length === 0) {
-						return { 
-							output: `No tool calls made. Got text response: ${text}`, 
-							passed: false 
+						return {
+							output: `No tool calls made. Got text response: ${text}`,
+							passed: false
 						};
 					}
 
@@ -710,122 +716,122 @@ export class TestExecutor {
 					break;
 				}
 
-			case "text-response": {
-				// Text response expected (no tool calls)
-				if (expectation.validation === "no-function-call") {
-					passed = (!toolCalls || toolCalls.length === 0) && !!text && text.length > 0;
-					output = `Text response: ${text}`;
-				} else if (expectation.validation === "no-function-call-when-irrelevant") {
-					passed = (!toolCalls || toolCalls.length === 0) && !!text && text.length > 0;
-					output = `Text response (no function called): ${text}`;
-				} else {
-					passed = !!text && text.length > 0;
-					output = `Text: ${text}`;
-				}
+				case "text-response": {
+					// Text response expected (no tool calls)
+					if (expectation.validation === "no-function-call") {
+						passed = (!toolCalls || toolCalls.length === 0) && !!text && text.length > 0;
+						output = `Text response: ${text}`;
+					} else if (expectation.validation === "no-function-call-when-irrelevant") {
+						passed = (!toolCalls || toolCalls.length === 0) && !!text && text.length > 0;
+						output = `Text response (no function called): ${text}`;
+					} else {
+						passed = !!text && text.length > 0;
+						output = `Text: ${text}`;
+					}
 					break;
 				}
 
 				default:
-					return { 
-						output: `Unknown expectation type: ${expectation.type}`, 
-						passed: false 
+					return {
+						output: `Unknown expectation type: ${expectation.type}`,
+						passed: false
 					};
 			}
 
 			return { output, passed };
-	} catch (error: any) {
-		return { output: `Error: ${error.message}`, passed: false };
-	}
-}
-
-private async visionMultimodal(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
-	// Use visionModelId for vision tests
-	const visionModel = this.visionModelId;
-	if (!visionModel) {
-		return { output: "No Vision model loaded", passed: false };
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
 	}
 
-	try {
-		const {
-			history = [],
-			stream = false,
-			...otherParams
-		} = params;
-
-		// Resolve attachment paths to absolute paths
-		const resolvedHistory = history.map((msg: any) => {
-			if (msg.attachments && Array.isArray(msg.attachments)) {
-				return {
-					...msg,
-					attachments: msg.attachments.map((att: any) => ({
-						...att,
-						path: require("path").resolve(process.cwd(), "..", att.path)
-					}))
-				};
-			}
-			return msg;
-		});
-
-		// Build completion params
-		const completionParams: any = {
-			modelId: visionModel,
-			history: resolvedHistory,
-			stream,
-			...otherParams
-		};
-
-		// Call runCompletion
-		const result = runCompletion(completionParams);
-		const { text: rawText, error } = await this.safeAwaitCompletion(result);
-		
-		if (error) {
-			// Check if this is an expected error test
-			if (expectation.type === "error" && expectation.validation === "throws-error") {
-				const passed = error.includes(expectation.errorContains || "");
-				return { 
-					output: `Expected error: ${error}`, 
-					passed 
-				};
-			}
-			return { output: `Error: ${error}`, passed: false };
+	private async visionMultimodal(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Use visionModelId for vision tests
+		const visionModel = this.visionModelId;
+		if (!visionModel) {
+			return { output: "No Vision model loaded", passed: false };
 		}
 
-		const text = rawText.trim();
-		
-		// Validate based on expectation
-		let passed = false;
-		let output = text;
+		try {
+			const {
+				history = [],
+				stream = false,
+				...otherParams
+			} = params;
 
-		if (expectation.validation === "contains-keywords") {
-			// Check if response contains any of the expected keywords
-			const keywords = expectation.keywords || [];
-			const lowerText = text.toLowerCase();
-			const found = keywords.some((kw: string) => lowerText.includes(kw.toLowerCase()));
-			passed = found;
-			output = `Response: "${text}" | Keywords (${keywords.join(", ")}): ${found ? "found" : "not found"}`;
-		} else if (expectation.validation === "min-length") {
-			// Check minimum length
-			const minLength = expectation.minLength || 1;
-			passed = text.length >= minLength;
-			output = `Response length: ${text.length} (min: ${minLength}) | "${text.substring(0, 100)}${text.length > 100 ? "..." : ""}"`;
-		} else if (expectation.validation === "contains-text") {
-			// Check if response contains specific text
-			const contains = expectation.contains || "";
-			passed = text.toLowerCase().includes(contains.toLowerCase());
-			output = `Response: "${text}" | Contains "${contains}": ${passed}`;
-		} else {
-			// Default: any response is valid
-			passed = text.length > 0;
-			output = `Vision response: ${text}`;
+			// Resolve attachment paths to absolute paths
+			const resolvedHistory = history.map((msg: any) => {
+				if (msg.attachments && Array.isArray(msg.attachments)) {
+					return {
+						...msg,
+						attachments: msg.attachments.map((att: any) => ({
+							...att,
+							path: require("path").resolve(process.cwd(), "..", att.path)
+						}))
+					};
+				}
+				return msg;
+			});
+
+			// Build completion params
+			const completionParams: any = {
+				modelId: visionModel,
+				history: resolvedHistory,
+				stream,
+				...otherParams
+			};
+
+			// Call runCompletion
+			const result = runCompletion(completionParams);
+			const { text: rawText, error } = await this.safeAwaitCompletion(result);
+
+			if (error) {
+				// Check if this is an expected error test
+				if (expectation.type === "error" && expectation.validation === "throws-error") {
+					const passed = error.includes(expectation.errorContains || "");
+					return {
+						output: `Expected error: ${error}`,
+						passed
+					};
+				}
+				return { output: `Error: ${error}`, passed: false };
+			}
+
+			const text = rawText.trim();
+
+			// Validate based on expectation
+			let passed = false;
+			let output = text;
+
+			if (expectation.validation === "contains-keywords") {
+				// Check if response contains any of the expected keywords
+				const keywords = expectation.keywords || [];
+				const lowerText = text.toLowerCase();
+				const found = keywords.some((kw: string) => lowerText.includes(kw.toLowerCase()));
+				passed = found;
+				output = `Response: "${text}" | Keywords (${keywords.join(", ")}): ${found ? "found" : "not found"}`;
+			} else if (expectation.validation === "min-length") {
+				// Check minimum length
+				const minLength = expectation.minLength || 1;
+				passed = text.length >= minLength;
+				output = `Response length: ${text.length} (min: ${minLength}) | "${text.substring(0, 100)}${text.length > 100 ? "..." : ""}"`;
+			} else if (expectation.validation === "contains-text") {
+				// Check if response contains specific text
+				const contains = expectation.contains || "";
+				passed = text.toLowerCase().includes(contains.toLowerCase());
+				output = `Response: "${text}" | Contains "${contains}": ${passed}`;
+			} else {
+				// Default: any response is valid
+				passed = text.length > 0;
+				output = `Vision response: ${text}`;
+			}
+
+			return { output, passed };
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
 		}
-
-		return { output, passed };
-	} catch (error: any) {
-		return { output: `Error: ${error.message}`, passed: false };
 	}
-}
 
-private async completionContextSize(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+	private async completionContextSize(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
 		if (!modelId) {
 			return { output: "No LLM model loaded", passed: false };
 		}
@@ -993,7 +999,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 		let tempModelId: string | null = null;
 		try {
 			const { history, stream = false, maxTokens } = params;
-			
+
 			// SDK: maxTokens is called "predict" and must be in model config (per Simon's clarification)
 			// Load temporary model with predict config
 			tempModelId = await loadModel({
@@ -1034,7 +1040,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			if (tempModelId) {
 				try {
 					await unloadModel({ modelId: tempModelId });
-				} catch {}
+				} catch { }
 			}
 			return { output: `Error: ${error.message}`, passed: false };
 		}
@@ -1048,7 +1054,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 		let tempModelId: string | null = null;
 		try {
 			const { history, stream = false, temperature, seed } = params;
-			
+
 			// SDK v0.4.0+: seed must be in model config
 			// Load temporary model with seed config
 			tempModelId = await loadModel({
@@ -1087,8 +1093,8 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			const passed = text1 === text2;
 
 			return {
-				output: passed 
-					? `Seed ${seed} reproducible: Both runs produced identical output (${text1.substring(0, 50)}...)` 
+				output: passed
+					? `Seed ${seed} reproducible: Both runs produced identical output (${text1.substring(0, 50)}...)`
 					: `Seed ${seed} NOT reproducible: Run1="${text1.substring(0, 50)}", Run2="${text2.substring(0, 50)}"`,
 				passed,
 			};
@@ -1097,7 +1103,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			if (tempModelId) {
 				try {
 					await unloadModel({ modelId: tempModelId });
-				} catch {}
+				} catch { }
 			}
 			return { output: `Error: ${error.message}`, passed: false };
 		}
@@ -1139,7 +1145,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 		let tempModelId: string | null = null;
 		try {
 			const { history, stream = false, stop } = params;
-			
+
 			// SDK v0.5.1: stop_sequences must be in model config
 			// Load temporary model with stop_sequences config
 			tempModelId = await loadModel({
@@ -1169,7 +1175,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			// Check that text INCLUDES the stop sequence and does NOT continue past it
 			const stopsAt = expectation.stopsAt || expectation.stopBefore || "5";
 			const notAfter = expectation.notAfter || "6";
-			
+
 			const includesStop = text.includes(stopsAt);
 			const doesNotContinue = !text.includes(notAfter);
 			const stoppedCorrectly = includesStop && doesNotContinue;
@@ -1183,7 +1189,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			if (tempModelId) {
 				try {
 					await unloadModel({ modelId: tempModelId });
-				} catch {}
+				} catch { }
 			}
 			return { output: `Error: ${error.message}`, passed: false };
 		}
@@ -1200,7 +1206,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			const text = (await result.text).trim();
 
 			const keywords = expectation.keywords || [];
-			const hasKeywords = keywords.every((kw: string) => 
+			const hasKeywords = keywords.every((kw: string) =>
 				text.toLowerCase().includes(kw.toLowerCase())
 			);
 			const hasMinLength = text.length >= (expectation.minLength || 1);
@@ -1247,7 +1253,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			const text = (await result.text).trim();
 
 			const keywords = expectation.keywords || [];
-			const hasKeywords = keywords.every((kw: string) => 
+			const hasKeywords = keywords.every((kw: string) =>
 				text.toLowerCase().includes(kw.toLowerCase())
 			);
 
@@ -1269,7 +1275,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			const { history, stream = false } = params;
 			const contextLength = history[0].content.length;
 			const result = runCompletion({ modelId, history, stream });
-			
+
 			// Properly await and catch ALL promises to avoid unhandled rejections
 			// Both result.text and result.stats can reject on context overflow
 			let text: string;
@@ -1278,20 +1284,20 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			} catch (textError: any) {
 				// Context overflow is expected for this test - handle gracefully
 				console.log(`   ⚠️  Context overflow caught (expected): ${textError.message}`);
-				
+
 				// Also await stats to prevent unhandled rejection
 				result.stats.catch(() => {
 					// Silently catch stats rejection
 				});
-				
-				return { 
-					output: `Expected error: ${textError.message}`, 
+
+				return {
+					output: `Expected error: ${textError.message}`,
 					passed: true  // This is an expected failure test
 				};
 			}
 
 			const keywords = expectation.keywords || [];
-			const hasKeywords = keywords.every((kw: string) => 
+			const hasKeywords = keywords.every((kw: string) =>
 				text.toLowerCase().includes(kw.toLowerCase())
 			);
 			const hasMinLength = text.length >= (expectation.minLength || 3);
@@ -1319,7 +1325,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			const text = (await result.text).trim();
 
 			const keywords = expectation.keywords || [];
-			const hasKeywords = keywords.every((kw: string) => 
+			const hasKeywords = keywords.every((kw: string) =>
 				text.toLowerCase().includes(kw.toLowerCase())
 			);
 
@@ -1345,7 +1351,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			const text = (await result.text).trim();
 
 			const keywords = expectation.keywords || [];
-			const hasKeywords = keywords.every((kw: string) => 
+			const hasKeywords = keywords.every((kw: string) =>
 				text.toLowerCase().includes(kw.toLowerCase())
 			);
 
@@ -1388,7 +1394,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 		let tempModelId: string | null = null;
 		try {
 			const { history, stream = false, presence_penalty } = params;
-			
+
 			// SDK v0.5.1: presence_penalty (repeat_penalty) must be in model config
 			// Load temporary model with repeat_penalty config
 			tempModelId = await loadModel({
@@ -1426,7 +1432,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			if (tempModelId) {
 				try {
 					await unloadModel({ modelId: tempModelId });
-				} catch {}
+				} catch { }
 			}
 			return { output: `Error: ${error.message}`, passed: false };
 		}
@@ -1467,7 +1473,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 		let tempModelId: string | null = null;
 		try {
 			const { history, stream = false, stopSequences } = params;
-			
+
 			// SDK v0.5.1: stop_sequences must be in model config
 			// Load temporary model with multiple stop_sequences config
 			tempModelId = await loadModel({
@@ -1497,7 +1503,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			// Check that text INCLUDES one of the stop sequences and does NOT continue past it
 			const stopsAtOneOf = expectation.stopsAtOneOf || expectation.stopBefore || [];
 			const notAfter = expectation.notAfter || [];
-			
+
 			const includesOneStop = stopsAtOneOf.some((seq: string) => text.includes(seq));
 			const doesNotContinue = !notAfter.some((seq: string) => text.includes(seq));
 			const stoppedCorrectly = includesOneStop && doesNotContinue;
@@ -1511,19 +1517,19 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			if (tempModelId) {
 				try {
 					await unloadModel({ modelId: tempModelId });
-				} catch {}
+				} catch { }
 			}
 			return { output: `Error: ${error.message}`, passed: false };
 		}
 	}
 
 	// ========== PARAMETER VALIDATION TESTS ==========
-	
+
 	private async paramTemperatureMin(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
 		let tempModelId: string | null = null;
 		try {
 			const { history, stream = false, temperature } = params;
-			
+
 			// SDK v0.5.1: temperature (temp) must be in model config
 			// Test extreme minimum value
 			tempModelId = await loadModel({
@@ -1562,7 +1568,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			if (tempModelId) {
 				try {
 					await unloadModel({ modelId: tempModelId });
-				} catch {}
+				} catch { }
 			}
 			// Error during model load is acceptable - SDK validation working correctly
 			const errorMsg = error.message?.substring(0, 200) || String(error).substring(0, 200);
@@ -1574,7 +1580,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 		let tempModelId: string | null = null;
 		try {
 			const { history, stream = false, temperature } = params;
-			
+
 			// SDK v0.5.1: temperature (temp) must be in model config
 			// Test extreme maximum value
 			tempModelId = await loadModel({
@@ -1613,7 +1619,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			if (tempModelId) {
 				try {
 					await unloadModel({ modelId: tempModelId });
-				} catch {}
+				} catch { }
 			}
 			// Error during model load is acceptable - SDK validation working correctly
 			const errorMsg = error.message?.substring(0, 200) || String(error).substring(0, 200);
@@ -1625,7 +1631,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 		let tempModelId: string | null = null;
 		try {
 			const { history, stream = false, topP } = params;
-			
+
 			// SDK v0.5.1: topP (top_p) must be in model config
 			// Test extreme minimum value
 			tempModelId = await loadModel({
@@ -1664,7 +1670,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			if (tempModelId) {
 				try {
 					await unloadModel({ modelId: tempModelId });
-				} catch {}
+				} catch { }
 			}
 			// Error during model load is acceptable - SDK validation working correctly
 			const errorMsg = error.message?.substring(0, 200) || String(error).substring(0, 200);
@@ -1676,7 +1682,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 		let tempModelId: string | null = null;
 		try {
 			const { history, stream = false, topP } = params;
-			
+
 			// SDK v0.5.1: topP (top_p) must be in model config
 			// Test extreme maximum value
 			tempModelId = await loadModel({
@@ -1715,7 +1721,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			if (tempModelId) {
 				try {
 					await unloadModel({ modelId: tempModelId });
-				} catch {}
+				} catch { }
 			}
 			// Error during model load is acceptable - SDK validation working correctly
 			const errorMsg = error.message?.substring(0, 200) || String(error).substring(0, 200);
@@ -1727,7 +1733,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 		let tempModelId: string | null = null;
 		try {
 			const { history, stream = false, maxTokens } = params;
-			
+
 			// SDK: maxTokens is called "predict" and must be in model config (per Simon's clarification)
 			// Test very small value
 			tempModelId = await loadModel({
@@ -1766,7 +1772,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			if (tempModelId) {
 				try {
 					await unloadModel({ modelId: tempModelId });
-				} catch {}
+				} catch { }
 			}
 			// Error during model load is acceptable - SDK validation working correctly
 			const errorMsg = error.message?.substring(0, 200) || String(error).substring(0, 200);
@@ -2062,7 +2068,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 				texts.map((text: string) => runEmbed({ modelId, text }))
 			);
 
-			const allValid = embeddings.every(emb => 
+			const allValid = embeddings.every(emb =>
 				Array.isArray(emb) && emb.length >= (expectation.minDimensions || 100)
 			);
 
@@ -2178,9 +2184,9 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 
 		try {
 			const { text, sourceLang, targetLang } = params;
-			
+
 			console.log(`   🌐 Translating from ${sourceLang} to ${targetLang}: "${text}"`);
-			
+
 			// translate() returns same structure as completion(): { tokenStream, text, stats }
 			// Parameters: from, to, modelType, stream (discovered from Simon's example)
 			const result = runTranslate({
@@ -2286,17 +2292,17 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 		// Use the invalid model ID from params, not the one passed in
 		const invalidModelId = params.modelId || "invalid-model-id-999";
 		const { history = [], stream = false } = params;
-		
+
 		try {
 			let result;
 			try {
 				result = runCompletion({ modelId: invalidModelId, history, stream });
-				
+
 				// Attach catch handlers immediately (only if runCompletion succeeded)
 				if (result && typeof result === 'object') {
-					result.tokenStream?.catch?.(() => {});
-					result.stats?.catch?.(() => {});
-					result.text?.catch?.(() => {});
+					result.tokenStream?.catch?.(() => { });
+					result.stats?.catch?.(() => { });
+					result.text?.catch?.(() => { });
 				}
 			} catch (syncError: any) {
 				// Catch synchronous RPC errors
@@ -2308,7 +2314,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 					passed: containsExpected,
 				};
 			}
-			
+
 			const text = await result.text;
 
 			// Should not reach here - if we do, SDK didn't validate
@@ -2370,7 +2376,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 
 			// Run all completions concurrently
 			const results = await Promise.all(
-				requests.map((req: any) => 
+				requests.map((req: any) =>
 					runCompletion({ modelId, history: req.history, stream: false })
 				)
 			);
@@ -2378,7 +2384,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			const texts = await Promise.all(
 				results.map(r => this.safeAwaitCompletion(r).then(res => res.error ? "" : res.text))
 			);
-			
+
 			// Check if each response contains the expected answer
 			const matches = texts.map((text, i) => ({
 				text: text.trim(),
@@ -2412,7 +2418,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			const text = rawText.trim();
 
 			const keywords = expectation.keywords || [];
-			const hasKeywords = keywords.every((kw: string) => 
+			const hasKeywords = keywords.every((kw: string) =>
 				text.toLowerCase().includes(kw.toLowerCase())
 			);
 
@@ -2440,9 +2446,10 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			const text = rawText.trim();
 
 			const keywords = expectation.keywords || [];
-			const hasKeywords = keywords.every((kw: string) => 
-				text.toLowerCase().includes(kw.toLowerCase())
-			);
+			// Use .some() for contains-any-keyword validation (accept ANY keyword)
+			const hasKeywords = expectation.validation === "contains-any-keyword"
+				? keywords.some((kw: string) => text.toLowerCase().includes(kw.toLowerCase()))
+				: keywords.every((kw: string) => text.toLowerCase().includes(kw.toLowerCase()));
 
 			return {
 				output: `Repeated tokens response: "${text}" | Keywords found: ${hasKeywords}`,
@@ -2461,7 +2468,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 		try {
 			// Unload current model
 			await unloadModel({ modelId });
-			
+
 			// Load same model again (simulates switching)
 			const newModelId = await loadModel({
 				modelSrc: LLAMA_3_2_1B_INST_Q4_0,
@@ -2493,15 +2500,15 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 
 			// Test if it works with a completion
 			const { testAfterReload } = params;
-			const result = runCompletion({ 
-				modelId: newModelId, 
-				history: testAfterReload.history, 
-				stream: false 
+			const result = runCompletion({
+				modelId: newModelId,
+				history: testAfterReload.history,
+				stream: false
 			});
 			const text = (await result.text).trim();
 
 			const keywords = expectation.keywords || [];
-			const hasKeywords = keywords.every((kw: string) => 
+			const hasKeywords = keywords.every((kw: string) =>
 				text.includes(kw)
 			);
 
@@ -2530,7 +2537,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			const text = rawText.trim();
 
 			const keywords = expectation.keywords || [];
-			const hasKeywords = keywords.every((kw: string) => 
+			const hasKeywords = keywords.every((kw: string) =>
 				text.includes(kw)
 			);
 
@@ -2558,7 +2565,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			const text = rawText.trim();
 
 			const keywords = expectation.keywords || [];
-			const hasKeywords = keywords.every((kw: string) => 
+			const hasKeywords = keywords.every((kw: string) =>
 				text.includes(kw)
 			);
 
@@ -2586,7 +2593,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			const text = rawText.trim();
 
 			const keywords = expectation.keywords || [];
-			const hasKeywords = keywords.every((kw: string) => 
+			const hasKeywords = keywords.every((kw: string) =>
 				text.includes(kw)
 			);
 
@@ -2616,7 +2623,10 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			const text = rawText.trim();
 
 			const keywords = expectation.keywords || [];
-			const hasKeywords = keywords.every((kw: string) => text.includes(kw));
+			// Use .some() for contains-any-keyword validation (accept ANY keyword)
+			const hasKeywords = expectation.validation === "contains-any-keyword"
+				? keywords.some((kw: string) => text.toLowerCase().includes(kw.toLowerCase()))
+				: keywords.every((kw: string) => text.toLowerCase().includes(kw.toLowerCase()));
 
 			return {
 				output: `Conversation with context: "${text}" | Keywords found: ${hasKeywords}`,
@@ -2642,7 +2652,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			const text = rawText.trim();
 
 			const keywords = expectation.keywords || [];
-			const hasKeywords = keywords.some((kw: string) => 
+			const hasKeywords = keywords.some((kw: string) =>
 				text.toLowerCase().includes(kw.toLowerCase())
 			);
 
@@ -2672,7 +2682,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			const text = rawText.trim();
 
 			const keywords = expectation.keywords || [];
-			const hasAnyKeyword = keywords.some((kw: string) => 
+			const hasAnyKeyword = keywords.some((kw: string) =>
 				text.toLowerCase().includes(kw.toLowerCase())
 			);
 
@@ -2730,7 +2740,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			const text = rawText.toLowerCase().trim().replace(/[.,!?;:]+$/g, '');
 
 			const keywords = expectation.keywords || [];
-			const hasKeywords = keywords.some((kw: string) => 
+			const hasKeywords = keywords.some((kw: string) =>
 				text.includes(kw.toLowerCase())
 			);
 
@@ -2834,7 +2844,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 
 			const chunksGenerated = result.processed?.length || 0;
 			const minChunks = expectation.minChunks || 1;
-			
+
 			// For graceful handling tests, pass if it either succeeds or handles error gracefully
 			if (expectation.validation === "rag-handles-gracefully") {
 				const passed = expectation.shouldSucceedOrHandleError === true;
@@ -2880,8 +2890,8 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			});
 
 			// Attach catch handlers immediately
-			result.tokenStream?.catch(() => {});
-			result.stats?.catch(() => {});
+			result.tokenStream?.catch(() => { });
+			result.stats?.catch(() => { });
 
 			const text = await result.text;
 
@@ -2924,7 +2934,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 		} catch (error: any) {
 			// SDK threw error for empty input - this is correct behavior
 			const errorMsg = error.message?.toLowerCase() || "";
-			const hasExpectedKeyword = expectation.errorKeywords?.some((kw: string) => 
+			const hasExpectedKeyword = expectation.errorKeywords?.some((kw: string) =>
 				errorMsg.includes(kw.toLowerCase())
 			);
 
@@ -2949,8 +2959,8 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			});
 
 			// Attach catch handlers immediately
-			result.tokenStream?.catch(() => {});
-			result.stats?.catch(() => {});
+			result.tokenStream?.catch(() => { });
+			result.stats?.catch(() => { });
 
 			const text = await result.text;
 
@@ -2960,7 +2970,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			};
 		} catch (error: any) {
 			const errorMsg = error.message?.toLowerCase() || "";
-			const hasExpectedKeyword = expectation.errorKeywords?.some((kw: string) => 
+			const hasExpectedKeyword = expectation.errorKeywords?.some((kw: string) =>
 				errorMsg.includes(kw.toLowerCase())
 			);
 
@@ -2998,7 +3008,7 @@ private async completionContextSize(modelId: string | null, params: any, expecta
 			};
 		} catch (error: any) {
 			const errorMsg = error.message?.toLowerCase() || "";
-			const hasExpectedKeyword = expectation.errorKeywords?.some((kw: string) => 
+			const hasExpectedKeyword = expectation.errorKeywords?.some((kw: string) =>
 				errorMsg.includes(kw.toLowerCase())
 			);
 

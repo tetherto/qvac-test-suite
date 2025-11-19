@@ -38,6 +38,9 @@ export abstract class ConsumerBase {
 	protected whisperModelId: string | null = null;
 	protected embeddingModelId: string | null = null;
 	protected translationModelId: string | null = null;
+	protected toolsModelId: string | null = null;
+	protected visionModelId: string | null = null;
+	protected ttsModelId: string | null = null;
 	protected executor: any; // TestExecutor type
 	protected registered = false;
 	protected testsCompleted = 0;
@@ -76,15 +79,24 @@ export abstract class ConsumerBase {
 	protected abstract loadLlmModel(): Promise<string>;
 	protected abstract loadWhisperModel(): Promise<string>;
 	protected abstract loadEmbeddingModel(): Promise<string>;
+	protected abstract loadToolsModel(): Promise<string>;
+	protected abstract loadVisionModel(): Promise<string>;
+	protected abstract loadTtsModel(): Promise<string>;
 
 	// Determine which model type a test needs
-	protected getRequiredModelType(testId: string): 'llm' | 'whisper' | 'embedding' | 'translation' | null {
+	protected getRequiredModelType(testId: string): 'llm' | 'whisper' | 'embedding' | 'translation' | 'tools' | 'vision' | 'tts' | null {
 		if (testId.startsWith("transcription")) {
 			return 'whisper';
 		} else if (testId.startsWith("translation")) {
 			return 'translation';
 		} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
 			return 'embedding';
+		} else if (testId.startsWith("tools-")) {
+			return 'tools';
+		} else if (testId.startsWith("vision-")) {
+			return 'vision';
+		} else if (testId.startsWith("tts-")) {
+			return 'tts';
 		} else if (
 			testId.startsWith("completion") ||
 			testId.startsWith("model-load") ||
@@ -143,6 +155,42 @@ export abstract class ConsumerBase {
 			}
 			this.translationModelId = this.llmModelId;
 			return this.llmModelId;
+		}
+
+		if (requiredModelType === 'tools') {
+			if (!this.toolsModelId) {
+				this.log(`   📦 Loading Tools model (QWEN)...`);
+				this.toolsModelId = await this.loadToolsModel();
+				// Set the tools model ID in the executor
+				if (this.executor.setToolsModelId) {
+					this.executor.setToolsModelId(this.toolsModelId);
+				}
+			}
+			return this.toolsModelId;
+		}
+
+		if (requiredModelType === 'vision') {
+			if (!this.visionModelId) {
+				this.log(`   📦 Loading Vision model (SmolVLM2)...`);
+				this.visionModelId = await this.loadVisionModel();
+				// Set the vision model ID in the executor
+				if (this.executor.setVisionModelId) {
+					this.executor.setVisionModelId(this.visionModelId);
+				}
+			}
+			return this.visionModelId;
+		}
+
+		if (requiredModelType === 'tts') {
+			if (!this.ttsModelId) {
+				this.log(`   📦 Loading TTS model (Piper)...`);
+				this.ttsModelId = await this.loadTtsModel();
+				// Set the TTS model ID in the executor
+				if (this.executor.setTtsModelId) {
+					this.executor.setTtsModelId(this.ttsModelId);
+				}
+			}
+			return this.ttsModelId;
 		}
 
 		return null;
