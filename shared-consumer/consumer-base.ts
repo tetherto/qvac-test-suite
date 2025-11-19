@@ -459,13 +459,12 @@ export abstract class ConsumerBase {
 				this.callbacks.onShutdown();
 			}
 		});
+		process.exit(0);
 	}
 
 	public forceShutdown() {
-		if (this.shutdownRequested) {
-			this.log("⚠️  Force shutdown - closing immediately");
-			this.shutdown();
-		}
+		this.log("⚠️  Force shutdown - closing immediately");
+		this.shutdown();
 	}
 }
 
