@@ -39,14 +39,19 @@ const systemInfo = {
 };
 
 export function generateHtmlReport(data: ReportData): string {
-	const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-	
 	// Create reports directory if it doesn't exist
 	if (!fs.existsSync('reports')) {
 		fs.mkdirSync('reports');
 	}
 	
-	const filename = `reports/batch-report-${timestamp}.html`;
+	// Try filename with run ID first
+	let filename = `reports/batch-report-${data.runId}.html`;
+	
+	// If file exists, add timestamp to make it unique
+	if (fs.existsSync(filename)) {
+		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+		filename = `reports/batch-report-${data.runId}-${timestamp}.html`;
+	}
 	
 	const elapsed = (Date.now() - data.startTime) / 1000;
 	const successCount = data.completedTests.filter(t => t.outcome === "success").length;
