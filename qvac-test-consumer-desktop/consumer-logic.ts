@@ -7,6 +7,11 @@ import {
 	WHISPER_TINY,
 	VAD_SILERO_5_1_2,
 	GTE_LARGE_FP16,
+	QWEN_3_1_7B_INST_Q4,
+	SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+	MMPROJ_SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM,
+	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG,
 } from "@tetherto/sdk-dev";
 
 export class DesktopConsumer extends ConsumerBase {
@@ -65,6 +70,34 @@ export class DesktopConsumer extends ConsumerBase {
 			modelSrc: GTE_LARGE_FP16,
 			modelType: "embeddings",
 		});
+	}
+
+	protected async loadToolsModel(): Promise<string> {
+		return await loadModel({
+			modelSrc: QWEN_3_1_7B_INST_Q4,
+			modelType: "llm",
+			modelConfig: {
+				ctx_size: 4096,
+				tools: true,
+			},
+		});
+	}
+
+	protected async loadVisionModel(): Promise<string> {
+		return await loadModel({
+			modelSrc: SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+			modelType: "llm",
+			projectionModelSrc: MMPROJ_SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+			modelConfig: {
+				ctx_size: 1024,
+			},
+		});
+	}
+
+	protected async loadTtsModel(): Promise<string> {
+		// TODO: TTS model loading requires additional configuration
+		// For now, throw an error to indicate it's not implemented
+		throw new Error("TTS model loading not yet implemented - requires configSrc and eSpeakDataPath");
 	}
 
 	protected async getSDKFunctions() {
