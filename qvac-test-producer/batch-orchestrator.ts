@@ -1,6 +1,7 @@
 import mqtt, { type IClientPublishOptions, type MqttClient } from "mqtt";
 import { env } from "./env";
 import { TestBuilder } from "./test-builders";
+import { generateHtmlReport, type ReportData, type ReportTestResult, type ReportConsumerInfo } from "../shared-utils/report-generator";
 
 interface TestCase {
 	id: string; // Unique test ID
@@ -36,6 +37,8 @@ interface TestResult {
 	timestamp: string;
 	error?: string;
 	output?: string;
+	expected?: string;
+	actual?: string;
 }
 
 export class BatchOrchestrator {
@@ -352,6 +355,31 @@ export class BatchOrchestrator {
 
 		console.log("\n📋 Test Results by Category:\n");
 		this.displayResultsByCategory();
+
+		// Generate HTML report
+		try {
+			const reportData: ReportData = {
+				runId: this.runId,
+				completedTests: Array.from(this.completedTests.values()).map(test => ({
+					testId: test.testId,
+					consumerId: test.consumerId,
+					outcome: test.outcome,
+					duration: test.duration,
+					error: test.error,
+					output: test.output,
+					expected: test.expected,
+					actual: test.actual,
+				} as ReportTestResult)),
+				consumers: new Map(Array.from(this.consumers.entries()).map(([id, info]) => [
+					id,
+					{ consumerId: info.consumerId, platform: info.platform } as ReportConsumerInfo
+				])),
+				startTime: this.startTime,
+			};
+			generateHtmlReport(reportData);
+		} catch (error) {
+			console.error("⚠️  Failed to generate HTML report:", error);
+		}
 
 		// Signal all consumers to shutdown
 		this.client.publish("qvac/batch-complete", JSON.stringify({ 
