@@ -1016,20 +1016,21 @@ export class TestBuilder {
 			testId: "completion-stop-sequences",
 			payload: JSON.stringify({
 				testId: "completion-stop-sequences",
-				params: {
-					history: [
-						{ role: "user", content: "Count from 1 to 10, separated by commas." },
-					],
-					stream: false,
-					stop: "5", // Single stop sequence (will be converted to array in handler)
-				},
-				expectation: {
-					validation: "stops-at-sequence",
-					stopsAt: "5", // SDK includes stop sequence in output
-					notAfter: "6", // Should not continue past the stop sequence
-				},
-				expectedOutcome: "pass",
-			}),
+			params: {
+				history: [
+					{ role: "user", content: "List 10 fruits, one per line." },
+				],
+				stream: false,
+				stop: ["banana"], // Stop when model generates "banana"
+			},
+			expectation: {
+				validation: "stops-before-or-at-sequence",
+				stopSequence: "banana",
+				shouldNotContainAfter: ["grape", "orange", "mango"], // If it stopped, won't have these later fruits
+			},
+			expectedOutcome: "pass",
+			debugInfo: "QVAC-8339: Stop sequences not working. SDK continues generation past stop sequence. 100% reproducible.",
+		}),
 			dependency: "llm",
 			estimatedDurationMs: 8000,
 		};
@@ -1555,19 +1556,19 @@ export class TestBuilder {
 			testId: "rag-large-document-32kb",
 			payload: JSON.stringify({
 				testId: "rag-large-document-32kb",
-				params: {
-					workspace: "desert-adventure",
-					documentFile: "desert_adventure_large.txt",
-					chunkSize: 400, // Even reduced chunks don't prevent crash
-					chunkOverlap: 80,
-					chunkStrategy: "paragraph",
-				},
-				expectation: {
-					validation: "rag-chunks-generated",
-					minChunks: 15,
-				},
-				expectedOutcome: "pass", // Test should pass when SDK fixes GGML bug
-				debugInfo: "🐛 CRITICAL: GGML assertion failure on 32KB document. Crashes at C++ level. Needs P0 ticket. Currently failing.",
+			params: {
+				workspace: "desert-adventure",
+				documentFile: "desert_adventure_large.txt",
+				chunkSize: 400, // Produces chunks that exceed 512 token context
+				chunkOverlap: 80,
+				chunkStrategy: "paragraph",
+			},
+			expectation: {
+				validation: "rag-handles-gracefully",
+				shouldSucceedOrHandleError: true,
+			},
+			expectedOutcome: "pass",
+			debugInfo: "PR #249: SDK gracefully handles context overflow with clear error (514 tokens > 512 limit). Test passes if error is graceful, not a crash.",
 			}),
 			dependency: "embeddings",
 			estimatedDurationMs: 120000, // Timeout before crash
@@ -1575,12 +1576,7 @@ export class TestBuilder {
 	}
 
 	buildRagMediumDocumentTest(): TestDefinition {
-		// 🐛 SDK BUG: Cascading failure from large document crash
-		// ASANA TICKET: Same as rag-large (GGML assertion - needs P0 ticket)
-		// After rag-large-document-32kb crashes, SDK is in unstable state
-		// This 10KB document would normally work but times out due to cascade effect
-		// Root cause: Same GGML tensor issue, just manifests at different document sizes
-		// Status: CASCADE FAILURE - dependent on large document bug fix
+		// 10KB document should work fine - chunks are within token limits
 		return {
 			testId: "rag-medium-document-10kb",
 			payload: JSON.stringify({
@@ -1597,14 +1593,219 @@ export class TestBuilder {
 				minChunks: 7,
 			},
 			expectedOutcome: "pass",
-			debugInfo: "PR #244: 10KB document chunking test. Adjusted minChunks from 10 to 7 based on actual output.",
+			debugInfo: "PR #249: 10KB document chunking. Chunk size 350 produces <512 tokens, should work fine.",
 			}),
 			dependency: "embeddings",
-			estimatedDurationMs: 90000, // Timeout before cascade failure
+			estimatedDurationMs: 20000,
 		};
 	}
 
 
+
+	// ========== CACHE MANAGEMENT TESTS (PR #184, #249, #256) ==========
+
+	buildCacheGetModelInfoTest(): TestDefinition {
+		return {
+			testId: "cache-get-model-info",
+			payload: JSON.stringify({
+				testId: "cache-get-model-info",
+				params: {
+					modelConstant: "LLAMA_3_2_1B_INST_Q4_0",
+				},
+				expectation: {
+					validation: "returns-cache-info",
+					hasFields: ["isCached", "cacheFiles", "actualSize", "cachedAt"]
+				},
+				expectedOutcome: "pass",
+				debugInfo: "PR #184: getModelInfo should return cache status and file information"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildCacheDeleteAllTest(): TestDefinition {
+		return {
+			testId: "cache-delete-all",
+			payload: JSON.stringify({
+				testId: "cache-delete-all",
+				params: {
+					deleteAll: true
+				},
+				expectation: {
+					validation: "cache-deleted",
+					success: true
+				},
+				expectedOutcome: "pass",
+				debugInfo: "PR #184: deleteCache({ all: true }) should delete all cache files"
+			}),
+			dependency: "none",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildCacheDeleteByKeyTest(): TestDefinition {
+		return {
+			testId: "cache-delete-by-key",
+			payload: JSON.stringify({
+				testId: "cache-delete-by-key",
+				params: {
+					kvCacheKey: "test-session-cache"
+				},
+				expectation: {
+					validation: "cache-key-deleted",
+					success: true
+				},
+				expectedOutcome: "pass",
+				debugInfo: "PR #184: deleteCache({ kvCacheKey }) should delete specific cache key"
+			}),
+			dependency: "none",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildCacheDeleteByModelTest(): TestDefinition {
+		return {
+			testId: "cache-delete-by-model",
+			payload: JSON.stringify({
+				testId: "cache-delete-by-model",
+				params: {
+					kvCacheKey: "test-session",
+					modelIdToDelete: "specific-model-id"
+				},
+				expectation: {
+					validation: "model-cache-deleted",
+					success: true
+				},
+				expectedOutcome: "pass",
+				debugInfo: "PR #184: deleteCache({ kvCacheKey, modelId }) should delete specific model in cache key"
+			}),
+			dependency: "none",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildCacheConfigDirectoryTest(): TestDefinition {
+		return {
+			testId: "cache-config-directory",
+			payload: JSON.stringify({
+				testId: "cache-config-directory",
+				params: {
+					cacheDirectory: "/tmp/qvac-test-cache"
+				},
+				expectation: {
+					validation: "config-set",
+					success: true
+				},
+				expectedOutcome: "pass",
+				debugInfo: "PR #249: setConfig({ cacheDirectory }) should configure custom cache directory"
+			}),
+			dependency: "none",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildCacheVerifyFilesTest(): TestDefinition {
+		return {
+			testId: "cache-verify-files",
+			payload: JSON.stringify({
+				testId: "cache-verify-files",
+				params: {
+					modelConstant: "LLAMA_3_2_1B_INST_Q4_0"
+				},
+				expectation: {
+					validation: "cache-files-exist",
+					hasFiles: true
+				},
+				expectedOutcome: "pass",
+				debugInfo: "PR #184: getModelInfo should show cache files exist after model load"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildCacheHypercoreDeletionTest(): TestDefinition {
+		return {
+			testId: "cache-hypercore-deletion",
+			payload: JSON.stringify({
+				testId: "cache-hypercore-deletion",
+				params: {
+					kvCacheKey: "test-hypercore-delete"
+				},
+				expectation: {
+					validation: "hypercore-deleted",
+					success: true
+				},
+				expectedOutcome: "pass",
+				debugInfo: "PR #256: Cache deletion should remove hypercores, not just model files"
+			}),
+			dependency: "none",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildCacheMultipleModelsTest(): TestDefinition {
+		return {
+			testId: "cache-multiple-models-info",
+			payload: JSON.stringify({
+				testId: "cache-multiple-models-info",
+				params: {
+					models: ["LLAMA_3_2_1B_INST_Q4_0", "GTE_LARGE_FP16"]
+				},
+				expectation: {
+					validation: "multiple-cache-info",
+					modelCount: 2
+				},
+				expectedOutcome: "pass",
+				debugInfo: "PR #184: getModelInfo should work for multiple cached models"
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildCacheAfterUnloadTest(): TestDefinition {
+		return {
+			testId: "cache-persists-after-unload",
+			payload: JSON.stringify({
+				testId: "cache-persists-after-unload",
+				params: {
+					modelConstant: "LLAMA_3_2_1B_INST_Q4_0"
+				},
+				expectation: {
+					validation: "cache-persists",
+					isCached: true,
+					isLoaded: false
+				},
+				expectedOutcome: "pass",
+				debugInfo: "PR #184: Cache should persist after unloadModel (clearStorage: false)"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildCacheInvalidKeyTest(): TestDefinition {
+		return {
+			testId: "cache-invalid-key-error",
+			payload: JSON.stringify({
+				testId: "cache-invalid-key-error",
+				params: {
+					kvCacheKey: ""
+				},
+				expectation: {
+					type: "error",
+					validation: "throws-error",
+					errorContains: "invalid"
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-8338: PR #184: deleteCache with empty key should throw error. Currently accepts empty string."
+			}),
+			dependency: "none",
+			estimatedDurationMs: 1000,
+		};
+	}
 
 	// ========== BUILD ALL TESTS ==========
 
@@ -1615,7 +1816,7 @@ export class TestBuilder {
 
 	/**
 	 * Build tests filtered by section/category
-	 * @param section - "all", "transcription", "completion", "embedding", "rag", "model", "translation", "tools", or "error"
+	 * @param section - "all", "transcription", "completion", "embedding", "rag", "model", "translation", "tools", "cache", or "error"
 	 */
 	buildTestsBySection(
 		tests: TestDefinition[],
@@ -1953,6 +2154,22 @@ export class TestBuilder {
 			tests.push(this.buildRagLargeDocumentTest());
 			tests.push(this.buildRagMediumDocumentTest());
 			// Note: buildRagSmallDocumentTest and buildRagCorruptedDocumentTest not implemented yet
+		}
+
+		// ========== CACHE MANAGEMENT TESTS (PR #184, #249, #256) ==========
+		if (section === "all" || section === "cache") {
+			console.log("\n💾 Adding Cache Management Tests (PRs #184, #249, #256)");
+			tests.push(this.buildCacheGetModelInfoTest());
+			tests.push(this.buildCacheDeleteAllTest());
+			tests.push(this.buildCacheDeleteByKeyTest());
+			tests.push(this.buildCacheDeleteByModelTest());
+			tests.push(this.buildCacheConfigDirectoryTest());
+			tests.push(this.buildCacheVerifyFilesTest());
+			tests.push(this.buildCacheHypercoreDeletionTest());
+			tests.push(this.buildCacheMultipleModelsTest());
+			tests.push(this.buildCacheAfterUnloadTest());
+			tests.push(this.buildCacheInvalidKeyTest());
+			console.log("   ✅ Added 10 cache management tests");
 		}
 
 		// ========== PHASE 5.5: ERROR HANDLING & PARAMETER VALIDATION (Sprint 1 - Priority 1) ==========

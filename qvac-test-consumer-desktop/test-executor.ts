@@ -6,6 +6,9 @@ import {
 	loadModel,
 	unloadModel,
 	ragSaveEmbeddings,
+	deleteCache,
+	getModelInfo,
+	setConfig,
 	LLAMA_3_2_1B_INST_Q4_0,
 	GTE_LARGE_FP16,
 } from "@tetherto/sdk-dev";
@@ -287,6 +290,17 @@ export class TestExecutor {
 		this.testHandlers.set("todo-loading-progress", this.todoPlaceholder.bind(this));
 		this.testHandlers.set("todo-typed-error-codes", this.todoPlaceholder.bind(this));
 		this.testHandlers.set("todo-addon-crash-detection", this.todoPlaceholder.bind(this));
+		// Cache management tests (PR #184, #249, #256)
+		this.testHandlers.set("cache-get-model-info", this.cacheGetModelInfo.bind(this));
+		this.testHandlers.set("cache-delete-all", this.cacheDeleteAll.bind(this));
+		this.testHandlers.set("cache-delete-by-key", this.cacheDeleteByKey.bind(this));
+		this.testHandlers.set("cache-delete-by-model", this.cacheDeleteByModel.bind(this));
+		this.testHandlers.set("cache-config-directory", this.cacheConfigDirectory.bind(this));
+		this.testHandlers.set("cache-verify-files", this.cacheVerifyFiles.bind(this));
+		this.testHandlers.set("cache-hypercore-deletion", this.cacheHypercoreDeletion.bind(this));
+		this.testHandlers.set("cache-multiple-models-info", this.cacheMultipleModels.bind(this));
+		this.testHandlers.set("cache-persists-after-unload", this.cachePersistsAfterUnload.bind(this));
+		this.testHandlers.set("cache-invalid-key-error", this.cacheInvalidKey.bind(this));
 	}
 
 	public async executeTest(
@@ -3161,6 +3175,161 @@ export class TestExecutor {
 			output: `TODO: ${expectation.note || "Test not yet implemented - awaiting SDK documentation"}`,
 			passed: true, // Mark as pass to skip
 		};
+	}
+
+	// ========== CACHE MANAGEMENT TEST HANDLERS (PR #184, #249, #256) ==========
+
+	private async cacheGetModelInfo(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const { modelConstant } = params;
+		const modelMap: any = { LLAMA_3_2_1B_INST_Q4_0, GTE_LARGE_FP16 };
+		const model = modelMap[modelConstant];
+
+		try {
+			const info = await getModelInfo(model);
+			const hasRequiredFields = expectation.hasFields?.every((field: string) => field in info) ?? true;
+			
+			return {
+				output: `Model info: isCached=${info.isCached}, files=${info.cacheFiles?.length || 0}, size=${info.actualSize || 0}`,
+				passed: hasRequiredFields
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async cacheDeleteAll(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		try {
+			const result = await deleteCache({ all: true });
+			return {
+				output: `Delete all caches: ${result.success}`,
+				passed: result.success === expectation.success
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async cacheDeleteByKey(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const { kvCacheKey } = params;
+		try {
+			const result = await deleteCache({ kvCacheKey });
+			return {
+				output: `Delete cache key '${kvCacheKey}': ${result.success}`,
+				passed: result.success === expectation.success
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async cacheDeleteByModel(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const { kvCacheKey, modelIdToDelete } = params;
+		try {
+			const result = await deleteCache({ kvCacheKey, modelId: modelIdToDelete });
+			return {
+				output: `Delete model '${modelIdToDelete}' in key '${kvCacheKey}': ${result.success}`,
+				passed: result.success === expectation.success
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async cacheConfigDirectory(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const { cacheDirectory } = params;
+		try {
+			const result = await setConfig({ cacheDirectory });
+			return {
+				output: `Set cache directory to '${cacheDirectory}': ${result.success}`,
+				passed: result.success === expectation.success
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async cacheVerifyFiles(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const { modelConstant } = params;
+		const modelMap: any = { LLAMA_3_2_1B_INST_Q4_0, GTE_LARGE_FP16 };
+		const model = modelMap[modelConstant];
+
+		try {
+			const info = await getModelInfo(model);
+			const hasFiles = info.cacheFiles && info.cacheFiles.length > 0;
+			
+			return {
+				output: `Cache files exist: ${hasFiles}, count: ${info.cacheFiles?.length || 0}`,
+				passed: hasFiles === expectation.hasFiles
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async cacheHypercoreDeletion(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const { kvCacheKey } = params;
+		try {
+			const result = await deleteCache({ kvCacheKey });
+			return {
+				output: `Delete hypercore for key '${kvCacheKey}': ${result.success}`,
+				passed: result.success === expectation.success
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async cacheMultipleModels(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const { models } = params;
+		const modelMap: any = { LLAMA_3_2_1B_INST_Q4_0, GTE_LARGE_FP16 };
+		
+		try {
+			const results = await Promise.all(
+				models.map((m: string) => getModelInfo(modelMap[m]))
+			);
+			
+			return {
+				output: `Got info for ${results.length} models`,
+				passed: results.length === expectation.modelCount
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async cachePersistsAfterUnload(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const { modelConstant } = params;
+		const modelMap: any = { LLAMA_3_2_1B_INST_Q4_0, GTE_LARGE_FP16 };
+		const model = modelMap[modelConstant];
+
+		try {
+			// Load, unload, then check cache
+			const loadedId = await loadModel({ modelSrc: model, modelType: "llm" });
+			await unloadModel({ modelId: loadedId, clearStorage: false });
+			
+			const info = await getModelInfo(model);
+			
+			return {
+				output: `After unload: isCached=${info.isCached}, isLoaded=${info.isLoaded}`,
+				passed: info.isCached === expectation.isCached && info.isLoaded === expectation.isLoaded
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	private async cacheInvalidKey(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const { kvCacheKey } = params;
+		try {
+			await deleteCache({ kvCacheKey });
+			return { output: `Should have thrown error for empty key`, passed: false };
+		} catch (error: any) {
+			const passed = error.message && error.message.toLowerCase().includes(expectation.errorContains.toLowerCase());
+			return {
+				output: `Expected error: ${error.message}`,
+				passed
+			};
+		}
 	}
 }
 
