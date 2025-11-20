@@ -1,17 +1,27 @@
 diff --git a/node_modules/bare-link/lib/platform/android.js b/node_modules/bare-link/lib/platform/android.js
-index a980698..a7f9f66 100644
+index 0000000..0000000 100644
 --- a/node_modules/bare-link/lib/platform/android.js
 +++ b/node_modules/bare-link/lib/platform/android.js
-@@ -62,6 +62,11 @@ module.exports = async function android(base, pkg, name, version, opts = {}) {
+@@ -64,7 +64,7 @@ module.exports = async function android(base, pkg, name, version, opts = {}) {
+ 
+             result.push(so)
+ 
+-            await fs.copyFile(path.join(file.parentPath, file.name), hosts)
++            await fs.copyFile(path.join(file.parentPath, file.name), so)
+           }
+         }
+       }
+@@ -72,7 +72,12 @@ module.exports = async function android(base, pkg, name, version, opts = {}) {
        if (err.code !== 'ENOENT') throw err
      }
  
--    await run(patchelf, [...replacements, so], opts)
+-    await run(patchelf, [...replacements, so])
 +    // Skip patchelf on Windows when building for Android (patchelf.exe can't patch Linux ELF binaries)
 +    if (process.env.SKIP_PATCHELF !== '1' && process.env.PATCHELF_SKIP !== '1' && process.env.BARE_RUNTIME_SKIP_PATCHELF !== '1' && process.platform !== 'win32') {
-+      await run(patchelf, [...replacements, so], opts)
++      await run(patchelf, [...replacements, so])
 +    } else if (process.platform === 'win32') {
 +      console.log(`[bare-link] Skipping patchelf for ${so} on Windows (Android binaries don't need patching on Windows host)`)
 +    }
    }
- }
+ 
+   return result
