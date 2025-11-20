@@ -2,6 +2,7 @@ import mqtt, { type IClientPublishOptions, type MqttClient } from "mqtt";
 import { env } from "./env";
 import { TestBuilder } from "./test-builders";
 import { generateHtmlReport, type ReportData, type ReportTestResult, type ReportConsumerInfo } from "../shared-utils/report-generator";
+import { getArgValue } from "../shared-utils/args";
 
 interface TestCase {
 	id: string; // Unique test ID
@@ -433,7 +434,16 @@ export class BatchOrchestrator {
 		console.log("🔨 Building test queue...\n");
 
 		const builder = new TestBuilder();
-		const allTests = builder.buildAllTests();
+		
+		// Check for --section command line argument
+		const section = getArgValue("section") || "all";
+		if (section !== "all") {
+			console.log(`📂 Running section: ${section}\n`);
+		}
+		
+		const allTests = section === "all" 
+			? builder.buildAllTests()
+			: builder.buildTestsBySection([], section);
 
 		// Apply test filtering if TEST_FILTER env var is set
 		const testFilter = env.TEST_FILTER;

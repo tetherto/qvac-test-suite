@@ -11,6 +11,7 @@
 		"batch:rag": "bun run batch-orchestrator.ts --section=rag",
 		"batch:model": "bun run batch-orchestrator.ts --section=model",
 		"batch:translation": "bun run batch-orchestrator.ts --section=translation",
+		"batch:tools": "bun run batch-orchestrator.ts --section=tools",
 		"batch:error": "bun run batch-orchestrator.ts --section=error"
 	},
 	"devDependencies": {
