@@ -9,6 +9,8 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const http = require('http');
+const url = require('url');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
 
@@ -16,10 +18,41 @@ const isWindows = os.platform() === 'win32';
 
 /**
  * Downloads a file from a URL and verifies its SHA256 checksum
+ * Handles redirects (301, 302, 307, 308) up to maxRedirects times
  */
-function downloadFile(url, targetPath, expectedSha256) {
+function downloadFile(downloadUrl, targetPath, expectedSha256, maxRedirects = 5) {
   return new Promise((resolve, reject) => {
-    https.get(url, (response) => {
+    if (maxRedirects <= 0) {
+      reject(new Error('Too many redirects'));
+      return;
+    }
+
+    const parsedUrl = url.parse(downloadUrl);
+    const isHttps = parsedUrl.protocol === 'https:';
+    const client = isHttps ? https : http;
+
+    const requestOptions = {
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || (isHttps ? 443 : 80),
+      path: parsedUrl.path,
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Node.js'
+      }
+    };
+
+    client.get(requestOptions, (response) => {
+      // Handle redirects
+      if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+        const redirectUrl = url.resolve(downloadUrl, response.headers.location);
+        // Consume the response to free up the connection
+        response.resume();
+        // Follow redirect recursively
+        return downloadFile(redirectUrl, targetPath, expectedSha256, maxRedirects - 1)
+          .then(resolve)
+          .catch(reject);
+      }
+
       if (response.statusCode !== 200) {
         reject(new Error(`Failed to download: ${response.statusCode}`));
         return;
