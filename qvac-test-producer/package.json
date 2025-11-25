@@ -4,16 +4,17 @@
 	"type": "module",
 	"private": true,
 	"scripts": {
-		"batch": "bun run batch-orchestrator.ts --allow-wildcard-consumers",
-		"batch:transcription": "bun run batch-orchestrator.ts --section=transcription --allow-wildcard-consumers",
-		"batch:completion": "bun run batch-orchestrator.ts --section=completion --allow-wildcard-consumers",
-		"batch:embedding": "bun run batch-orchestrator.ts --section=embedding --allow-wildcard-consumers",
-		"batch:rag": "bun run batch-orchestrator.ts --section=rag --allow-wildcard-consumers",
-		"batch:model": "bun run batch-orchestrator.ts --section=model --allow-wildcard-consumers",
-		"batch:translation": "bun run batch-orchestrator.ts --section=translation --allow-wildcard-consumers",
-		"batch:tools": "bun run batch-orchestrator.ts --section=tools --allow-wildcard-consumers",
-		"batch:cache": "bun run batch-orchestrator.ts --section=cache --allow-wildcard-consumers",
-		"batch:error": "bun run batch-orchestrator.ts --section=error --allow-wildcard-consumers"
+		"env:set-local": "bun run scripts/set-local-env.ts",
+		"batch": "bun run batch-orchestrator.ts",
+		"batch:transcription": "bun run batch-orchestrator.ts --section=transcription",
+		"batch:completion": "bun run batch-orchestrator.ts --section=completion",
+		"batch:embedding": "bun run batch-orchestrator.ts --section=embedding",
+		"batch:rag": "bun run batch-orchestrator.ts --section=rag",
+		"batch:model": "bun run batch-orchestrator.ts --section=model",
+		"batch:translation": "bun run batch-orchestrator.ts --section=translation",
+		"batch:tools": "bun run batch-orchestrator.ts --section=tools",
+		"batch:cache": "bun run batch-orchestrator.ts --section=cache",
+		"batch:error": "bun run batch-orchestrator.ts --section=error"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",
