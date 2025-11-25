@@ -13,7 +13,7 @@ const envSchema = z.object({
 	MQTT_PUBLISH_INTERVAL_MS: z.coerce.number().int().positive().default(3000),
 	TEST_FILTER: z.string().optional(),
 	RUN_ID: z.string().optional(),
-	ALLOW_WILDCARD_CONSUMERS: z.enum(["true", "false"]).default("true"),
+	ALLOW_WILDCARD_CONSUMERS: z.enum(["true", "false"]).default("false"),
 });
 
 const parsed = envSchema.parse({

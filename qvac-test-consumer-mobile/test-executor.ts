@@ -46,9 +46,9 @@ export class TestExecutor extends TestExecutorBase {
 			deleteCache,
 			getModelInfo,
 			setConfig,
-			LLAMA_3_2_1B_INST_Q4_0,
-			GTE_LARGE_FP16,
-		};
+				LLAMA_3_2_1B_INST_Q4_0,
+				GTE_LARGE_FP16,
+			};
 		super(sdk);
 	}
 

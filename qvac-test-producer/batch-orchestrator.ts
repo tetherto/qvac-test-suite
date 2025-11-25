@@ -54,7 +54,7 @@ export class BatchOrchestrator {
 	private batchStarted = false;
 	private shutdownTimer?: NodeJS.Timeout;
 
-	constructor(brokerUrl: string, runId: string, allowWildcardConsumers: boolean = true) {
+	constructor(brokerUrl: string, runId: string, allowWildcardConsumers: boolean = false) {
 		this.client = mqtt.connect(brokerUrl);
 		this.runId = runId;
 		this.allowWildcardConsumers = allowWildcardConsumers;
