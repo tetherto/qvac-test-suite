@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
 /**
- * Cross-platform script to set ALLOW_WILDCARD_CONSUMERS=true in .env file
- * Creates .env if it doesn't exist, updates variable if it exists, or adds it if missing
+ * Cross-platform script to manage ALLOW_WILDCARD_CONSUMERS in .env file
+ * Usage:
+ *   bun run scripts/manage-local-env.ts        # Set to true (default)
+ *   bun run scripts/manage-local-env.ts unset  # Remove/unset
  */
 
 import * as fs from "fs";
@@ -10,6 +12,9 @@ import * as path from "path";
 const ENV_FILE = path.join(__dirname, "..", ".env");
 const VARIABLE_NAME = "ALLOW_WILDCARD_CONSUMERS";
 const VARIABLE_VALUE = "true";
+
+const action = process.argv[2]?.toLowerCase();
+const isUnset = action === "unset" || action === "remove" || action === "delete";
 
 function setLocalEnv() {
 	let envContent = "";
@@ -64,10 +69,43 @@ function setLocalEnv() {
 	}
 }
 
+function unsetLocalEnv() {
+	if (!fs.existsSync(ENV_FILE)) {
+		console.log(`✅ ${ENV_FILE} does not exist. Nothing to unset.`);
+		return;
+	}
+
+	const envContent = fs.readFileSync(ENV_FILE, "utf-8");
+	const lines = envContent.split(/\r?\n/);
+	
+	// Filter out the variable line
+	const filteredLines = lines.filter((line) => {
+		const trimmed = line.trim();
+		// Remove line if it matches the variable (with or without value)
+		return !trimmed.startsWith(`${VARIABLE_NAME}=`);
+	});
+
+	const newContent = filteredLines.join("\n").trim();
+
+	// If file becomes empty or only has whitespace, delete it
+	if (!newContent || newContent.trim().length === 0) {
+		fs.unlinkSync(ENV_FILE);
+		console.log(`✅ Removed ${VARIABLE_NAME} and deleted empty .env file`);
+	} else {
+		// Write back the file without the variable
+		fs.writeFileSync(ENV_FILE, newContent + "\n", "utf-8");
+		console.log(`✅ Removed ${VARIABLE_NAME} from ${ENV_FILE}`);
+	}
+}
+
 try {
-	setLocalEnv();
+	if (isUnset) {
+		unsetLocalEnv();
+	} else {
+		setLocalEnv();
+	}
 } catch (error) {
-	console.error(`❌ Error setting local environment: ${error}`);
+	console.error(`❌ Error managing local environment: ${error}`);
 	process.exit(1);
 }
 
