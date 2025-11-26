@@ -229,16 +229,6 @@ async function main() {
     console.error('⚠️  Failed to apply lazy-loading:', err.message);
     // Don't fail the install if lazy-loading fails
   }
-
-  // Apply other patches using patch-package (if any remain)
-  console.log('📦 Applying patches...');
-  try {
-    execSync('npx patch-package', { stdio: 'inherit', cwd: path.join(__dirname, '..') });
-    console.log('✅ Patches applied successfully');
-  } catch (err) {
-    console.error('⚠️  Failed to apply patches:', err.message);
-    // Don't fail the install if patches fail
-  }
 }
 
 main().catch((err) => {
