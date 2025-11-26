@@ -525,7 +525,8 @@ export abstract class ConsumerBase {
 				this.callbacks.onShutdown();
 			}
 		});
-		process.exit(0);
+		if(process?.exit)
+			process.exit(0);
 	}
 
 	public forceShutdown() {

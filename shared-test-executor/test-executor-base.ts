@@ -1,6 +1,5 @@
 // Shared Test Executor Base Class
 // No SDK imports - all injected via constructor
-import * as path from "path";
 
 export interface TestResult {
 	output: string;
@@ -24,23 +23,31 @@ export interface SDKFunctions {
 	GTE_LARGE_FP16: any;
 }
 
+// Platform-specific functions interface for dependency injection
+export interface PlatformFunctions {
+	pathJoin: (...paths: string[]) => string;
+	pathResolve: (...paths: string[]) => string;
+	getCwd: () => string;
+}
+
 export abstract class TestExecutorBase {
 	protected testHandlers: Map<string, (modelId: string | null, params: any, expectation: any) => Promise<TestResult>>;
 	protected visionModelId: string | null = null;
 	protected toolsModelId: string | null = null;
 	protected ttsModelId: string | null = null;
 	protected sdk: SDKFunctions;
+	protected platform: PlatformFunctions;
 
-	constructor(sdk: SDKFunctions) {
+	constructor(sdk: SDKFunctions, platform: PlatformFunctions) {
 		this.sdk = sdk;
+		this.platform = platform;
 		this.testHandlers = new Map();
 		this.registerHandlers();
 	}
 
 	// Abstract methods for platform-specific implementation
-	protected abstract getSharedDataPath(): string;
-	protected abstract readDocumentFile(filename: string): Promise<string> | string;
-	protected abstract getAudioFilePath(filename: string): string;
+	protected abstract readDocumentFile(filename: string, category: 'documents' | 'code'): Promise<string>;
+	protected abstract getAudioFilePath(filename: string): Promise<string>;
 
 	// Set model IDs after they're loaded
 	setVisionModelId(modelId: string) {
@@ -375,9 +382,9 @@ export abstract class TestExecutorBase {
 	protected async modelLoadLlm(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
 		try {
 			const modelConstant = params.modelConstant || "LLAMA_3_2_1B_INST_Q4_0";
-		const modelConstants: Record<string, string> = {
-			LLAMA_3_2_1B_INST_Q4_0: this.sdk.LLAMA_3_2_1B_INST_Q4_0,
-		};
+			const modelConstants: Record<string, string> = {
+				LLAMA_3_2_1B_INST_Q4_0: this.sdk.LLAMA_3_2_1B_INST_Q4_0,
+			};
 
 			const loadedModelId = await this.sdk.loadModel({
 				modelSrc: modelConstants[modelConstant],
@@ -759,85 +766,85 @@ export abstract class TestExecutorBase {
 					} else if (expectation.validation === "function-called-or-text-response") {
 						// Either tool call OR text response is acceptable
 						passed = toolCalls.length > 0 || (!!text && text.length > 0);
-				} else if (expectation.validation === "uses-context") {
-					const args = firstCall.arguments;
-					const expected = expectation.expectedParams;
-					passed = Object.keys(expected).every(key => args[key] === expected[key]);
-				} else if (expectation.validation === "concurrent-streams-work") {
-					// Verify tool call happened (concurrent streams test)
-					passed = firstCall.name === expectation.functionName;
-				} else if (expectation.validation === "returns-toolcalls-array") {
-					// Verify non-streaming returns toolCalls array
-					passed = firstCall.name === expectation.functionName;
-				} else if (expectation.validation === "handles-validation-error") {
-					// Expect validation error or successful call with warning
-					passed = true; // If we got a tool call, validation worked
-				} else if (expectation.validation === "handles-parse-error-gracefully") {
-					// Tool call succeeded or error was graceful
-					passed = true;
-				} else if (expectation.validation === "has-valid-id") {
-					// Check tool call has an ID
-					passed = firstCall.name === expectation.functionName && !!firstCall.id;
-				} else if (expectation.validation === "handles-missing-required") {
-					// Should handle or error gracefully
-					passed = true;
-				} else if (expectation.validation === "validates-enum-values") {
-					// Enum validation test
-					passed = !!firstCall.arguments;
-				} else if (expectation.validation === "allows-extra-properties") {
-					// Extra properties allowed
-					passed = firstCall.name === expectation.functionName;
-				} else if (expectation.validation === "handles-nested-objects") {
-					// Nested objects work
-					passed = firstCall.name === expectation.functionName;
-			} else if (expectation.validation === "handles-many-tools") {
-				// Many tool definitions handled - if got the right function, pass
-				passed = firstCall.name === expectation.functionName;
-				} else if (expectation.validation === "performance-acceptable") {
-					// Performance test - just verify it worked
-					passed = !!firstCall.name;
-				} else if (expectation.validation === "validates-number-range") {
-					// Number range validation
-					passed = firstCall.name === expectation.functionName;
-				} else if (expectation.validation === "validates-string-pattern") {
-					// String pattern validation
-					passed = firstCall.name === expectation.functionName;
-				} else if (expectation.validation === "has-boolean-params") {
-					// Boolean parameters
-					passed = firstCall.name === expectation.functionName;
-				} else if (expectation.validation === "distinguishes-integer-number") {
-					// Integer vs number distinction
-					passed = firstCall.name === expectation.functionName;
-				} else if (expectation.validation === "has-raw-field") {
-					// Raw field preservation
-					passed = firstCall.name === expectation.functionName && !!firstCall.raw;
-				} else if (expectation.validation === "handles-parameterless-function") {
-					// Empty parameters
-					passed = firstCall.name === expectation.functionName;
-				} else if (expectation.validation === "has-array-of-strings") {
-					// Array of strings parameter
-					passed = firstCall.name === expectation.functionName;
-				} else if (expectation.validation === "has-array-of-objects") {
-					// Array of objects parameter
-					passed = firstCall.name === expectation.functionName;
-				} else if (expectation.validation === "handles-optional-nested") {
-					// Optional nested object
-					passed = firstCall.name === expectation.functionName;
-				} else if (expectation.validation === "handles-defaults") {
-					// Default values
-					passed = firstCall.name === expectation.functionName;
-				} else if (expectation.validation === "handles-nullable") {
-					// Nullable parameters
-					passed = firstCall.name === expectation.functionName;
-				} else if (expectation.validation === "ignores-readonly-fields") {
-					// Readonly fields
-					passed = firstCall.name === expectation.functionName;
-			} else if (expectation.validation === "handles-context-impact") {
-				// Context size impact test - any tool call means SDK handled the context
-				passed = !!firstCall.name;
-				} else {
-					passed = true; // Generic success if tool was called
-				}
+					} else if (expectation.validation === "uses-context") {
+						const args = firstCall.arguments;
+						const expected = expectation.expectedParams;
+						passed = Object.keys(expected).every(key => args[key] === expected[key]);
+					} else if (expectation.validation === "concurrent-streams-work") {
+						// Verify tool call happened (concurrent streams test)
+						passed = firstCall.name === expectation.functionName;
+					} else if (expectation.validation === "returns-toolcalls-array") {
+						// Verify non-streaming returns toolCalls array
+						passed = firstCall.name === expectation.functionName;
+					} else if (expectation.validation === "handles-validation-error") {
+						// Expect validation error or successful call with warning
+						passed = true; // If we got a tool call, validation worked
+					} else if (expectation.validation === "handles-parse-error-gracefully") {
+						// Tool call succeeded or error was graceful
+						passed = true;
+					} else if (expectation.validation === "has-valid-id") {
+						// Check tool call has an ID
+						passed = firstCall.name === expectation.functionName && !!firstCall.id;
+					} else if (expectation.validation === "handles-missing-required") {
+						// Should handle or error gracefully
+						passed = true;
+					} else if (expectation.validation === "validates-enum-values") {
+						// Enum validation test
+						passed = !!firstCall.arguments;
+					} else if (expectation.validation === "allows-extra-properties") {
+						// Extra properties allowed
+						passed = firstCall.name === expectation.functionName;
+					} else if (expectation.validation === "handles-nested-objects") {
+						// Nested objects work
+						passed = firstCall.name === expectation.functionName;
+					} else if (expectation.validation === "handles-many-tools") {
+						// Many tool definitions handled - if got the right function, pass
+						passed = firstCall.name === expectation.functionName;
+					} else if (expectation.validation === "performance-acceptable") {
+						// Performance test - just verify it worked
+						passed = !!firstCall.name;
+					} else if (expectation.validation === "validates-number-range") {
+						// Number range validation
+						passed = firstCall.name === expectation.functionName;
+					} else if (expectation.validation === "validates-string-pattern") {
+						// String pattern validation
+						passed = firstCall.name === expectation.functionName;
+					} else if (expectation.validation === "has-boolean-params") {
+						// Boolean parameters
+						passed = firstCall.name === expectation.functionName;
+					} else if (expectation.validation === "distinguishes-integer-number") {
+						// Integer vs number distinction
+						passed = firstCall.name === expectation.functionName;
+					} else if (expectation.validation === "has-raw-field") {
+						// Raw field preservation
+						passed = firstCall.name === expectation.functionName && !!firstCall.raw;
+					} else if (expectation.validation === "handles-parameterless-function") {
+						// Empty parameters
+						passed = firstCall.name === expectation.functionName;
+					} else if (expectation.validation === "has-array-of-strings") {
+						// Array of strings parameter
+						passed = firstCall.name === expectation.functionName;
+					} else if (expectation.validation === "has-array-of-objects") {
+						// Array of objects parameter
+						passed = firstCall.name === expectation.functionName;
+					} else if (expectation.validation === "handles-optional-nested") {
+						// Optional nested object
+						passed = firstCall.name === expectation.functionName;
+					} else if (expectation.validation === "handles-defaults") {
+						// Default values
+						passed = firstCall.name === expectation.functionName;
+					} else if (expectation.validation === "handles-nullable") {
+						// Nullable parameters
+						passed = firstCall.name === expectation.functionName;
+					} else if (expectation.validation === "ignores-readonly-fields") {
+						// Readonly fields
+						passed = firstCall.name === expectation.functionName;
+					} else if (expectation.validation === "handles-context-impact") {
+						// Context size impact test - any tool call means SDK handled the context
+						passed = !!firstCall.name;
+					} else {
+						passed = true; // Generic success if tool was called
+					}
 					break;
 				}
 
@@ -873,27 +880,27 @@ export abstract class TestExecutorBase {
 					if (expectation.validation === "no-function-call") {
 						passed = (!toolCalls || toolCalls.length === 0) && !!text && text.length > 0;
 						output = `Text response: ${text}`;
-				} else if (expectation.validation === "no-function-call-when-irrelevant") {
-					passed = (!toolCalls || toolCalls.length === 0) && !!text && text.length > 0;
-					output = `Text response (no function called): ${text}`;
-				} else if (expectation.validation === "returns-normal-completion") {
-					// Empty/null tools should return normal completion
-					passed = (!toolCalls || toolCalls.length === 0) && !!text && text.length >= (expectation.minLength || 1);
-					output = `Normal completion (no tools): ${text.substring(0, 100)}`;
-			} else if (expectation.validation === "graceful-degradation") {
-				// Model without tools support degrades to text - any text response is success
-				const hasText = !!text && text.length >= (expectation.minLength || 1);
-				const noTools = !toolCalls || toolCalls.length === 0;
-				passed = hasText && noTools;
-				output = passed ? `Graceful degradation: ${text.substring(0, 100)}` : `Failed: toolCalls=${toolCalls?.length || 0}, text=${text?.length || 0}`;
-			} else if (expectation.validation === "returns-text-when-no-tool-needed") {
-					// Model chooses text response when tools not applicable
-					passed = (!toolCalls || toolCalls.length === 0) && !!text && text.length >= (expectation.minLength || 1);
-					output = `Text fallback (tools not needed): ${text.substring(0, 100)}`;
-				} else {
-					passed = !!text && text.length > 0;
-					output = `Text: ${text}`;
-				}
+					} else if (expectation.validation === "no-function-call-when-irrelevant") {
+						passed = (!toolCalls || toolCalls.length === 0) && !!text && text.length > 0;
+						output = `Text response (no function called): ${text}`;
+					} else if (expectation.validation === "returns-normal-completion") {
+						// Empty/null tools should return normal completion
+						passed = (!toolCalls || toolCalls.length === 0) && !!text && text.length >= (expectation.minLength || 1);
+						output = `Normal completion (no tools): ${text.substring(0, 100)}`;
+					} else if (expectation.validation === "graceful-degradation") {
+						// Model without tools support degrades to text - any text response is success
+						const hasText = !!text && text.length >= (expectation.minLength || 1);
+						const noTools = !toolCalls || toolCalls.length === 0;
+						passed = hasText && noTools;
+						output = passed ? `Graceful degradation: ${text.substring(0, 100)}` : `Failed: toolCalls=${toolCalls?.length || 0}, text=${text?.length || 0}`;
+					} else if (expectation.validation === "returns-text-when-no-tool-needed") {
+						// Model chooses text response when tools not applicable
+						passed = (!toolCalls || toolCalls.length === 0) && !!text && text.length >= (expectation.minLength || 1);
+						output = `Text fallback (tools not needed): ${text.substring(0, 100)}`;
+					} else {
+						passed = !!text && text.length > 0;
+						output = `Text: ${text}`;
+					}
 					break;
 				}
 
@@ -944,7 +951,7 @@ export abstract class TestExecutorBase {
 						...msg,
 						attachments: msg.attachments.map((att: any) => ({
 							...att,
-							path: require("path").resolve(process.cwd(), "..", att.path)
+							path: this.platform.pathResolve(this.platform.getCwd(), "..", att.path)
 						}))
 					};
 				}
@@ -1967,10 +1974,7 @@ export abstract class TestExecutorBase {
 		}
 
 		try {
-			const audioPath = path.join(
-				process.cwd(),
-				"../qvac-test-consumer-mobile/assets/audio/sample-16khz.wav",
-			);
+			const audioPath = await this.getAudioFilePath("sample-16khz.wav");
 
 			const text = (await this.sdk.transcribe({ modelId, audioChunk: audioPath })).trim();
 
@@ -1996,7 +2000,7 @@ export abstract class TestExecutorBase {
 		}
 
 		try {
-		const audioPath = this.getAudioFilePath(params.audioFileName);
+			const audioPath = await this.getAudioFilePath(params.audioFileName);
 
 			const text = (await this.sdk.transcribe({ modelId, audioChunk: audioPath })).trim();
 
@@ -2024,11 +2028,7 @@ export abstract class TestExecutorBase {
 		}
 
 		try {
-			const audioPath = path.join(
-				process.cwd(),
-				"../shared-test-data/audio",
-				params.audioFileName,
-			);
+			const audioPath = await this.getAudioFilePath(params.audioFileName);
 
 			const text = (await this.sdk.transcribe({ modelId, audioChunk: audioPath })).trim();
 
@@ -2052,11 +2052,7 @@ export abstract class TestExecutorBase {
 		}
 
 		try {
-			const audioPath = path.join(
-				process.cwd(),
-				"../shared-test-data/audio",
-				params.audioFileName,
-			);
+			const audioPath = await this.getAudioFilePath(params.audioFileName);
 
 			const text = (await this.sdk.transcribe({ modelId, audioChunk: audioPath })).trim();
 
@@ -2090,11 +2086,7 @@ export abstract class TestExecutorBase {
 		}
 
 		try {
-			const audioPath = path.join(
-				process.cwd(),
-				"../shared-test-data/audio",
-				params.audioFileName,
-			);
+			const audioPath = await this.getAudioFilePath(params.audioFileName);
 
 			await this.sdk.transcribe({ modelId, audioChunk: audioPath });
 
@@ -2117,11 +2109,7 @@ export abstract class TestExecutorBase {
 		}
 
 		try {
-			const audioPath = path.join(
-				process.cwd(),
-				"../shared-test-data/audio",
-				params.audioFileName,
-			);
+			const audioPath = await this.getAudioFilePath(params.audioFileName);
 
 			const text = (await this.sdk.transcribe({ modelId, audioChunk: audioPath })).trim();
 
@@ -2150,11 +2138,10 @@ export abstract class TestExecutorBase {
 		try {
 			// Handle both direct text and code files
 			let text = params.text;
-		if (params.codeFile) {
-			console.log(`   📄 Reading code file: ${params.codeFile}`);
-			const codePath = path.join(this.getSharedDataPath(), "code", params.codeFile);
-			text = await this.readDocumentFile(codePath);
-		}
+			if (params.codeFile) {
+				console.log(`   📄 Reading code file: ${params.codeFile}`);
+				text = await this.readDocumentFile(params.codeFile, "code");
+			}
 
 			const embedding = await this.sdk.embed({ modelId, text });
 
@@ -2430,10 +2417,10 @@ export abstract class TestExecutorBase {
 	protected async modelLoadConcurrent(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
 		try {
 			const models = params.models || [];
-		const modelConstants: Record<string, string> = {
-			LLAMA_3_2_1B_INST_Q4_0: this.sdk.LLAMA_3_2_1B_INST_Q4_0,
-			GTE_LARGE_FP16: this.sdk.GTE_LARGE_FP16,
-		};
+			const modelConstants: Record<string, string> = {
+				LLAMA_3_2_1B_INST_Q4_0: this.sdk.LLAMA_3_2_1B_INST_Q4_0,
+				GTE_LARGE_FP16: this.sdk.GTE_LARGE_FP16,
+			};
 
 			// Load models concurrently
 			const loadPromises = models.map((model: any) => {
@@ -2999,11 +2986,10 @@ export abstract class TestExecutorBase {
 
 			// Read document content from file if documentFile is provided
 			let content = documentContent;
-		if (documentFile) {
-			console.log(`   📄 Reading document: ${documentFile}`);
-			const docPath = path.join(this.getSharedDataPath(), "documents", documentFile);
-			content = await this.readDocumentFile(docPath);
-		}
+			if (documentFile) {
+				console.log(`   📄 Reading document: ${documentFile}`);
+				content = await this.readDocumentFile(documentFile, "documents");
+			}
 
 			console.log(`   📚 Testing RAG embeddings with chunk size ${chunkSize}, overlap ${chunkOverlap}`);
 
@@ -3161,8 +3147,7 @@ export abstract class TestExecutorBase {
 		const workspace = `test-workspace-${Date.now()}`;
 
 		try {
-		const documentPath = path.join(this.getSharedDataPath(), "documents", params.documentFile);
-		const content = await this.readDocumentFile(documentPath);
+			const content = await this.readDocumentFile(params.documentFile, "documents");
 
 			const result = await this.sdk.ragSaveEmbeddings({
 				modelId: fakeModelId,
@@ -3207,16 +3192,16 @@ export abstract class TestExecutorBase {
 
 	protected async cacheGetModelInfo(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
 		const { modelConstant } = params;
-		const modelMap: any = { 
-		LLAMA_3_2_1B_INST_Q4_0: this.sdk.LLAMA_3_2_1B_INST_Q4_0, 
-		GTE_LARGE_FP16: this.sdk.GTE_LARGE_FP16 
-	};
+		const modelMap: any = {
+			LLAMA_3_2_1B_INST_Q4_0: this.sdk.LLAMA_3_2_1B_INST_Q4_0,
+			GTE_LARGE_FP16: this.sdk.GTE_LARGE_FP16
+		};
 		const model = modelMap[modelConstant];
 
 		try {
 			const info = await this.sdk.getModelInfo(model);
 			const hasRequiredFields = expectation.hasFields?.every((field: string) => field in info) ?? true;
-			
+
 			return {
 				output: `Model info: isCached=${info.isCached}, files=${info.cacheFiles?.length || 0}, size=${info.actualSize || 0}`,
 				passed: hasRequiredFields
@@ -3279,16 +3264,16 @@ export abstract class TestExecutorBase {
 
 	protected async cacheVerifyFiles(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
 		const { modelConstant } = params;
-		const modelMap: any = { 
-		LLAMA_3_2_1B_INST_Q4_0: this.sdk.LLAMA_3_2_1B_INST_Q4_0, 
-		GTE_LARGE_FP16: this.sdk.GTE_LARGE_FP16 
-	};
+		const modelMap: any = {
+			LLAMA_3_2_1B_INST_Q4_0: this.sdk.LLAMA_3_2_1B_INST_Q4_0,
+			GTE_LARGE_FP16: this.sdk.GTE_LARGE_FP16
+		};
 		const model = modelMap[modelConstant];
 
 		try {
 			const info = await this.sdk.getModelInfo(model);
 			const hasFiles = info.cacheFiles && info.cacheFiles.length > 0;
-			
+
 			return {
 				output: `Cache files exist: ${hasFiles}, count: ${info.cacheFiles?.length || 0}`,
 				passed: hasFiles === expectation.hasFiles
@@ -3313,16 +3298,16 @@ export abstract class TestExecutorBase {
 
 	protected async cacheMultipleModels(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
 		const { models } = params;
-		const modelMap: any = { 
-		LLAMA_3_2_1B_INST_Q4_0: this.sdk.LLAMA_3_2_1B_INST_Q4_0, 
-		GTE_LARGE_FP16: this.sdk.GTE_LARGE_FP16 
-	};
-		
+		const modelMap: any = {
+			LLAMA_3_2_1B_INST_Q4_0: this.sdk.LLAMA_3_2_1B_INST_Q4_0,
+			GTE_LARGE_FP16: this.sdk.GTE_LARGE_FP16
+		};
+
 		try {
-		const results = await Promise.all(
-			models.map((m: string) => this.sdk.getModelInfo(modelMap[m]))
-		);
-			
+			const results = await Promise.all(
+				models.map((m: string) => this.sdk.getModelInfo(modelMap[m]))
+			);
+
 			return {
 				output: `Got info for ${results.length} models`,
 				passed: results.length === expectation.modelCount
@@ -3334,10 +3319,10 @@ export abstract class TestExecutorBase {
 
 	protected async cachePersistsAfterUnload(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
 		const { modelConstant } = params;
-		const modelMap: any = { 
-		LLAMA_3_2_1B_INST_Q4_0: this.sdk.LLAMA_3_2_1B_INST_Q4_0, 
-		GTE_LARGE_FP16: this.sdk.GTE_LARGE_FP16 
-	};
+		const modelMap: any = {
+			LLAMA_3_2_1B_INST_Q4_0: this.sdk.LLAMA_3_2_1B_INST_Q4_0,
+			GTE_LARGE_FP16: this.sdk.GTE_LARGE_FP16
+		};
 		const model = modelMap[modelConstant];
 		let reloadedModelId: string | null = null;
 
@@ -3345,46 +3330,46 @@ export abstract class TestExecutorBase {
 			// If consumer's model is loaded, use it for testing
 			// Otherwise, we can't test this without a model loaded (SDK worker needs at least one model)
 			if (!modelId) {
-				return { 
-					output: `Error: Consumer model not loaded. SDK worker requires at least one model to be loaded.`, 
-					passed: false 
+				return {
+					output: `Error: Consumer model not loaded. SDK worker requires at least one model to be loaded.`,
+					passed: false
 				};
 			}
 
 			// Load a temporary model first to keep SDK worker alive when we unload the consumer's model
 			// This prevents the SDK worker from closing when we unload the last model
 			try {
-				reloadedModelId = await this.sdk.loadModel({ 
-					modelSrc: this.sdk.GTE_LARGE_FP16, 
-					modelType: "embeddings" 
+				reloadedModelId = await this.sdk.loadModel({
+					modelSrc: this.sdk.GTE_LARGE_FP16,
+					modelType: "embeddings"
 				});
 			} catch (tempLoadErr: any) {
 				// If we can't load a temp model, try with the same model type
 				try {
-					reloadedModelId = await this.sdk.loadModel({ 
-						modelSrc: model, 
-						modelType: "llm" 
+					reloadedModelId = await this.sdk.loadModel({
+						modelSrc: model,
+						modelType: "llm"
 					});
 				} catch (err2: any) {
-					return { 
-						output: `Error loading temporary model to keep SDK worker alive: ${err2.message}`, 
-						passed: false 
+					return {
+						output: `Error loading temporary model to keep SDK worker alive: ${err2.message}`,
+						passed: false
 					};
 				}
 			}
 
 			// Now unload the consumer's model (this will test cache persistence)
 			await this.sdk.unloadModel({ modelId, clearStorage: false });
-			
+
 			// Check model info - should show cached but not loaded
 			const info = await this.sdk.getModelInfo(model);
-			
+
 			// Verify the model is cached but not loaded
 			const isCachedCorrect = info.isCached === expectation.isCached;
 			const isLoadedCorrect = info.isLoaded === expectation.isLoaded;
-			
+
 			const passed = isCachedCorrect && isLoadedCorrect;
-			
+
 			return {
 				output: `After unload: isCached=${info.isCached}, isLoaded=${info.isLoaded}`,
 				passed
@@ -3408,25 +3393,25 @@ export abstract class TestExecutorBase {
 
 	protected async cacheInvalidKey(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
 		const { kvCacheKey } = params;
-		
+
 		// Ensure SDK worker is running - if no model loaded, load one temporarily
 		if (!modelId) {
 			try {
 				// Load a model to ensure SDK worker starts
-				const tempModelId = await this.sdk.loadModel({ 
-					modelSrc: this.sdk.LLAMA_3_2_1B_INST_Q4_0, 
-					modelType: "llm" 
+				const tempModelId = await this.sdk.loadModel({
+					modelSrc: this.sdk.LLAMA_3_2_1B_INST_Q4_0,
+					modelType: "llm"
 				});
 				// Keep it loaded to keep worker alive during test
 				// Will be cleaned up by consumer after test
 			} catch (err: any) {
-				return { 
-					output: `Error starting SDK worker: ${err.message}`, 
-					passed: false 
+				return {
+					output: `Error starting SDK worker: ${err.message}`,
+					passed: false
 				};
 			}
 		}
-		
+
 		try {
 			await this.sdk.deleteCache({ kvCacheKey });
 			return { output: `Should have thrown error for empty key`, passed: false };

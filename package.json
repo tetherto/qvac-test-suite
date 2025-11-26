@@ -4,7 +4,8 @@
 	"type": "module",
 	"private": true,
 	"scripts": {
-		"broker": "node mqtt-websocket-broker.cjs"
+		"broker": "node mqtt-websocket-broker.cjs",
+		"prepare": "node shared-test-data/generate-assets.cjs"
 	},
 	"dependencies": {
 		"aedes": "^0.51.3",
