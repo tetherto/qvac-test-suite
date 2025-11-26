@@ -4,6 +4,8 @@
 	"type": "module",
 	"private": true,
 	"scripts": {
+		"env:set-local": "bun run scripts/manage-local-env.ts",
+		"env:unset-local": "bun run scripts/manage-local-env.ts unset",
 		"batch": "bun run batch-orchestrator.ts",
 		"batch:transcription": "bun run batch-orchestrator.ts --section=transcription",
 		"batch:completion": "bun run batch-orchestrator.ts --section=completion",

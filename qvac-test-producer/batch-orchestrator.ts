@@ -436,7 +436,7 @@ export class BatchOrchestrator {
 		const builder = new TestBuilder();
 		
 		// Check for --section command line argument
-		const section = getArgValue("section") || "all";
+		const section = env.SECTION || "all";
 		if (section !== "all") {
 			console.log(`📂 Running section: ${section}\n`);
 		}
@@ -446,7 +446,7 @@ export class BatchOrchestrator {
 			: builder.buildTestsBySection([], section);
 
 		// Apply test filtering if TEST_FILTER env var is set
-		const testFilter = env.TEST_FILTER;
+		const testFilter = env.TEST_FILTER || section;
 		let filteredTests = allTests;
 		
 		if (testFilter) {

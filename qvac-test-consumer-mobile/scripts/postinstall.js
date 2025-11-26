@@ -221,14 +221,13 @@ async function main() {
     console.log('✅ Postinstall complete (non-Windows platform)');
   }
 
-  // Apply patches using patch-package
-  console.log('📦 Applying patches...');
+  // Apply lazy-loading transformations
+  console.log('🔄 Applying lazy-loading...');
   try {
-    execSync('npx patch-package', { stdio: 'inherit', cwd: path.join(__dirname, '..') });
-    console.log('✅ Patches applied successfully');
+    execSync('node scripts/apply-lazy-loading.js', { stdio: 'inherit', cwd: path.join(__dirname, '..') });
   } catch (err) {
-    console.error('⚠️  Failed to apply patches:', err.message);
-    // Don't fail the install if patches fail
+    console.error('⚠️  Failed to apply lazy-loading:', err.message);
+    // Don't fail the install if lazy-loading fails
   }
 }
 

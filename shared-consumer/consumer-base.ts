@@ -105,6 +105,9 @@ export abstract class ConsumerBase {
 			testId.startsWith("model-reload")
 		) {
 			return 'llm';
+		} else if (testId.startsWith("cache-")) {
+			// Cache tests need SDK worker running, so load LLM model to initialize it
+			return 'llm';
 		} else if (testId.startsWith("error-") || testId.startsWith("param-")) {
 			if (testId.includes("completion") || testId.includes("translation") || testId.includes("malformed")) {
 				return 'llm';
@@ -522,7 +525,8 @@ export abstract class ConsumerBase {
 				this.callbacks.onShutdown();
 			}
 		});
-		process.exit(0);
+		if(process?.exit)
+			process.exit(0);
 	}
 
 	public forceShutdown() {

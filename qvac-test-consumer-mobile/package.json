@@ -4,12 +4,12 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
-    "android": "cross-env SKIP_PATCHELF=1 PATCHELF_SKIP=1 BARE_RUNTIME_SKIP_PATCHELF=1 expo run:android",
+    "android": "bun x expo prebuild --platform android --clean --no-install && bun x expo run:android",
     "ios": "expo run:ios",
     "postinstall": "node scripts/postinstall.js"
   },
   "dependencies": {
-    "@tetherto/sdk-dev": "^0.4.0-tmp.runid-19503036210",
+    "@tetherto/sdk-dev": "0.4.0-tmp.runid-19570765702",
     "bare-abort-controller": "^1.0.0",
     "bare-buffer": "^3.3.0",
     "bare-crypto": "^1.9.2",
@@ -53,8 +53,6 @@
     "@babel/plugin-transform-explicit-resource-management": "^7.28.0",
     "@types/react": "~19.1.0",
     "babel-preset-expo": "~12.0.4",
-    "cross-env": "^10.1.0",
-    "patch-package": "^8.0.1",
     "typescript": "~5.8.3"
   },
   "private": true

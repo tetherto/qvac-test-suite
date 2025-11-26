@@ -136,11 +136,24 @@ bun run batch -- --run-id='*'
 - Mobile: Set `EXPO_PUBLIC_RUN_ID` in `.env` file
 
 **Wildcard Consumers:**
-By default, producers reject wildcard consumers (strict mode). Enable with:
+By default, producers reject wildcard consumers (strict mode). For local development, you can enable wildcard consumers using the convenience scripts:
+
+```bash
+# Enable wildcard consumers (sets ALLOW_WILDCARD_CONSUMERS=true in .env)
+cd qvac-test-producer
+npm run env:set-local
+
+# Disable wildcard consumers (removes from .env, reverts to default false)
+npm run env:unset-local
+```
+
+Alternatively, you can use CLI flags or environment variables:
 ```bash
 bun run batch -- --allow-wildcard-consumers
-# Or: ALLOW_WILDCARD_CONSUMERS=true
+# Or: ALLOW_WILDCARD_CONSUMERS=true bun run batch
 ```
+
+**Note:** The `env:set-local` script creates/updates a `.env` file in the producer directory. This file is gitignored and only affects local development. CI/GitHub Actions will use the default (`false`) unless explicitly configured.
 
 ## Test Categories
 
@@ -248,6 +261,8 @@ Tests that trigger this are **moved to end** (tests 90-99) to minimize cascade i
 - `RUN_ID` - Run identifier for test isolation (default: auto-generated for producer, `*` for consumer)
 - `TEST_FILTER` - Comma-separated test prefixes to filter (e.g., `transcription,translation`)
 - `ALLOW_WILDCARD_CONSUMERS` - Allow consumers with `runId='*'` to register (default: `false`, producer only)
+  - **Local development:** Use `npm run env:set-local` in `qvac-test-producer/` to set this in `.env` file
+  - **CI/CD:** Set via environment variable or CLI flag
 
 ### Model Configuration
 
