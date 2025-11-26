@@ -8,16 +8,15 @@ Shared test execution logic between desktop and mobile test consumers.
 
 ## Pattern
 
-Follows the same pattern as `shared-consumer/`:
-
 ```typescript
 export abstract class TestExecutorBase {
-  constructor(sdk: SDKFunctions) { /* Inject SDK functions */ }
+  constructor(sdk: SDKFunctions, platform: PlatformFunctions) {
+    // Inject SDK and platform-specific functions
+  }
   
   // Platform-specific methods to implement
-  protected abstract getSharedDataPath(): string;
-  protected abstract readDocumentFile(filePath: string): Promise<string> | string;
-  protected abstract getAudioFilePath(filename: string): string;
+  protected abstract readDocumentFile(filename: string, category: 'documents' | 'code'): Promise<string>;
+  protected abstract getAudioFilePath(filename: string): Promise<string>;
 }
 ```
 
@@ -25,11 +24,18 @@ export abstract class TestExecutorBase {
 
 **Desktop:**
 - Uses `fs.readFileSync()` for file reading
-- Direct file paths
+- Direct file paths via `path.join()`
 
 **Mobile:**
-- Uses `expo-file-system` for file reading  
-- Asset system for audio files with `require()` mappings
+- Uses `expo-asset` + `expo-file-system` for asset loading
+- Static asset manifest (`shared-test-data/assets.js`) with `require()` for Metro bundling
+- Assets downloaded via `Asset.fromModule().downloadAsync()`
+
+## Shared Test Data
+
+All test assets (audio, documents, code) live in `shared-test-data/`.
+
+Run `node shared-test-data/generate-assets.cjs` to regenerate the asset manifest when files are added/removed.
 
 ## Benefits
 
@@ -37,4 +43,3 @@ export abstract class TestExecutorBase {
 - Single place to update test logic
 - Consistent behavior across platforms
 - Easy to maintain and extend
-
