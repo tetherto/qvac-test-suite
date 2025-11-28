@@ -42,7 +42,8 @@ export async function loadTests(config: QvacTestConfig, configDir: string = proc
     }
 
     return tests;
-  } catch (error: any) {
-    throw new Error(`Failed to load test definitions from ${definitionsPath}: ${error.message}`);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to load test definitions from ${definitionsPath}: ${errorMessage}`);
   }
 }

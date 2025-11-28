@@ -42,8 +42,9 @@ export async function runProducer(options: ProducerOptions) {
     // Handle shutdown signals
     process.on('SIGINT', () => orchestrator.shutdown());
     process.on('SIGTERM', () => orchestrator.shutdown());
-  } catch (error: any) {
-    console.error('❌ Failed to start producer:', error.message);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('❌ Failed to start producer:', errorMessage);
     process.exit(1);
   }
 }

@@ -58,8 +58,9 @@ export async function runConsumerDesktop(options: ConsumerOptions) {
     // Handle shutdown signals
     process.on('SIGINT', () => consumer.forceShutdown());
     process.on('SIGTERM', () => consumer.forceShutdown());
-  } catch (error: any) {
-    console.error('❌ Failed to start consumer:', error.message);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('❌ Failed to start consumer:', errorMessage);
     process.exit(1);
   }
 }

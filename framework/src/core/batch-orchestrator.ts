@@ -1,11 +1,19 @@
 import mqtt, { type MqttClient } from 'mqtt';
 import type { TestDefinition } from '../types/test-definition.js';
+import {
+  consumerRegistrationSchema,
+  testRequestSchema,
+  testStartSchema,
+  testResultSchema,
+  heartbeatSchema,
+  type TestResult as MqttTestResult,
+} from '../schemas/messages.js';
 
 interface TestCase {
   id: string; // Unique test ID
   testId: string; // Test type
   payload: string;
-  metadata: any; // Test metadata
+  metadata: Record<string, unknown>; // Test metadata
   estimatedDurationMs: number;
 }
 
@@ -26,18 +34,8 @@ interface ConsumerInfo {
   testsRunning: number;
 }
 
-interface TestResult {
-  consumerId: string;
-  testId: string;
-  uniqueTestId: string;
-  outcome: 'success' | 'failure';
-  duration: number;
-  timestamp: string;
-  error?: string;
-  output?: string;
-  expected?: string;
-  actual?: string;
-}
+// Test result type imported from schemas
+type TestResult = MqttTestResult;
 
 export class BatchOrchestrator {
   private client: MqttClient;
@@ -116,7 +114,8 @@ export class BatchOrchestrator {
     });
   }
 
-  private handleConsumerRegistration(message: any) {
+  private handleConsumerRegistration(rawMessage: unknown) {
+    const message = consumerRegistrationSchema.parse(rawMessage);
     const { consumerId, platform } = message;
     const now = Date.now();
 
@@ -140,7 +139,8 @@ export class BatchOrchestrator {
     );
   }
 
-  private handleTestRequest(message: any) {
+  private handleTestRequest(rawMessage: unknown) {
+    const message = testRequestSchema.parse(rawMessage);
     const { consumerId } = message;
     const consumer = this.consumers.get(consumerId);
 
@@ -196,7 +196,8 @@ export class BatchOrchestrator {
     this.displayStatus();
   }
 
-  private handleTestStart(message: any) {
+  private handleTestStart(rawMessage: unknown) {
+    const message = testStartSchema.parse(rawMessage);
     const { consumerId, uniqueTestId } = message;
     const assignment = this.assignedTests.get(uniqueTestId);
 
@@ -209,7 +210,8 @@ export class BatchOrchestrator {
     console.log(`▶️  Test ${assignment.testCase.testId} started by ${consumerId}`);
   }
 
-  private handleTestResult(message: TestResult) {
+  private handleTestResult(rawMessage: unknown) {
+    const message = testResultSchema.parse(rawMessage);
     const { consumerId, uniqueTestId, outcome, duration } = message;
     const assignment = this.assignedTests.get(uniqueTestId);
 
@@ -241,7 +243,8 @@ export class BatchOrchestrator {
     this.checkBatchComplete();
   }
 
-  private handleHeartbeat(message: any) {
+  private handleHeartbeat(rawMessage: unknown) {
+    const message = heartbeatSchema.parse(rawMessage);
     const { consumerId } = message;
     const consumer = this.consumers.get(consumerId);
     if (consumer) {
@@ -283,6 +286,7 @@ export class BatchOrchestrator {
 
           // Create timeout result
           const timeoutResult: TestResult = {
+            runId: this.runId,
             consumerId: assignment.consumerId,
             testId: assignment.testCase.testId,
             uniqueTestId,
@@ -420,7 +424,7 @@ export class BatchOrchestrator {
     // Group by category from metadata for reporting
     const byCategory = new Map<string, number>();
     for (const test of this.testQueue) {
-      const category = test.metadata?.category || 'uncategorized';
+      const category = (typeof test.metadata?.category === 'string' ? test.metadata.category : null) || 'uncategorized';
       byCategory.set(category, (byCategory.get(category) || 0) + 1);
     }
 

@@ -66,8 +66,19 @@ qvac-test-suite/
 - File operations
 - Git operations (except push)
 
+**Code Quality Rules**:
+- **NEVER use `any` type** - use `unknown` or specific types
+- **Use Zod schemas at API boundaries** (MQTT messages, config files, external data)
+  - Parse incoming data: `const message = messageSchema.parse(rawData)`
+  - Store schemas in `src/schemas/` directory
+  - Infer TypeScript types: `type Message = z.infer<typeof messageSchema>`
+- **Use inferred TypeScript types internally** - once validated, pass typed data
+- Don't re-validate already validated data
+- Use generics for dynamic types
+
 **Workflow**:
 - Complete each step
+- Run format + lint after changes
 - Show validation commands for user to run
 - Wait for user confirmation before next step
 

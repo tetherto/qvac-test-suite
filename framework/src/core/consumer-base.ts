@@ -2,8 +2,8 @@ import type { MqttClient } from 'mqtt';
 
 export interface TestMessage {
   testId: string;
-  params: any;
-  expectation: any;
+  params: unknown;
+  expectation: unknown;
 }
 
 export interface TestAssignment {
@@ -11,6 +11,7 @@ export interface TestAssignment {
   uniqueTestId?: string;
   test?: TestMessage;
   totalTests?: number;
+  runId?: string;
 }
 
 export interface TestResult {
@@ -19,7 +20,7 @@ export interface TestResult {
 }
 
 export interface TestExecutor {
-  executeTest(testId: string, context: any, params: any, expectation: any): Promise<TestResult>;
+  executeTest(testId: string, context: unknown, params: unknown, expectation: unknown): Promise<TestResult>;
 }
 
 export interface ConsumerCallbacks {
@@ -146,8 +147,9 @@ export class ConsumerBase {
         } else if (topic === 'qvac/batch-complete') {
           this.handleBatchComplete(message);
         }
-      } catch (error: any) {
-        this.log(`❌ Error handling ${topic}: ${error.message}`);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.log(`❌ Error handling ${topic}: ${errorMessage}`);
       }
     });
 
@@ -169,7 +171,7 @@ export class ConsumerBase {
     );
   }
 
-  protected handleRegistrationAck(message: any) {
+  protected handleRegistrationAck(message: { totalTests?: number; runId?: string }) {
     this.log(`🔌 Registration ack - ${message.totalTests} tests in queue\n`);
     this.registered = true;
     this.updateStats({ totalTests: message.totalTests });
@@ -190,12 +192,17 @@ export class ConsumerBase {
     }
   }
 
-  protected handleBatchComplete(message: any) {
+  protected handleBatchComplete(message: {
+    totalTests?: number;
+    successCount?: number;
+    failureCount?: number;
+    duration?: number;
+  }) {
     this.log('\n🎉 Batch complete!');
-    this.log(`📊 Total: ${message.totalTests}`);
-    this.log(`✅ Passed: ${message.successCount}`);
-    this.log(`❌ Failed: ${message.failureCount}`);
-    this.log(`⏱️  Duration: ${(message.duration / 1000).toFixed(2)}s`);
+    this.log(`📊 Total: ${message.totalTests || 0}`);
+    this.log(`✅ Passed: ${message.successCount || 0}`);
+    this.log(`❌ Failed: ${message.failureCount || 0}`);
+    this.log(`⏱️  Duration: ${((message.duration || 0) / 1000).toFixed(2)}s`);
 
     this.shutdownRequested = true;
     this.updateStats({ isComplete: true });
@@ -227,11 +234,17 @@ export class ConsumerBase {
     const startTime = Date.now();
 
     try {
-      // Default timeout: 60 seconds
-      const timeoutMs = test.expectation?.metadata?.timeout || 60000;
+      // Default timeout: 60 seconds (could be in metadata if needed)
+      const timeoutMs = 60000;
+
+      // Pass test metadata as context
+      const context =
+        (typeof test === 'object' && test !== null && 'metadata' in test
+          ? (test as { metadata?: unknown }).metadata
+          : {}) || {};
 
       // Execute the test with timeout
-      const testPromise = this.executor.executeTest(testId, {}, params, expectation);
+      const testPromise = this.executor.executeTest(testId, context, params, expectation);
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error(`Test timeout after ${timeoutMs / 1000}s`)), timeoutMs);
       });
@@ -275,9 +288,9 @@ export class ConsumerBase {
         }),
         { qos: 1 }
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
-      const errorMsg = error.message || 'Unknown error';
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
 
       this.log(`❌ ${testId} failed: ${errorMsg}`);
 

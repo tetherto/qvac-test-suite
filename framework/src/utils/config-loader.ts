@@ -25,8 +25,9 @@ export async function loadConfig(configDir: string = process.cwd()): Promise<Qva
     const configUrl = pathToFileURL(configPath).href;
     const module = await import(configUrl);
     return module.default;
-  } catch (error: any) {
-    throw new Error(`Failed to load config from ${configPath}: ${error.message}`);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to load config from ${configPath}: ${errorMessage}`);
   }
 }
 

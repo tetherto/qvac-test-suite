@@ -5,7 +5,7 @@ export default {
   consumers: {
     desktop: {
       platforms: ['macos'],
-      entry: './tests/desktop/executor.js',
+      entry: './tests/desktop/executor-with-handlers.js',
       include: ['./tests/**'],
       dependencies: 'auto',
     },

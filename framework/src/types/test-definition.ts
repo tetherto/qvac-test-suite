@@ -83,8 +83,9 @@ export function defineTests(tests: TestDefinition[]): TestDefinition[] {
   return tests.map((test, idx) => {
     try {
       return testDefinitionSchema.parse(test);
-    } catch (error: any) {
-      throw new Error(`Test definition ${idx} (${test.testId || 'unknown'}) is invalid: ${error.message}`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Test definition ${idx} (${test.testId || 'unknown'}) is invalid: ${errorMessage}`);
     }
   });
 }
