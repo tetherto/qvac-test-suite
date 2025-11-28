@@ -1,47 +1,63 @@
 {
-    "name": "@tetherto/qvac-test-suite",
-    "version": "0.1.0",
-    "description": "Generic distributed testing framework for multi-platform execution",
-    "type": "module",
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts",
-    "bin": {
-        "qvac-test": "./dist/cli/index.js"
-    },
-    "exports": {
-        ".": {
-            "import": "./dist/index.js",
-            "types": "./dist/index.d.ts"
-        }
-    },
-    "files": [
-        "dist",
-        "README.md"
-    ],
-    "scripts": {
-        "build": "tsc",
-        "dev": "tsc --watch",
-        "prepublishOnly": "npm run build"
-    },
-    "keywords": [
-        "testing",
-        "distributed",
-        "mqtt",
-        "multi-platform"
-    ],
-    "author": "Tether",
-    "license": "UNLICENSED",
-    "private": true,
-    "publishConfig": {
-        "registry": "https://npm.pkg.github.com"
-    },
-    "dependencies": {
-        "commander": "^14.0.2",
-        "mqtt": "^5.14.1",
-        "zod": "^3.22.4"
-    },
-    "devDependencies": {
-        "@types/node": "^20.0.0",
-        "typescript": "^5.3.3"
+  "name": "@tetherto/qvac-test-suite",
+  "version": "0.1.0",
+  "description": "Generic distributed testing framework for multi-platform execution",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "qvac-test": "./dist/cli/index.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src/",
+    "lint:fix": "eslint --fix src/",
+    "format": "prettier --write 'src/**/*.{ts,js,json}'",
+    "format:check": "prettier --check 'src/**/*.{ts,js,json}'",
+    "prepare": "husky",
+    "prepublishOnly": "npm run build"
+  },
+  "lint-staged": {
+    "*.{ts,js,json}": [
+      "prettier --write",
+      "eslint --fix"
+    ]
+  },
+  "keywords": [
+    "testing",
+    "distributed",
+    "mqtt",
+    "multi-platform"
+  ],
+  "author": "Tether",
+  "license": "UNLICENSED",
+  "private": true,
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "dependencies": {
+    "commander": "^14.0.2",
+    "mqtt": "^5.14.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.48.0",
+    "@typescript-eslint/parser": "^8.48.0",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.7.1",
+    "typescript": "^5.3.3"
+  }
 }

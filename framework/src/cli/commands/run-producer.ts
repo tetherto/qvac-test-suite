@@ -1,6 +1,6 @@
+import { BatchOrchestrator } from '../../core/batch-orchestrator.js';
 import { loadConfig } from '../../utils/config-loader.js';
 import { loadTests } from '../../utils/test-loader.js';
-import { BatchOrchestrator } from '../../core/batch-orchestrator.js';
 
 interface ProducerOptions {
   runId?: string;
@@ -11,41 +11,39 @@ interface ProducerOptions {
 export async function runProducer(options: ProducerOptions) {
   try {
     console.log('🚀 Starting QVAC Test Producer\n');
-    
+
     // Generate runId if not provided
     const runId = options.runId || `run-${Date.now()}`;
-    
+
     // Load configuration
     console.log(`📂 Loading config from: ${options.config}`);
     const config = await loadConfig(options.config);
     console.log(`✅ Config loaded\n`);
-    
+
     // Use broker from CLI arg or config
     const brokerUrl = options.mqttBroker || config.brokerUrl;
-    
+
     // Load tests
     console.log(`📋 Loading tests from: ${config.testDir}`);
     const tests = await loadTests(config, options.config);
     console.log(`✅ Loaded ${tests.length} tests\n`);
-    
+
     // Initialize orchestrator
     const orchestrator = new BatchOrchestrator(brokerUrl, runId, false);
-    
+
     // Build test queue from loaded tests
     orchestrator.buildTestQueue(tests);
-    
+
     // Wait for MQTT connection before starting
     setTimeout(() => {
       orchestrator.start();
     }, 1000);
-    
+
     // Handle shutdown signals
     process.on('SIGINT', () => orchestrator.shutdown());
     process.on('SIGTERM', () => orchestrator.shutdown());
-    
   } catch (error: any) {
     console.error('❌ Failed to start producer:', error.message);
     process.exit(1);
   }
 }
-

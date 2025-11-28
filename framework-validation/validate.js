@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Step 1 Validation: Config and Test Loading
- * 
+ *
  * Verifies that the framework can:
  * - Load configuration from qvac-test.config.js
  * - Load test definitions from testDir
@@ -45,4 +45,3 @@ async function validate() {
 }
 
 validate();
-

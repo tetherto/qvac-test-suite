@@ -26,4 +26,3 @@ node step-1-config-loading.js
 ## Cleanup
 
 This directory can be deleted after MVP is complete. It's only for validating framework development.
-

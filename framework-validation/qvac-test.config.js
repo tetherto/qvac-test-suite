@@ -5,10 +5,9 @@ export default {
   consumers: {
     desktop: {
       platforms: ['macos'],
-      entry: './tests/desktop/consumer.js',
+      entry: './tests/desktop/executor.js',
       include: ['./tests/**'],
-      dependencies: 'auto'
-    }
-  }
+      dependencies: 'auto',
+    },
+  },
 };
-
