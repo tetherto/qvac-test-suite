@@ -236,7 +236,14 @@ export class BatchOrchestrator {
     console.log(`${statusIcon} Test ${assignment.testCase.testId} ${outcome} (${duration}ms) - ${consumerId}`);
 
     if (message.error) {
-      console.log(`   Error: ${message.error.substring(0, 100)}`);
+      // Show full error, but split long errors into multiple lines
+      const errorLines = message.error.split('\n');
+      if (errorLines.length > 5) {
+        console.log(`   Error: ${errorLines.slice(0, 5).join('\n   ')}`);
+        console.log(`   ... (${errorLines.length - 5} more lines)`);
+      } else {
+        console.log(`   Error: ${message.error}`);
+      }
     }
 
     this.displayStatus();

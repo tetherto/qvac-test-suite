@@ -7,8 +7,9 @@ import type { TestResult } from '../core/consumer-base.js';
 export class ValidationHelpers {
   /**
    * Validate a result against an expectation
+   * Accepts any expectation type for flexibility
    */
-  static validate(result: unknown, expectation: Expectation): TestResult {
+  static validate<T extends Expectation = Expectation>(result: unknown, expectation: T): TestResult {
     try {
       switch (expectation.validation) {
         case 'contains-all':

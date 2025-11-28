@@ -48,7 +48,7 @@ export async function buildConsumerDesktop(options: BuildOptions) {
     console.log('📄 Wrapper imports:');
     console.log(wrapperCode.split('\n').slice(0, 6).join('\n'));
 
-    // Bundle with esbuild (bundle everything except mqtt)
+    // Bundle with esbuild (keep dependencies external)
     console.log('🔧 Bundling with esbuild...');
     await build({
       entryPoints: [wrapperPath],
@@ -57,7 +57,13 @@ export async function buildConsumerDesktop(options: BuildOptions) {
       target: 'node22',
       format: 'esm',
       outfile: path.join(outputDir, 'consumer.js'),
-      external: ['mqtt'], // Only mqtt is external
+      external: [
+        'mqtt',
+        '@qvac/*', // Keep SDK in node_modules
+        'expo-*', // React Native packages
+        'react-native*',
+      ],
+      // Note: @tetherto/qvac-test-suite will be bundled into consumer
       sourcemap: true,
       banner: {
         js: '#!/usr/bin/env node',

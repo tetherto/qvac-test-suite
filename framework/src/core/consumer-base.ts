@@ -256,7 +256,13 @@ export class ConsumerBase {
 
       this.log(`${outcome === 'success' ? '✅' : '❌'} ${testId} (${duration}ms)`);
       if (!result.passed && result.output) {
-        this.log(`   ${result.output.substring(0, 100)}`);
+        // Show full error output (may be multi-line)
+        const outputLines = result.output.split('\n');
+        if (outputLines.length > 1) {
+          outputLines.forEach((line) => this.log(`   ${line}`));
+        } else {
+          this.log(`   ${result.output}`);
+        }
       }
 
       // Update stats
