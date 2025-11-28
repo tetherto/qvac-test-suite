@@ -71,6 +71,13 @@ qvac-test-suite/
 - Show validation commands for user to run
 - Wait for user confirmation before next step
 
+## Features to Add Later (Post-MVP)
+
+- Wildcard consumer support (allowWildcardConsumers flag/config)
+- Module aliases for cleaner imports
+- Auto-discovery from testDir
+- Inline execution logic in test definitions
+
 ## Migration Strategy
 
 1. Create framework/ + sdk-tests/ alongside old structure

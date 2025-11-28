@@ -1,21 +1,21 @@
 // Type exports
 export type {
-  TestDefinition,
-  Expectation,
+    TestDefinition,
+    Expectation,
 } from './types/test-definition.js';
 
 export type {
-  QvacTestConfig,
+    QvacTestConfig,
 } from './types/config.js';
 
 // Schema exports (for validation)
-export { 
-  testDefinitionSchema,
-  expectationSchema,
+export {
+    testDefinitionSchema,
+    expectationSchema,
 } from './types/test-definition.js';
 
 export {
-  qvacTestConfigSchema,
+    qvacTestConfigSchema,
 } from './types/config.js';
 
 // Helper function exports
@@ -25,4 +25,7 @@ export { defineConfig } from './types/config.js';
 // Utility exports
 export { loadConfig, findConfig } from './utils/config-loader.js';
 export { loadTests } from './utils/test-loader.js';
+
+// Core exports
+export { BatchOrchestrator } from './core/batch-orchestrator.js';
 
