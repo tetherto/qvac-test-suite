@@ -1,12 +1,20 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { runConsumerDesktop } from './commands/run-consumer-desktop.js';
 import { runProducer } from './commands/run-producer.js';
+import { runConsumerDesktop } from './commands/run-consumer-desktop.js';
+import { buildConsumerDesktop } from './commands/build-consumer-desktop.js';
 
 const program = new Command();
 
 program.name('qvac-test').description('QVAC Test Suite - Distributed testing framework').version('0.1.0');
+
+program
+  .command('build:consumer:desktop')
+  .description('Build desktop consumer package')
+  .requiredOption('--platform <platform>', 'Target platform: macos, windows, or linux')
+  .option('--config <path>', 'Path to config directory', process.cwd())
+  .action(buildConsumerDesktop);
 
 program
   .command('run:producer')

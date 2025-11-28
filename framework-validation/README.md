@@ -1,28 +1,30 @@
-# Framework Validation Scripts
+# Framework Validation
 
-This directory contains validation scripts for each implementation step.
-
-## Usage
-
-Each step has a corresponding validation script:
-
-```bash
-# Step 1: Config and test loading
-node step-1-config-loading.js
-
-# Step 2: Producer orchestration
-# node step-2-producer.js (after Step 2 complete)
-
-# Step 3: E2E flow
-# node step-3-e2e.js (after Step 3 complete)
-```
+This directory mimics a real target repository using the QVAC test framework.
 
 ## Structure
 
-- `qvac-test.config.js` - Test configuration
-- `tests/` - Sample test definitions
-- `step-N-*.js` - Validation scripts per step
+- `package.json` - Dependencies (like a real repo)
+- `qvac-test.config.js` - Framework configuration
+- `tests/` - Test definitions and executors
+- `step-N-*.md` - Validation instructions per step
+- `build/` - Built consumer packages (generated)
+
+## Usage
+
+Each step has validation instructions:
+
+```bash
+# Step 1: Config loading
+node step-1-config-loading.js
+
+# Step 2-5: See step-N-*.md files for instructions
+```
+
+## Purpose
+
+Validates framework functionality by acting as a real target repo would.
 
 ## Cleanup
 
-This directory can be deleted after MVP is complete. It's only for validating framework development.
+This directory can be deleted after MVP is complete. It's only for framework development validation.
