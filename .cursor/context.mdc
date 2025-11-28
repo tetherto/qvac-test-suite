@@ -1,0 +1,82 @@
+# QVAC Test Suite Framework - Project Context
+
+## Current State
+
+**Branch**: feature/framework-extraction
+**Goal**: Transform monolithic test suite into `@tetherto/qvac-test-suite` library
+
+## Repo Structure
+
+```
+qvac-test-suite/
+├── framework/                   # @tetherto/qvac-test-suite package (being developed)
+├── sdk-tests/                   # Dogfooding structure (will be created)
+├── docs/                        # PRDs and plans
+│   ├── PRD.md                   # Full PRD
+│   ├── PRD-EXECUTIVE.md         # Executive summary
+│   ├── IMPLEMENTATION-PLAN.md   # Step-by-step plan
+│   └── BRANCHING-STRATEGY.md    # Git workflow
+├── qvac-test-producer/          # OLD: to be deleted after migration
+├── qvac-test-consumer-desktop/  # OLD: to be deleted after migration
+└── qvac-test-consumer-mobile/   # OLD: to be deleted after migration
+```
+
+## Key Architecture Decisions
+
+### Consumer Packaging
+- Bundle CURRENT source code (./src) + tests together
+- Use relative imports (../../../src/api) - no module aliases in MVP
+- Dependencies installed at build time (dependencies: 'auto' from package.json)
+- Desktop: esbuild bundle + node_modules/
+- Mobile: Expo build (Metro bundler)
+
+### Test API
+- Handler-based executors (pattern matching: /^api-/ routes to ApiExecutor)
+- ValidationHelpers for common expectations
+- Generic design - not SDK-specific (works for API, DB, SDK testing)
+
+### Remote Testing Support
+- Config option: sourceRepo: '../sdk-repo'
+- Framework can test code in different repo/directory
+- Enables qvac-test-suite testing SDK repo during development
+
+### Producer/Consumer Flow
+- Per-platform runId: repo-branch-commit-timestamp-PLATFORM
+- Consumer starts in background
+- Producer is main process (blocks, generates reports)
+- Persistent MQTT broker on AWS
+
+## Critical Constraints
+
+**SDK testing must work at every commit**. Never break existing test capability during migration.
+
+## Implementation Rules
+
+**DO NOT run these commands** (user will run):
+- Background processes: mosquitto, producer, consumer
+- Publishing: npm publish
+- Long-running builds: Android/iOS builds
+- Device Farm operations
+- Any command that runs indefinitely
+
+**DO run these commands** (safe, short-running):
+- npm install
+- npm run build
+- TypeScript compilation
+- File operations
+- Git operations (except push)
+
+**Workflow**:
+- Complete each step
+- Show validation commands for user to run
+- Wait for user confirmation before next step
+
+## Migration Strategy
+
+1. Create framework/ + sdk-tests/ alongside old structure
+2. Validate with sample tests (E2E by Step 3)
+3. Once verified, migrate ALL tests (Step 6)
+4. Delete old structure (Step 7)
+5. No long dual-maintenance period
+
+Git is safety net for rollback if needed.

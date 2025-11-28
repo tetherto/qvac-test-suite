@@ -1,0 +1,77 @@
+# Implementation Progress Tracker
+
+## Current Step: Step 1 Complete - Awaiting Validation
+**Next**: Step 2 - Producer + CLI
+
+---
+
+## Milestones
+
+- [ ] **Step 3**: E2E working (producer + consumer + external tests)
+- [ ] **Step 7**: All tests migrated, old structure deleted
+- [ ] **Step 10**: Framework validated with external SDK repo
+- [ ] **Step 12**: CI/CD working in SDK repo
+- [ ] **Step 15**: MVP complete, documentation done
+
+---
+
+## Steps Completed
+
+- [x] **Step 1**: Types + Config + Test Loading
+
+---
+
+## Current Focus
+
+Setting up foundation for loading tests from external directory and orchestrating via MQTT.
+
+---
+
+## Validation Commands (Copy-Paste Ready)
+
+### After Step 1 (Test Loading)
+```bash
+cd framework
+node -e "const {loadConfig} = require('./dist/utils/config-loader'); console.log(loadConfig('../sdk-tests'))"
+```
+
+### After Step 2 (Producer)
+```bash
+cd sdk-tests
+qvac-test run:producer --runId=test-producer
+```
+
+### After Step 3 (E2E)
+```bash
+# Terminal 1: mosquitto -v
+# Terminal 2: cd sdk-tests && qvac-test run:producer --runId=e2e
+# Terminal 3: cd sdk-tests && qvac-test run:consumer:desktop --runId=e2e
+```
+
+### After Step 5 (Building)
+```bash
+cd sdk-tests
+qvac-test build:consumer:desktop --platform macos
+node build/consumers/macos/consumer.js --runId=built-test
+```
+
+### After Step 10 (SDK Repo)
+```bash
+# In SDK repo
+npx qvac-test build:consumer:desktop --platform macos
+npx qvac-test run:producer --runId=sdk-test
+```
+
+---
+
+## Issues Encountered
+
+None yet.
+
+---
+
+## Notes
+
+- Update this file after completing each step
+- Mark milestones as completed
+- Document any deviations from plan
