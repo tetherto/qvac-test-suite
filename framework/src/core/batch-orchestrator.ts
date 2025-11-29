@@ -8,6 +8,7 @@ import {
   heartbeatSchema,
   type TestResult as MqttTestResult,
 } from '../schemas/messages.js';
+import { generateHtmlReport, generateJsonReport, type ReportData } from '../utils/report-generator.js';
 
 interface TestCase {
   id: string; // Unique test ID
@@ -355,9 +356,24 @@ export class BatchOrchestrator {
     console.log('\n📋 Test Results by Category:\n');
     this.displayResultsByCategory();
 
-    // HTML report generation will be added later
-    console.log('\n📊 Results summary complete');
-    // TODO: Add report generation in later step
+    // Generate reports
+    try {
+      const reportData: ReportData = {
+        runId: this.runId,
+        completedTests: Array.from(this.completedTests.values()),
+        consumers: this.consumers,
+        startTime: this.startTime,
+      };
+
+      const htmlPath = generateHtmlReport(reportData);
+      const jsonPath = generateJsonReport(reportData);
+
+      console.log(`\n📄 Reports generated:`);
+      console.log(`   HTML: ${htmlPath}`);
+      console.log(`   JSON: ${jsonPath}`);
+    } catch (error) {
+      console.error('\n⚠️  Failed to generate reports:', error);
+    }
 
     // Signal all consumers to shutdown
     this.client.publish(

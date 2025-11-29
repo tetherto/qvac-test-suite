@@ -4,6 +4,8 @@ import { Command } from 'commander';
 import { runProducer } from './commands/run-producer.js';
 import { runConsumerDesktop } from './commands/run-consumer-desktop.js';
 import { buildConsumerDesktop } from './commands/build-consumer-desktop.js';
+import { reportCompare } from './commands/report-compare.js';
+import { reportFormat } from './commands/report-format.js';
 
 const program = new Command();
 
@@ -35,5 +37,21 @@ program
   .option('--mqtt-broker <url>', 'MQTT broker URL', 'mqtt://localhost:1883')
   .option('--config <path>', 'Path to config directory', process.cwd())
   .action(runConsumerDesktop);
+
+program
+  .command('report:compare')
+  .description('Compare test results between baseline and current')
+  .requiredOption('--baseline <file>', 'Baseline JSON report file')
+  .requiredOption('--current <file>', 'Current JSON report file')
+  .requiredOption('--output <file>', 'Output comparison JSON file')
+  .action(reportCompare);
+
+program
+  .command('report:format')
+  .description('Format comparison JSON to markdown')
+  .requiredOption('--input <file>', 'Comparison JSON file')
+  .requiredOption('--format <format>', 'Output format (markdown)')
+  .option('--output <file>', 'Output file (optional, prints to stdout if not specified)')
+  .action(reportFormat);
 
 program.parse();
