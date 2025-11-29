@@ -1,18 +1,18 @@
 {
-    "name": "sdk-tests",
-    "version": "1.0.0",
-    "private": true,
-    "type": "module",
-    "description": "SDK tests using QVAC test framework",
-    "scripts": {
-        "typecheck": "tsc --noEmit"
-    },
-    "dependencies": {
-        "@qvac/sdk": "^0.4.1",
-        "@tetherto/qvac-test-suite": "file:../framework",
-        "mqtt": "^5.14.1"
-    },
-    "devDependencies": {
-        "typescript": "^5.3.3"
-    }
+  "name": "sdk-tests",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "SDK tests using QVAC test framework",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@qvac/sdk": "^0.4.1",
+    "@tetherto/qvac-test-suite": "file:../framework",
+    "mqtt": "^5.14.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
 }

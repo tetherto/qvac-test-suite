@@ -1,6 +1,7 @@
 // Model loading executor
 import { loadModel, unloadModel, LLAMA_3_2_1B_INST_Q4_0, GTE_LARGE_FP16 } from '@qvac/sdk';
-import { ValidationHelpers, type TestResult, type Expectation } from '@tetherto/qvac-test-suite';
+import { ValidationHelpers, type TestResult } from '@tetherto/qvac-test-suite';
+import { ModelManager } from '../model-manager.ts';
 import {
   modelLoadLlm,
   modelLoadEmbedding,
@@ -8,6 +9,8 @@ import {
   modelUnload,
   modelLoadConcurrent,
   modelReloadLlm,
+  modelSwitchLlm,
+  modelReloadAfterError,
 } from '../../test-definitions.ts';
 
 export class ModelLoadingExecutor {
@@ -23,6 +26,8 @@ export class ModelLoadingExecutor {
     [modelUnload.testId]: this.unload,
     [modelLoadConcurrent.testId]: this.loadConcurrent,
     [modelReloadLlm.testId]: this.reloadLlm,
+    [modelSwitchLlm.testId]: this.switchLlm,
+    [modelReloadAfterError.testId]: this.reloadAfterError,
   };
 
   async execute(testId: string, context: unknown, params: unknown, expectation: unknown): Promise<TestResult> {
@@ -43,6 +48,8 @@ export class ModelLoadingExecutor {
       modelType: 'llm',
       modelConfig: { verbosity: 0, ctx_size: 2048, n_discarded: 256 },
     });
+    // Register with ModelManager so other executors can reuse it
+    ModelManager.setLlmModel(this.llmModelId);
     return ValidationHelpers.validate(this.llmModelId, expectation);
   }
 
@@ -91,7 +98,6 @@ export class ModelLoadingExecutor {
     for (const model of params.models) {
       const modelSrc = model.constant === 'LLAMA_3_2_1B_INST_Q4_0' ? LLAMA_3_2_1B_INST_Q4_0 : GTE_LARGE_FP16;
 
-      // Type-safe model loading (separate calls for llm vs embeddings)
       let modelId: string;
       if (model.type === 'llm') {
         modelId = await loadModel({
@@ -100,12 +106,14 @@ export class ModelLoadingExecutor {
           modelConfig: { verbosity: 0, ctx_size: 2048, n_discarded: 256 },
         });
         this.llmModelId = modelId;
+        ModelManager.setLlmModel(modelId);
       } else {
         modelId = await loadModel({
           modelSrc,
           modelType: 'embeddings',
         });
         this.embeddingModelId = modelId;
+        ModelManager.setEmbeddingModel(modelId);
       }
       modelIds.push(modelId);
     }
@@ -115,6 +123,36 @@ export class ModelLoadingExecutor {
   async reloadLlm(
     params: typeof modelReloadLlm.params,
     expectation: typeof modelReloadLlm.expectation
+  ): Promise<TestResult> {
+    if (this.llmModelId) {
+      await unloadModel({ modelId: this.llmModelId });
+    }
+    this.llmModelId = await loadModel({
+      modelSrc: LLAMA_3_2_1B_INST_Q4_0,
+      modelType: 'llm',
+      modelConfig: { verbosity: 0, ctx_size: 2048, n_discarded: 256 },
+    });
+    return ValidationHelpers.validate(this.llmModelId, expectation);
+  }
+
+  async switchLlm(
+    params: typeof modelSwitchLlm.params,
+    expectation: typeof modelSwitchLlm.expectation
+  ): Promise<TestResult> {
+    if (this.llmModelId) {
+      await unloadModel({ modelId: this.llmModelId });
+    }
+    this.llmModelId = await loadModel({
+      modelSrc: LLAMA_3_2_1B_INST_Q4_0,
+      modelType: 'llm',
+      modelConfig: { verbosity: 0, ctx_size: 2048, n_discarded: 256 },
+    });
+    return ValidationHelpers.validate(this.llmModelId, expectation);
+  }
+
+  async reloadAfterError(
+    params: typeof modelReloadAfterError.params,
+    expectation: typeof modelReloadAfterError.expectation
   ): Promise<TestResult> {
     if (this.llmModelId) {
       await unloadModel({ modelId: this.llmModelId });

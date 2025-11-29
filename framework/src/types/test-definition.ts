@@ -1,6 +1,17 @@
 import { z } from 'zod';
 
 /**
+ * Skip information for disabled tests
+ */
+export const skipInfoSchema = z.object({
+  reason: z.string().describe('Why this test is skipped'),
+  issue: z.string().optional().describe('Issue tracker reference (e.g., QVAC-8339)'),
+  impact: z.string().optional().describe('Impact description (e.g., "causes 87+ tests to timeout")'),
+});
+
+export type SkipInfo = z.infer<typeof skipInfoSchema>;
+
+/**
  * Expectation schemas for test validation
  */
 const containsExpectationSchema = z.object({
@@ -71,6 +82,8 @@ export const testDefinitionSchema = z.object({
     .record(z.any())
     .optional()
     .describe('Optional metadata: setup requirements, categories, timeouts, or any repo-specific info'),
+
+  skip: skipInfoSchema.optional().describe('If present, test is skipped with reason logged'),
 });
 
 export type TestDefinition = z.infer<typeof testDefinitionSchema>;

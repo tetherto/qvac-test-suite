@@ -51,12 +51,42 @@ Skip ahead to CI/CD:
 
 ## Recommendation
 
-**Option 1**: Continue porting tests incrementally. Get to 30-50 tests, then:
-- Delete old structure
-- Move to reports
-- Then CI/CD with meaningful test coverage
+**Continue porting all tests systematically**:
 
-This maintains momentum and validates the pattern works for all test types before moving on.
+### Immediate Next Steps
+
+1. **Port completion tests** (~50 tests)
+   - Create generic completion handler
+   - Handles all parameter variations (temperature, top_p, penalties, etc.)
+   - Port all completion test definitions
+   
+2. **Port transcription tests** (~12 tests)
+   - Audio file handling
+   - Create transcription executor
+   
+3. **Port embedding tests** (~14 tests)
+   - Text/code embedding
+   - Create embedding executor
+   
+4. **Port RAG tests** (~11 tests)
+   - Document chunking
+   - Embeddings + retrieval
+
+5. **Port remaining** (translation, tools, cache, errors)
+
+### Testing Strategy
+
+- Use `--filter` flag to test categories incrementally
+- Validate each category before moving to next
+- Compare pass rates with old structure
+
+### Timeline
+
+- Completion tests: 1-2 hours
+- Other categories: 2-3 hours  
+- Total porting: 3-5 hours
+
+This maintains momentum and completes feature parity before moving to reports/CI/CD.
 
 ## Critical ToDos Before Next Session
 

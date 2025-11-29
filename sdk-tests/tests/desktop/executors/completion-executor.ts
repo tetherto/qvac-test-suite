@@ -1,19 +1,17 @@
 // Completion executor
-import { completion, loadModel, LLAMA_3_2_1B_INST_Q4_0 } from '@qvac/sdk';
+import { completion } from '@qvac/sdk';
 import { ValidationHelpers, type TestResult, type Expectation } from '@tetherto/qvac-test-suite';
-import { completionStreaming } from '../../test-definitions.ts';
+import { completionTests } from '../../completion-tests.ts';
+import { ModelManager } from '../model-manager.ts';
 
 export class CompletionExecutor {
   pattern = /^completion-/;
-  llmModelId: string | null = null;
 
-  // Explicit mapping: testId → method
-  handlers = {
-    [completionStreaming.testId]: this.streaming,
-  };
+  // Build handlers map dynamically from all completion tests
+  handlers = Object.fromEntries(completionTests.map((test) => [test.testId, this.generic]));
 
   async execute(testId: string, context: unknown, params: unknown, expectation: unknown): Promise<TestResult> {
-    const handler = this.handlers[testId as keyof typeof this.handlers];
+    const handler = this.handlers[testId];
     if (handler) {
       return await (handler as (params: unknown, expectation: unknown) => Promise<TestResult>).call(
         this,
@@ -24,28 +22,39 @@ export class CompletionExecutor {
     return { passed: false, output: `Unknown test: ${testId}` };
   }
 
-  async streaming(
-    params: typeof completionStreaming.params,
-    expectation: typeof completionStreaming.expectation
-  ): Promise<TestResult> {
-    // Load model if needed
-    if (!this.llmModelId) {
-      console.log('    Loading LLM model...');
-      this.llmModelId = await loadModel({
-        modelSrc: LLAMA_3_2_1B_INST_Q4_0,
-        modelType: 'llm',
-        modelConfig: { verbosity: 0, ctx_size: 2048, n_discarded: 256 },
-      });
+  private async runCompletion(params: {
+    history: Array<{ role: string; content: string }>;
+    stream?: boolean;
+    [key: string]: unknown;
+  }): Promise<string> {
+    const llmModelId = await ModelManager.getLlmModel();
+
+    const { history, stream, ...otherParams } = params;
+    const result = completion({
+      modelId: llmModelId,
+      history,
+      stream: stream ?? false,
+      ...otherParams, // temperature, topP, frequencyPenalty, etc.
+    });
+
+    if (stream) {
+      let fullText = '';
+      for await (const token of result.tokenStream) {
+        fullText += token;
+      }
+      return fullText;
+    } else {
+      return result.text;
     }
+  }
 
-    // Run streaming completion
-    const result = completion({ modelId: this.llmModelId, history: params.history, stream: true });
-
-    let fullText = '';
-    for await (const token of result.tokenStream) {
-      fullText += token;
-    }
-
-    return ValidationHelpers.validate(fullText, expectation);
+  async generic(params: unknown, expectation: unknown): Promise<TestResult> {
+    const p = params as {
+      history: Array<{ role: string; content: string }>;
+      stream?: boolean;
+      [key: string]: unknown;
+    };
+    const text = await this.runCompletion(p);
+    return ValidationHelpers.validate(text, expectation as Expectation);
   }
 }

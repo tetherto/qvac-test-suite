@@ -1,20 +1,29 @@
-// Real SDK tests - Model Loading Category
+// Real SDK tests
 import type { TestDefinition } from '@tetherto/qvac-test-suite';
+import { completionTests } from './completion-tests.ts';
+import { transcriptionTests } from './transcription-tests.ts';
+import { embeddingTests } from './embedding-tests.ts';
+import { ragTests } from './rag-tests.ts';
+import { translationTests } from './translation-tests.ts';
+import { cacheTests } from './cache-tests.ts';
+import { errorTests } from './error-tests.ts';
+import { toolsTests } from './tools-tests.ts';
+import { visionTests } from './vision-tests.ts';
 
 // Model loading tests
 export const modelLoadLlm: TestDefinition = {
   testId: 'model-load-llm',
   params: { modelType: 'llm', modelConstant: 'LLAMA_3_2_1B_INST_Q4_0' },
-  expectation: { validation: 'type', expectedType: 'string' } as const,
+  expectation: { validation: 'type', expectedType: 'string' },
   metadata: { category: 'model', dependency: 'none', estimatedDurationMs: 60000 },
-} as const;
+};
 
 export const modelLoadEmbedding: TestDefinition = {
   testId: 'model-load-embedding',
   params: { modelType: 'embeddings', modelConstant: 'GTE_LARGE_FP16' },
-  expectation: { validation: 'type', expectedType: 'string' } as const,
+  expectation: { validation: 'type', expectedType: 'string' },
   metadata: { category: 'model', dependency: 'none', estimatedDurationMs: 60000 },
-} as const;
+};
 
 export const modelLoadInvalid: TestDefinition = {
   testId: 'model-load-invalid',
@@ -49,24 +58,109 @@ export const modelReloadLlm: TestDefinition = {
   metadata: { category: 'model', dependency: 'llm', estimatedDurationMs: 15000 },
 };
 
-// Completion tests
-export const completionStreaming: TestDefinition = {
-  testId: 'completion-streaming',
-  params: {
-    history: [{ role: 'user', content: 'What is 2+2? Answer with only the number.' }],
-    stream: true,
-  },
-  expectation: { validation: 'contains-all', contains: ['4'] },
-  metadata: { category: 'completion', dependency: 'llm', estimatedDurationMs: 10000 },
+export const modelSwitchLlm: TestDefinition = {
+  testId: 'model-switch-llm',
+  params: { currentModel: 'llm', newModelConstant: 'LLAMA_3_2_1B_INST_Q4_0' },
+  expectation: { validation: 'type', expectedType: 'string' },
+  metadata: { category: 'model', dependency: 'llm', estimatedDurationMs: 90000 },
+};
+
+export const modelReloadAfterError: TestDefinition = {
+  testId: 'model-reload-after-error',
+  params: { modelType: 'llm', modelConstant: 'LLAMA_3_2_1B_INST_Q4_0' },
+  expectation: { validation: 'type', expectedType: 'string' },
+  metadata: { category: 'model', dependency: 'llm', estimatedDurationMs: 70000 },
+};
+
+// TODO placeholder tests
+export const todoAddonDiscovery: TestDefinition = {
+  testId: 'todo-addon-discovery',
+  params: {},
+  expectation: { validation: 'type', expectedType: 'string' },
+  metadata: { category: 'todo', dependency: 'none', estimatedDurationMs: 1000 },
+};
+
+export const todoAddonMetadata: TestDefinition = {
+  testId: 'todo-addon-metadata',
+  params: {},
+  expectation: { validation: 'type', expectedType: 'string' },
+  metadata: { category: 'todo', dependency: 'none', estimatedDurationMs: 1000 },
+};
+
+export const todoLoadingProgress: TestDefinition = {
+  testId: 'todo-loading-progress',
+  params: {},
+  expectation: { validation: 'type', expectedType: 'string' },
+  metadata: { category: 'todo', dependency: 'none', estimatedDurationMs: 1000 },
+};
+
+export const todoTypedErrorCodes: TestDefinition = {
+  testId: 'todo-typed-error-codes',
+  params: {},
+  expectation: { validation: 'type', expectedType: 'string' },
+  metadata: { category: 'todo', dependency: 'none', estimatedDurationMs: 1000 },
+};
+
+export const todoAddonCrashDetection: TestDefinition = {
+  testId: 'todo-addon-crash-detection',
+  params: {},
+  expectation: { validation: 'type', expectedType: 'string' },
+  metadata: { category: 'todo', dependency: 'none', estimatedDurationMs: 1000 },
 };
 
 // Export all tests as array
 export const tests = [
+  // Model tests (first section)
   modelLoadLlm,
   modelLoadEmbedding,
   modelLoadInvalid,
   modelUnload,
   modelLoadConcurrent,
   modelReloadLlm,
-  completionStreaming,
+
+  // Completion tests
+  ...completionTests,
+
+  // Transcription tests
+  ...transcriptionTests,
+
+  // Embedding tests
+  ...embeddingTests,
+
+  // RAG tests
+  ...ragTests,
+
+  // Translation tests
+  ...translationTests,
+
+  // Cache tests
+  ...cacheTests,
+
+  // Error tests
+  ...errorTests,
+
+  // Tools tests
+  ...toolsTests,
+
+  // Vision tests (SKIPPED - see vision-tests.ts for details)
+  ...visionTests,
+
+  // Model tests (second section - duplicates like old structure)
+  modelLoadLlm,
+  modelLoadEmbedding,
+  modelLoadInvalid,
+  modelUnload,
+  modelLoadConcurrent,
+  modelReloadLlm,
+
+  // Additional model tests
+  modelSwitchLlm,
+  modelReloadAfterError,
+
+  // TODO placeholder tests
+  todoAddonDiscovery,
+  todoAddonMetadata,
+  todoLoadingProgress,
+  todoTypedErrorCodes,
+  todoAddonCrashDetection,
 ];
