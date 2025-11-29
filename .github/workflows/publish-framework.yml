@@ -1,0 +1,113 @@
+name: Build and Publish Framework
+
+on:
+  push:
+    branches: ['main', 'dev', 'feature-*', 'fix-*']
+    paths:
+      - 'framework/**'
+      - '.github/workflows/publish-framework.yml'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag for publishing'
+        required: false
+        default: 'dev'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@tetherto'
+
+      - name: Install dependencies
+        working-directory: framework
+        run: npm ci
+
+      - name: Build
+        working-directory: framework
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: framework/dist/
+          retention-days: 1
+
+      - name: Determine version and tag
+        id: version
+        working-directory: framework
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          BASE_VERSION=$(node -p "require('./package.json').version")
+
+          if [ "$BRANCH_NAME" = "main" ]; then
+            VERSION="$BASE_VERSION"
+            TAG="latest"
+            echo "Publishing main branch as @latest"
+          else
+            # For dev/feature/fix branches
+            CLEAN_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9.-]/-/g')
+            VERSION="${BASE_VERSION}-${CLEAN_BRANCH}.$(date +%s).${GITHUB_SHA:0:7}"
+            TAG="$CLEAN_BRANCH"
+            echo "Publishing branch '$BRANCH_NAME' as @$TAG"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      branch: ${{ steps.version.outputs.branch }}
+
+  publish-gpr:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@tetherto'
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: framework/dist/
+
+      - name: Update package version
+        working-directory: framework
+        run: |
+          VERSION="${{ needs.build.outputs.version }}"
+          npm version $VERSION --no-git-tag-version --allow-same-version
+          echo "Updated package.json to version: $VERSION"
+
+      - name: Publish to GitHub Package Registry
+        working-directory: framework
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Publishing @tetherto/qvac-test-suite@${{ needs.build.outputs.version }}"
+          npm publish --tag ${{ needs.build.outputs.tag }}
+

@@ -2,10 +2,11 @@
 
 ## Current State
 
-**Completed**: Steps 1-6
+**Completed**: Steps 1-8
 - Framework working end-to-end
-- 7 SDK tests ported (model loading + completion categories)
-- Clean pattern proven and scalable
+- All 217 SDK tests ported (198 active, 19 skipped)
+- JSON/HTML reports + comparison working
+- GitHub Actions publish workflow ready
 
 **Branch**: `feature/framework-extraction`
 
