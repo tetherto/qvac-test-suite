@@ -5,7 +5,7 @@ import { build } from 'esbuild';
 import { loadConfig } from '../../utils/config-loader.js';
 
 interface BuildOptions {
-  platform: 'macos' | 'windows' | 'linux';
+  platform: string; // Just for output directory naming (default: 'desktop')
   config: string;
 }
 

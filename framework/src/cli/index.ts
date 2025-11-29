@@ -11,8 +11,8 @@ program.name('qvac-test').description('QVAC Test Suite - Distributed testing fra
 
 program
   .command('build:consumer:desktop')
-  .description('Build desktop consumer package')
-  .requiredOption('--platform <platform>', 'Target platform: macos, windows, or linux')
+  .description('Build desktop consumer package (works on all desktop platforms)')
+  .option('--platform <platform>', 'Optional platform name for output directory', 'desktop')
   .option('--config <path>', 'Path to config directory', process.cwd())
   .action(buildConsumerDesktop);
 
@@ -22,6 +22,10 @@ program
   .option('--runId <id>', 'Unique run identifier')
   .option('--mqtt-broker <url>', 'MQTT broker URL', 'mqtt://localhost:1883')
   .option('--config <path>', 'Path to config directory', process.cwd())
+  .option(
+    '--filter <categories>',
+    'Filter tests by category or testId prefix (comma-separated, e.g., "model,completion")'
+  )
   .action(runProducer);
 
 program

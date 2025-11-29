@@ -1,0 +1,71 @@
+# Next Session Plan
+
+## Current State
+
+**Completed**: Steps 1-6
+- Framework working end-to-end
+- 7 SDK tests ported (model loading + completion categories)
+- Clean pattern proven and scalable
+
+**Branch**: `feature/framework-extraction`
+
+## Options for Next Session
+
+### Option 1: Continue Test Migration (Most Momentum)
+
+Port remaining test categories incrementally:
+- Transcription tests (~12 tests)
+- Embedding tests (~14 tests)
+- RAG tests (~11 tests)
+- Translation tests (~3 tests)
+- Tools/function calling tests (~20 tests)
+- Error handling tests
+
+**Estimated**: 2-3 hours to port all categories
+**Benefit**: Complete feature parity with old structure
+**Then**: Delete old structure (Step 7)
+
+### Option 2: Reports & Comparison (Step 8)
+
+Implement report generation:
+- JSON reports (per-platform)
+- HTML reports (existing, adapt)
+- report:compare command
+- report:format command (JSON → markdown)
+
+**Estimated**: 2-3 hours
+**Benefit**: Get regression detection working
+**Caveat**: Need more tests to make reports interesting
+
+### Option 3: GitHub Actions (Steps 9-12)
+
+Skip ahead to CI/CD:
+- Publish framework to GPR
+- Create GitHub Actions workflow
+- Test in SDK repo
+- PR comment automation
+
+**Estimated**: 3-4 hours
+**Benefit**: Get automation working early
+**Caveat**: CI is less interesting with only 7 tests
+
+## Recommendation
+
+**Option 1**: Continue porting tests incrementally. Get to 30-50 tests, then:
+- Delete old structure
+- Move to reports
+- Then CI/CD with meaningful test coverage
+
+This maintains momentum and validates the pattern works for all test types before moving on.
+
+## Critical ToDos Before Next Session
+
+- [ ] Review any issues encountered today
+- [ ] Check if old structure still works (fallback option)
+- [ ] Decide: port more tests OR move to reports/CI
+
+## Notes
+
+- Environment variable baking needed for mobile (documented in future-improvements.mdc)
+- Desktop build now defaults to cross-platform (--platform is optional)
+- Test executor pattern enhancement documented for later

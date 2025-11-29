@@ -6,6 +6,7 @@ interface ProducerOptions {
   runId?: string;
   mqttBroker: string;
   config: string;
+  filter?: string; // Filter tests by category or testId prefix (comma-separated)
 }
 
 export async function runProducer(options: ProducerOptions) {
@@ -25,8 +26,23 @@ export async function runProducer(options: ProducerOptions) {
 
     // Load tests
     console.log(`📋 Loading tests from: ${config.testDir}`);
-    const tests = await loadTests(config, options.config);
-    console.log(`✅ Loaded ${tests.length} tests\n`);
+    let tests = await loadTests(config, options.config);
+
+    // Apply filter if specified
+    if (options.filter) {
+      const filters = options.filter.split(',').map((f) => f.trim());
+      console.log(`🔍 Filtering tests by: ${filters.join(', ')}`);
+
+      const originalCount = tests.length;
+      tests = tests.filter((test) => {
+        // Match by testId prefix OR by metadata.category
+        return filters.some((filter) => test.testId.startsWith(filter) || test.metadata?.category === filter);
+      });
+
+      console.log(`📋 Filtered: ${tests.length} of ${originalCount} tests\n`);
+    } else {
+      console.log(`✅ Loaded ${tests.length} tests\n`);
+    }
 
     // Initialize orchestrator
     const orchestrator = new BatchOrchestrator(brokerUrl, runId, false);
