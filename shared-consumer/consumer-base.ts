@@ -466,17 +466,27 @@ export abstract class ConsumerBase {
 		const isSmallRagTest = testId.includes("rag-small");
 		const isLongPromptTest = testId === "completion-long-prompt";
 		const isTranscriptionTest = testId.startsWith("transcription-");
+		const isToolsTest = testId.startsWith("tools-");
+		const isEmbeddingTest = testId.startsWith("embed-") || testId.startsWith("rag-");
+		
+		// Mobile devices need more time for heavy operations
+		const isMobile = this.platform === "mobile" || this.platform.includes("mobile");
+		const mobileMultiplier = isMobile ? 1.5 : 1.0; // 50% more time on mobile
 		
 		if (isDestructiveTest) {
 			return 10000; // 10s
 		} else if (isLargeRagTest) {
-			return 120000; // 120s
+			return Math.round(120000 * mobileMultiplier); // 120s desktop, 180s mobile
 		} else if (isMediumRagTest) {
-			return 90000; // 90s
+			return Math.round(90000 * mobileMultiplier); // 90s desktop, 135s mobile
 		} else if (isSmallRagTest || isLongPromptTest) {
-			return 60000; // 60s
+			return Math.round(60000 * mobileMultiplier); // 60s desktop, 90s mobile
 		} else if (isTranscriptionTest) {
-			return 60000; // 60s
+			return Math.round(60000 * mobileMultiplier); // 60s desktop, 90s mobile
+		} else if (isToolsTest && isMobile) {
+			return 90000; // 90s for tools tests on mobile (QWEN 7B is heavy)
+		} else if (isEmbeddingTest && isMobile) {
+			return 90000; // 90s for embedding tests on mobile (GTE_LARGE is heavy)
 		} else {
 			return 60000; // 60s default
 		}

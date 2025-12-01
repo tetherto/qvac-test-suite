@@ -20,4 +20,11 @@ config.watchFolders = [
   path.resolve(__dirname, '..'), // (qvac-sdk-tests)
 ];
 
+// Ensure @babel/runtime and other dependencies can be resolved from shared directories
+// Metro needs to know where to find node_modules when resolving from watchFolders
+config.resolver.nodeModulesPaths = [
+  path.resolve(__dirname, 'node_modules'),
+  path.resolve(__dirname, '..', 'node_modules'),
+];
+
 module.exports = config;
