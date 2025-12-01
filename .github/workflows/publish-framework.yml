@@ -19,15 +19,11 @@ jobs:
     permissions:
       contents: write
       packages: write
-    env:
-      READ_NPM_TOKEN: ${{ secrets.PAT_TOKEN }}
-      WRITE_NPM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      READ_REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          token: ${{ env.READ_REPO_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -46,6 +42,8 @@ jobs:
           echo "Writing .npmrc for dual registry install..."
           cat > .npmrc <<NPMRC
           always-auth=true
+          ignore-scripts=true
+          foreground-scripts=true
           registry=https://registry.npmjs.org/
           @qvac:registry=https://registry.npmjs.org/
           @tetherto:registry=https://npm.pkg.github.com/
@@ -62,7 +60,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: framework
-        run: npm install --ignore-scripts
+        run: npm install
 
       - name: Build
         working-directory: framework
