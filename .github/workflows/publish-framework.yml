@@ -2,7 +2,7 @@ name: Build and Publish Framework
 
 on:
   push:
-    branches: ['main', 'dev', 'feature-*', 'fix-*']
+    branches: ['main', 'dev', 'fix-*', 'feature-*']
     paths:
       - 'framework/**'
       - '.github/workflows/publish-framework.yml'
@@ -17,22 +17,49 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
+    env:
+      READ_NPM_TOKEN: ${{ secrets.PAT_TOKEN }}
+      WRITE_NPM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      READ_REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          token: ${{ env.READ_REPO_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://npm.pkg.github.com'
-          scope: '@tetherto'
+
+      - name: Configure scoped registry for @tetherto packages
+        env:
+          GPR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_PAT: ${{ secrets.PAT_TOKEN }}
+        shell: bash
+        run: |
+          echo "Configuring scoped registry for @tetherto packages..."
+          set -eu
+          echo "Writing .npmrc for GitHub Package Registry..."
+          cat > .npmrc <<NPMRC
+          always-auth=true
+          registry=https://registry.npmjs.org/
+          @tetherto:registry=https://npm.pkg.github.com/
+          //npm.pkg.github.com/:_authToken=${GIT_PAT}
+          NPMRC
+
+          # Configure git for private deps
+          if [ -n "${GIT_PAT:-}" ]; then
+            git config --global url."https://${GIT_PAT}:@github.com/".insteadOf "https://github.com/"
+          else
+            git config --global url."https://${{ github.token }}:@github.com/".insteadOf "https://github.com/"
+          fi
 
       - name: Install dependencies
         working-directory: framework
-        run: npm ci
+        run: npm install --ignore-scripts
 
       - name: Build
         working-directory: framework
@@ -57,7 +84,6 @@ jobs:
             TAG="latest"
             echo "Publishing main branch as @latest"
           else
-            # For dev/feature/fix branches
             CLEAN_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9.-]/-/g')
             VERSION="${BASE_VERSION}-${CLEAN_BRANCH}.$(date +%s).${GITHUB_SHA:0:7}"
             TAG="$CLEAN_BRANCH"
@@ -75,6 +101,13 @@ jobs:
 
   publish-gpr:
     needs: build
+    if:
+      ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && (
+      needs.build.outputs.branch == 'dev' ||
+      startsWith(needs.build.outputs.branch, 'fix-') ||
+      startsWith(needs.build.outputs.branch, 'feature-')
+      ) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -82,13 +115,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          registry-url: 'https://npm.pkg.github.com'
-          scope: '@tetherto'
+          token: ${{ secrets.PAT_TOKEN }}
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -104,10 +132,8 @@ jobs:
           echo "Updated package.json to version: $VERSION"
 
       - name: Publish to GitHub Package Registry
-        working-directory: framework
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "Publishing @tetherto/qvac-test-suite@${{ needs.build.outputs.version }}"
-          npm publish --tag ${{ needs.build.outputs.tag }}
-
+        id: publish
+        uses: tetherto/qvac-devops/.github/actions/publish-library-to-gpr@v1.1.1
+        with:
+          secret-token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ inputs.tag || github.event.inputs.tag || needs.build.outputs.tag || 'dev' }}
