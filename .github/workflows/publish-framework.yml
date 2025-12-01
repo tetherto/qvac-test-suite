@@ -2,7 +2,7 @@ name: Build and Publish Framework
 
 on:
   push:
-    branches: ['main', 'dev', 'fix-*', 'feature-*']
+    branches: ['main', 'feature/**', 'fix/**']
     paths:
       - 'framework/**'
       - '.github/workflows/publish-framework.yml'
@@ -34,19 +34,22 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Configure scoped registry for @tetherto packages
+      - name: Configure scoped registry for @tetherto and @qvac packages
         env:
           GPR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           GIT_PAT: ${{ secrets.PAT_TOKEN }}
         shell: bash
         run: |
-          echo "Configuring scoped registry for @tetherto packages..."
+          echo "Configuring scoped registry for @tetherto and @qvac packages..."
           set -eu
-          echo "Writing .npmrc for GitHub Package Registry..."
+          echo "Writing .npmrc for dual registry install..."
           cat > .npmrc <<NPMRC
           always-auth=true
           registry=https://registry.npmjs.org/
+          @qvac:registry=https://registry.npmjs.org/
           @tetherto:registry=https://npm.pkg.github.com/
+          //registry.npmjs.org/:_authToken=${NPM_TOKEN}
           //npm.pkg.github.com/:_authToken=${GIT_PAT}
           NPMRC
 
@@ -80,14 +83,24 @@ jobs:
           BASE_VERSION=$(node -p "require('./package.json').version")
 
           if [ "$BRANCH_NAME" = "main" ]; then
+            # Main branch: check if version already exists
+            if npm view "@tetherto/qvac-test-suite@${BASE_VERSION}" version 2>/dev/null; then
+              echo "Version ${BASE_VERSION} already published, skipping"
+              echo "skip=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+
             VERSION="$BASE_VERSION"
             TAG="latest"
-            echo "Publishing main branch as @latest"
+            echo "Publishing main branch as @latest with version $VERSION"
+            echo "create_git_tag=true" >> $GITHUB_OUTPUT
           else
+            # Feature/fix branches: timestamped prerelease
             CLEAN_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9.-]/-/g')
             VERSION="${BASE_VERSION}-${CLEAN_BRANCH}.$(date +%s).${GITHUB_SHA:0:7}"
             TAG="$CLEAN_BRANCH"
-            echo "Publishing branch '$BRANCH_NAME' as @$TAG"
+            echo "Publishing branch '$BRANCH_NAME' as @$TAG with version $VERSION"
+            echo "create_git_tag=false" >> $GITHUB_OUTPUT
           fi
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -98,16 +111,12 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
       branch: ${{ steps.version.outputs.branch }}
+      skip: ${{ steps.version.outputs.skip }}
+      create_git_tag: ${{ steps.version.outputs.create_git_tag }}
 
   publish-gpr:
     needs: build
-    if:
-      ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-      && (
-      needs.build.outputs.branch == 'dev' ||
-      startsWith(needs.build.outputs.branch, 'fix-') ||
-      startsWith(needs.build.outputs.branch, 'feature-')
-      ) }}
+    if: ${{ needs.build.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -136,4 +145,13 @@ jobs:
         uses: tetherto/qvac-devops/.github/actions/publish-library-to-gpr@v1.1.1
         with:
           secret-token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ inputs.tag || github.event.inputs.tag || needs.build.outputs.tag || 'dev' }}
+          tag: ${{ inputs.tag || github.event.inputs.tag || needs.build.outputs.tag || 'feature' }}
+
+      - name: Create Git Tag (main branch only)
+        if: ${{ needs.build.outputs.branch == 'main' && needs.build.outputs.create_git_tag == 'true' }}
+        working-directory: framework
+        run: |
+          VERSION="${{ needs.build.outputs.version }}"
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
+          echo "Created and pushed git tag: v${VERSION}"
