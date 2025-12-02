@@ -293,16 +293,7 @@ export class BatchOrchestrator {
 		// Find the next test that this consumer hasn't completed yet
 		// Each consumer should run ALL tests, so we check which tests they've already done
 		// Multiple consumers can run the same test simultaneously
-		for (const test of this.testQueue) {
-			// Check if this consumer has already completed this test
-			if (!consumer.completedTestIds.has(test.id)) {
-				// This test is available for this consumer (multiple consumers can run same test)
-				return test;
-			}
-		}
-
-		// Consumer has completed all tests
-		return null;
+		return this.testQueue.find(test => !consumer.completedTestIds.has(test.id)) ?? null;
 	}
 
 	private checkBatchComplete() {
