@@ -102,8 +102,13 @@ export abstract class ConsumerBase {
 			testId.startsWith("model-load") ||
 			testId.startsWith("model-unload") ||
 			testId.startsWith("model-switch") ||
-			testId.startsWith("model-reload")
+			testId.startsWith("model-reload") ||
+			testId.startsWith("sharded-model")
 		) {
+			// Sharded model tests may need embeddings or llm depending on the model type
+			if (testId.includes("backward-compatibility") || testId.includes("load") || testId.includes("detection")) {
+				return 'embedding'; // Most sharded model tests use embedding models
+			}
 			return 'llm';
 		} else if (testId.startsWith("cache-")) {
 			// Cache tests need SDK worker running, so load LLM model to initialize it

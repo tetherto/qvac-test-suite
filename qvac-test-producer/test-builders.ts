@@ -74,6 +74,155 @@ export class TestBuilder {
 		};
 	}
 
+	// ========== SHARDED MODEL TESTS (PR #237) ==========
+
+	buildShardedModelLoadTest(): TestDefinition {
+		return {
+			testId: "sharded-model-load",
+			payload: JSON.stringify({
+				testId: "sharded-model-load",
+				params: {
+					modelType: "embeddings",
+					modelConstant: "GTE_LARGE_335M_FP16_SHARD", // Sharded embedding model
+				},
+				expectation: {
+					type: "model-loaded",
+					validation: "returns-model-id",
+					isSharded: true,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 120000, // 2 minutes for sharded model download
+		};
+	}
+
+	buildShardedModelDetectionTest(): TestDefinition {
+		return {
+			testId: "sharded-model-detection",
+			payload: JSON.stringify({
+				testId: "sharded-model-detection",
+				params: {
+					modelType: "embeddings",
+					modelConstant: "GTE_LARGE_335M_FP16_SHARD",
+					verifySharded: true,
+				},
+				expectation: {
+					type: "sharded-detected",
+					validation: "detects-sharded-pattern",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 120000,
+		};
+	}
+
+	buildShardedModelHashValidationTest(): TestDefinition {
+		return {
+			testId: "sharded-model-hash-validation",
+			payload: JSON.stringify({
+				testId: "sharded-model-hash-validation",
+				params: {
+					modelType: "embeddings",
+					modelConstant: "GTE_LARGE_335M_FP16_SHARD",
+					verifyHashes: true,
+				},
+				expectation: {
+					type: "hash-validated",
+					validation: "all-hashes-match",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 120000,
+		};
+	}
+
+	buildShardedModelResumeTest(): TestDefinition {
+		return {
+			testId: "sharded-model-resume",
+			payload: JSON.stringify({
+				testId: "sharded-model-resume",
+				params: {
+					modelType: "embeddings",
+					modelConstant: "GTE_LARGE_335M_FP16_SHARD",
+					testResume: true,
+				},
+				expectation: {
+					type: "resume-success",
+					validation: "resumes-from-partial",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 180000, // 3 minutes - includes interruption and resume
+		};
+	}
+
+	buildShardedModelProgressTest(): TestDefinition {
+		return {
+			testId: "sharded-model-progress",
+			payload: JSON.stringify({
+				testId: "sharded-model-progress",
+				params: {
+					modelType: "embeddings",
+					modelConstant: "GTE_LARGE_335M_FP16_SHARD",
+					trackProgress: true,
+				},
+				expectation: {
+					type: "progress-tracked",
+					validation: "progress-updates-received",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 120000,
+		};
+	}
+
+	buildShardedModelCancellationTest(): TestDefinition {
+		return {
+			testId: "sharded-model-cancellation",
+			payload: JSON.stringify({
+				testId: "sharded-model-cancellation",
+				params: {
+					modelType: "embeddings",
+					modelConstant: "GTE_LARGE_335M_FP16_SHARD",
+					testCancellation: true,
+				},
+				expectation: {
+					type: "cancellation-success",
+					validation: "partial-files-cleaned",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 60000, // 1 minute - cancellation should be quick
+		};
+	}
+
+	buildShardedModelBackwardCompatibilityTest(): TestDefinition {
+		return {
+			testId: "sharded-model-backward-compatibility",
+			payload: JSON.stringify({
+				testId: "sharded-model-backward-compatibility",
+				params: {
+					modelType: "embeddings",
+					modelConstant: "GTE_LARGE_FP16", // Non-sharded model
+					verifyNonSharded: true,
+				},
+				expectation: {
+					type: "non-sharded-works",
+					validation: "single-file-loads-correctly",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 60000,
+		};
+	}
+
 	// ========== LLM COMPLETION TESTS (Requires llm model) ==========
 
 	buildCompletionStreamingTest(): TestDefinition {
@@ -1832,6 +1981,15 @@ export class TestBuilder {
 			tests.push(this.buildModelUnloadTest());
 			tests.push(this.buildModelLoadConcurrentTest());
 			tests.push(this.buildModelReloadTest());
+			
+			// Sharded model tests (PR #237)
+			tests.push(this.buildShardedModelLoadTest());
+			tests.push(this.buildShardedModelDetectionTest());
+			tests.push(this.buildShardedModelHashValidationTest());
+			tests.push(this.buildShardedModelBackwardCompatibilityTest());
+			tests.push(this.buildShardedModelProgressTest());
+			tests.push(this.buildShardedModelResumeTest());
+			tests.push(this.buildShardedModelCancellationTest());
 		}
 
 		// LLM completion tests
@@ -1911,6 +2069,17 @@ export class TestBuilder {
 		tests.push(this.buildModelUnloadTest());
 		tests.push(this.buildModelLoadConcurrentTest());
 		tests.push(this.buildModelReloadTest());
+		
+		// Sharded model tests (PR #237) - run for all sections
+		if (section === "all" || section === "model") {
+			tests.push(this.buildShardedModelLoadTest());
+			tests.push(this.buildShardedModelDetectionTest());
+			tests.push(this.buildShardedModelHashValidationTest());
+			tests.push(this.buildShardedModelBackwardCompatibilityTest());
+			tests.push(this.buildShardedModelProgressTest());
+			tests.push(this.buildShardedModelResumeTest());
+			tests.push(this.buildShardedModelCancellationTest());
+		}
 
 		// LLM completion tests (run for all sections - ensures comprehensive coverage)
 	tests.push(this.buildCompletionStreamingTest());

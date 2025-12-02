@@ -12,6 +12,7 @@
 		"batch:embedding": "bun run batch-orchestrator.ts --section=embedding",
 		"batch:rag": "bun run batch-orchestrator.ts --section=rag",
 		"batch:model": "bun run batch-orchestrator.ts --section=model",
+		"batch:sharded": "bun run batch-orchestrator.ts --test-filter=sharded-model",
 		"batch:translation": "bun run batch-orchestrator.ts --section=translation",
 		"batch:tools": "bun run batch-orchestrator.ts --section=tools",
 		"batch:cache": "bun run batch-orchestrator.ts --section=cache",
