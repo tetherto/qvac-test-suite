@@ -14,7 +14,7 @@ import {
 } from "@tetherto/sdk-dev";
 import { TestExecutorBase, type SDKFunctions, type PlatformFunctions, type TestResult } from "../shared-test-executor/test-executor-base";
 import { Asset } from "expo-asset";
-import * as FileSystemLegacy from "expo-file-system/legacy";
+import { File, Paths } from "expo-file-system";
 import { audio, documents, code } from "../shared-test-data/assets";
 
 export class TestExecutor extends TestExecutorBase {
@@ -55,7 +55,9 @@ export class TestExecutor extends TestExecutorBase {
 			throw new Error(`Failed to load ${category} file: ${filename}`);
 		}
 
-		return await FileSystemLegacy.readAsStringAsync(asset.localUri);
+		// Use modern FileSystem API: new File(uri).text()
+		const file = new File(asset.localUri);
+		return await file.text();
 	}
 
 	protected async getAudioFilePath(filename: string): Promise<string> {
@@ -84,9 +86,9 @@ export class TestExecutor extends TestExecutorBase {
 		// If the test specifies /tmp, replace it with the mobile cache directory
 		let mobileCacheDirectory = cacheDirectory;
 		if (cacheDirectory === "/tmp/qvac-test-cache" || cacheDirectory?.startsWith("/tmp/")) {
-			// Use Expo's cache directory + subdirectory
-			// FileSystemLegacy.cacheDirectory returns a file:// URL, convert to absolute path
-			let cacheDir = FileSystemLegacy.cacheDirectory || "";
+			// Use modern FileSystem API: Paths.cache.uri
+			// Paths.cache returns a Directory instance, and .uri gives us the file:// URL
+			let cacheDir = Paths.cache.uri;
 			
 			// Remove file:// prefix if present
 			if (cacheDir.startsWith("file://")) {
@@ -96,7 +98,7 @@ export class TestExecutor extends TestExecutorBase {
 			// Ensure it's an absolute path and ends with /
 			if (!cacheDir.startsWith("/")) {
 				// If not absolute, try to get document directory as fallback
-				const docDir = FileSystemLegacy.documentDirectory || "";
+				const docDir = Paths.document.uri;
 				if (docDir.startsWith("file://")) {
 					cacheDir = docDir.substring(7);
 				} else {
