@@ -565,10 +565,15 @@ export class BatchOrchestrator {
 			console.log(`🔍 Filtering tests by: ${filters.join(', ')}`);
 			
 			filteredTests = allTests.filter(test => 
-				filters.some(filter => 
-					// Match by testId prefix OR by dependency (e.g., "llm", "whisper")
-					test.testId.startsWith(filter) || test.dependency === filter
-				)
+				filters.some(filter => {
+					// Normalize filter for common section name mismatches
+					// "embedding" section -> match "embed-" prefix or "embeddings" dependency
+					const normalizedFilter = filter === "embedding" ? "embed" : filter;
+					const normalizedDependency = filter === "embedding" ? "embeddings" : filter;
+					
+					// Match by testId prefix OR by dependency (e.g., "llm", "whisper", "embeddings")
+					return test.testId.startsWith(normalizedFilter) || test.dependency === normalizedDependency;
+				})
 			);
 			
 			console.log(`📋 Filtered: ${filteredTests.length} of ${allTests.length} tests\n`);
