@@ -74,6 +74,351 @@ export class TestBuilder {
 		};
 	}
 
+	// ========== SHARDED MODEL TESTS (PR #237) ==========
+
+	buildShardedModelLoadTest(): TestDefinition {
+		return {
+			testId: "sharded-model-load",
+			payload: JSON.stringify({
+				testId: "sharded-model-load",
+				params: {
+					modelType: "embeddings",
+					modelConstant: "GTE_LARGE_335M_FP16_SHARD", // Sharded embedding model
+				},
+				expectation: {
+					type: "model-loaded",
+					validation: "returns-model-id",
+					isSharded: true,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 120000, // 2 minutes for sharded model download
+		};
+	}
+
+	buildShardedModelDetectionTest(): TestDefinition {
+		return {
+			testId: "sharded-model-detection",
+			payload: JSON.stringify({
+				testId: "sharded-model-detection",
+				params: {
+					modelType: "embeddings",
+					modelConstant: "GTE_LARGE_335M_FP16_SHARD",
+					verifySharded: true,
+				},
+				expectation: {
+					type: "sharded-detected",
+					validation: "detects-sharded-pattern",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 120000,
+		};
+	}
+
+	buildShardedModelHashValidationTest(): TestDefinition {
+		return {
+			testId: "sharded-model-hash-validation",
+			payload: JSON.stringify({
+				testId: "sharded-model-hash-validation",
+				params: {
+					modelType: "embeddings",
+					modelConstant: "GTE_LARGE_335M_FP16_SHARD",
+					verifyHashes: true,
+				},
+				expectation: {
+					type: "hash-validated",
+					validation: "all-hashes-match",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 120000,
+		};
+	}
+
+	buildShardedModelResumeTest(): TestDefinition {
+		return {
+			testId: "sharded-model-resume",
+			payload: JSON.stringify({
+				testId: "sharded-model-resume",
+				params: {
+					modelType: "embeddings",
+					modelConstant: "GTE_LARGE_335M_FP16_SHARD",
+					testResume: true,
+				},
+				expectation: {
+					type: "resume-success",
+					validation: "resumes-from-partial",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 180000, // 3 minutes - includes interruption and resume
+		};
+	}
+
+	buildShardedModelProgressTest(): TestDefinition {
+		return {
+			testId: "sharded-model-progress",
+			payload: JSON.stringify({
+				testId: "sharded-model-progress",
+				params: {
+					modelType: "embeddings",
+					modelConstant: "GTE_LARGE_335M_FP16_SHARD",
+					trackProgress: true,
+				},
+				expectation: {
+					type: "progress-tracked",
+					validation: "progress-updates-received",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 120000,
+		};
+	}
+
+	buildShardedModelCancellationTest(): TestDefinition {
+		return {
+			testId: "sharded-model-cancellation",
+			payload: JSON.stringify({
+				testId: "sharded-model-cancellation",
+				params: {
+					modelType: "embeddings",
+					modelConstant: "GTE_LARGE_335M_FP16_SHARD",
+					testCancellation: true,
+				},
+				expectation: {
+					type: "cancellation-success",
+					validation: "partial-files-cleaned",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 60000, // 1 minute - cancellation should be quick
+		};
+	}
+
+	buildShardedModelBackwardCompatibilityTest(): TestDefinition {
+		return {
+			testId: "sharded-model-backward-compatibility",
+			payload: JSON.stringify({
+				testId: "sharded-model-backward-compatibility",
+				params: {
+					modelType: "embeddings",
+					modelConstant: "GTE_LARGE_FP16", // Non-sharded model
+					verifyNonSharded: true,
+				},
+				expectation: {
+					type: "non-sharded-works",
+					validation: "single-file-loads-correctly",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 60000,
+		};
+	}
+
+	// ========== STRUCTURED ERROR TESTS (PR #243) ==========
+
+	buildErrorInvalidModelIdTest(): TestDefinition {
+		return {
+			testId: "error-invalid-model-id",
+			payload: JSON.stringify({
+				testId: "error-invalid-model-id",
+				params: {
+					modelId: "nonexistent-model-id-12345",
+					operation: "embed",
+				},
+				expectation: {
+					type: "error",
+					validation: "throws-structured-error",
+					errorCode: 52401, // EMBED_FAILED - SDK returns this when model doesn't exist
+					errorName: "EMBED_FAILED",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildErrorInvalidResponseTypeTest(): TestDefinition {
+		return {
+			testId: "error-invalid-response-type",
+			payload: JSON.stringify({
+				testId: "error-invalid-response-type",
+				params: {
+					testInvalidResponse: true,
+				},
+				expectation: {
+					type: "error",
+					validation: "throws-structured-error",
+					errorCode: 50001, // INVALID_RESPONSE_TYPE
+					errorName: "INVALID_RESPONSE_TYPE",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildErrorEmbedNoEmbeddingsTest(): TestDefinition {
+		return {
+			testId: "error-embed-no-embeddings",
+			payload: JSON.stringify({
+				testId: "error-embed-no-embeddings",
+				params: {
+					text: "", // Empty text may produce no embeddings
+					expectNoEmbeddings: true,
+				},
+				expectation: {
+					type: "error",
+					validation: "throws-structured-error",
+					errorCode: 52402, // EMBED_NO_EMBEDDINGS
+					errorName: "EMBED_NO_EMBEDDINGS",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildErrorModelLoadFailedTest(): TestDefinition {
+		return {
+			testId: "error-model-load-failed",
+			payload: JSON.stringify({
+				testId: "error-model-load-failed",
+				params: {
+					modelPath: "/invalid/path/to/model.gguf",
+					modelType: "llm",
+				},
+				expectation: {
+					type: "error",
+					validation: "throws-structured-error",
+					errorCode: 52200, // MODEL_LOAD_FAILED or 52201 MODEL_FILE_NOT_FOUND
+					errorName: "MODEL_LOAD_FAILED",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildErrorDeleteCacheInvalidParamsTest(): TestDefinition {
+		return {
+			testId: "error-delete-cache-invalid-params",
+			payload: JSON.stringify({
+				testId: "error-delete-cache-invalid-params",
+				params: {
+					// Neither modelId nor cacheKey provided
+					invalidParams: true,
+				},
+				expectation: {
+					type: "error",
+					validation: "throws-structured-error",
+					errorCode: 53201, // INVALID_DELETE_CACHE_PARAMS
+					errorName: "INVALID_DELETE_CACHE_PARAMS",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildErrorStructuredErrorCodeTest(): TestDefinition {
+		return {
+			testId: "error-structured-error-code",
+			payload: JSON.stringify({
+				testId: "error-structured-error-code",
+				params: {
+					verifyErrorCodes: true,
+				},
+				expectation: {
+					type: "error-codes-valid",
+					validation: "error-codes-exported",
+					clientCodesRange: [50001, 52000],
+					serverCodesRange: [52001, 54000],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 2000,
+		};
+	}
+
+	buildErrorChainingTest(): TestDefinition {
+		return {
+			testId: "error-chaining-cause",
+			payload: JSON.stringify({
+				testId: "error-chaining-cause",
+				params: {
+					triggerChainedError: true,
+				},
+				expectation: {
+					type: "error",
+					validation: "error-has-cause",
+					hasCause: true,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildErrorRAGOperationFailedTest(): TestDefinition {
+		return {
+			testId: "error-rag-operation-failed",
+			payload: JSON.stringify({
+				testId: "error-rag-operation-failed",
+				params: {
+					operation: "search",
+					modelId: "nonexistent-model",
+					query: "test query",
+				},
+				expectation: {
+					type: "error",
+					validation: "throws-structured-error",
+					errorCode: 52801, // RAG_SEARCH_FAILED
+					errorName: "RAG_SEARCH_FAILED",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildErrorTranscriptionFailedTest(): TestDefinition {
+		return {
+			testId: "error-transcription-failed",
+			payload: JSON.stringify({
+				testId: "error-transcription-failed",
+				params: {
+					audioPath: "/nonexistent/audio/file.wav",
+				},
+				expectation: {
+					type: "error",
+					validation: "throws-structured-error",
+					errorCode: 52404, // AUDIO_FILE_NOT_FOUND
+					errorName: "AUDIO_FILE_NOT_FOUND",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 5000,
+		};
+	}
+
 	// ========== LLM COMPLETION TESTS (Requires llm model) ==========
 
 	buildCompletionStreamingTest(): TestDefinition {
@@ -1832,6 +2177,15 @@ export class TestBuilder {
 			tests.push(this.buildModelUnloadTest());
 			tests.push(this.buildModelLoadConcurrentTest());
 			tests.push(this.buildModelReloadTest());
+			
+			// Sharded model tests (PR #237)
+			tests.push(this.buildShardedModelLoadTest());
+			tests.push(this.buildShardedModelDetectionTest());
+			tests.push(this.buildShardedModelHashValidationTest());
+			tests.push(this.buildShardedModelBackwardCompatibilityTest());
+			tests.push(this.buildShardedModelProgressTest());
+			tests.push(this.buildShardedModelResumeTest());
+			tests.push(this.buildShardedModelCancellationTest());
 		}
 
 		// LLM completion tests
@@ -1911,6 +2265,17 @@ export class TestBuilder {
 		tests.push(this.buildModelUnloadTest());
 		tests.push(this.buildModelLoadConcurrentTest());
 		tests.push(this.buildModelReloadTest());
+		
+		// Sharded model tests (PR #237) - run for all sections
+		if (section === "all" || section === "model") {
+			tests.push(this.buildShardedModelLoadTest());
+			tests.push(this.buildShardedModelDetectionTest());
+			tests.push(this.buildShardedModelHashValidationTest());
+			tests.push(this.buildShardedModelBackwardCompatibilityTest());
+			tests.push(this.buildShardedModelProgressTest());
+			tests.push(this.buildShardedModelResumeTest());
+			tests.push(this.buildShardedModelCancellationTest());
+		}
 
 		// LLM completion tests (run for all sections - ensures comprehensive coverage)
 	tests.push(this.buildCompletionStreamingTest());
@@ -2175,6 +2540,18 @@ export class TestBuilder {
 		}
 
 		// ========== PHASE 5.5: ERROR HANDLING & PARAMETER VALIDATION (Sprint 1 - Priority 1) ==========
+		// Structured error tests (PR #243)
+		if (section === "all" || section === "error") {
+			tests.push(this.buildErrorInvalidModelIdTest());
+			tests.push(this.buildErrorInvalidResponseTypeTest());
+			tests.push(this.buildErrorModelLoadFailedTest());
+			tests.push(this.buildErrorDeleteCacheInvalidParamsTest());
+			tests.push(this.buildErrorStructuredErrorCodeTest());
+			tests.push(this.buildErrorChainingTest());
+			tests.push(this.buildErrorRAGOperationFailedTest());
+			tests.push(this.buildErrorTranscriptionFailedTest());
+		}
+
 		if (section === "all" || section === "error") {
 			console.log("\n✅ Adding Error Handling & Parameter Validation Tests (Priority 1)");
 
