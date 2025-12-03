@@ -37,12 +37,14 @@
         {
           "android": {
             "minSdkVersion": 31,
+            "ndkVersion": "29.0.14206865",
             "enableProguardInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true,
             "enableMinifyInReleaseBuilds": true
           }
         }
-      ]
+      ],
+      ["./plugins/withAndroidNdkVersion.js", "29.0.14206865"]
     ],
     "extra": {
       "eas": {

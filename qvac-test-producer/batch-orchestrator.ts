@@ -27,6 +27,7 @@ interface ConsumerInfo {
 	lastSeen: number;
 	testsCompleted: number;
 	testsRunning: number;
+	completedTestIds: Set<string>; // Track which tests this consumer has completed
 }
 
 interface TestResult {
@@ -50,9 +51,12 @@ export class BatchOrchestrator {
 	private assignedTests = new Map<string, TestAssignment>(); // uniqueTestId -> assignment
 	private completedTests = new Map<string, TestResult>(); // uniqueTestId -> result
 	private consumers = new Map<string, ConsumerInfo>(); // consumerId -> info
+	private consumersNotifiedQueueEmpty = new Set<string>(); // Track which consumers have been notified queue is empty
+	private allTestIds: string[] = []; // All test IDs that need to be run by each consumer
 	private startTime = 0;
 	private batchStarted = false;
 	private shutdownTimer?: NodeJS.Timeout;
+	private lastActiveConsumerLog = 0; // Timestamp of last active consumer log (to avoid spam)
 
 	constructor(brokerUrl: string, runId: string, allowWildcardConsumers: boolean = false) {
 		this.client = mqtt.connect(brokerUrl);
@@ -132,9 +136,14 @@ export class BatchOrchestrator {
 			lastSeen: now,
 			testsCompleted: 0,
 			testsRunning: 0,
+			completedTestIds: new Set<string>(), // Track which tests this consumer has completed
 		});
 
+		// Reset queue-empty notification status for this consumer (in case of re-registration)
+		this.consumersNotifiedQueueEmpty.delete(consumerId);
+
 		console.log(`\n🔌 Consumer registered: ${consumerId} (${platform})`);
+		console.log(`   This consumer will run ALL ${this.allTestIds.length} tests`);
 		this.displayStatus();
 
 		// Send acknowledgment
@@ -156,19 +165,29 @@ export class BatchOrchestrator {
 
 		consumer.lastSeen = Date.now();
 
-		// Find next available test in queue
+		// Find next available test in queue with fair distribution
 		const nextTest = this.getNextTestForConsumer(consumerId);
 
 		if (!nextTest) {
-			// No more tests - signal queue empty
-			this.client.publish(
-				`qvac/test-assigned/${consumerId}`,
-				JSON.stringify({ runId: this.runId, status: "queue-empty" }),
-				{ qos: 1 },
-			);
-			console.log(`📭 No more tests for ${consumerId}`);
+			// Check if this consumer has completed all tests
+			if (consumer.completedTestIds.size >= this.allTestIds.length) {
+				// Consumer has completed all tests - signal queue empty
+				this.consumersNotifiedQueueEmpty.add(consumerId);
+				this.client.publish(
+					`qvac/test-assigned/${consumerId}`,
+					JSON.stringify({ runId: this.runId, status: "queue-empty" }),
+					{ qos: 1 },
+				);
+				console.log(`📭 ${consumerId.split('-').slice(1, 3).join('-')} completed all ${this.allTestIds.length} tests`);
+				// Check if batch should complete after notifying this consumer
+				// Use a small delay to allow consumer to process the message
+				setTimeout(() => this.checkBatchComplete(), 1000);
+			}
 			return;
 		}
+
+		// Consumer is getting a test, so remove from notified set (in case they request again)
+		this.consumersNotifiedQueueEmpty.delete(consumerId);
 
 		// Assign test
 		const assignment: TestAssignment = {
@@ -179,11 +198,13 @@ export class BatchOrchestrator {
 		timeoutMs: Math.max(nextTest.estimatedDurationMs * 2, 70000),
 		};
 
-		this.assignedTests.set(nextTest.id, assignment);
+		// Use consumer-specific key since multiple consumers can run same test
+		const assignmentKey = `${nextTest.id}-${consumerId}`;
+		this.assignedTests.set(assignmentKey, assignment);
 		consumer.testsRunning++;
 
-		// Remove from queue
-		this.testQueue = this.testQueue.filter(t => t.id !== nextTest.id);
+		// Don't remove from queue - other consumers need to run this test too!
+		// The test stays in the queue until all consumers have completed it
 
 		// Send test to consumer
 		this.client.publish(
@@ -197,16 +218,18 @@ export class BatchOrchestrator {
 			{ qos: 1 },
 		);
 
-		console.log(`📤 Assigned ${nextTest.testId} (${nextTest.id}) to ${consumerId}`);
+		const totalTests = consumer.testsCompleted + consumer.testsRunning;
+		console.log(`📤 Assigned ${nextTest.testId} (${nextTest.id}) to ${consumerId} (total: ${totalTests})`);
 		this.displayStatus();
 	}
 
 	private handleTestStart(message: any) {
 		const { consumerId, uniqueTestId } = message;
-		const assignment = this.assignedTests.get(uniqueTestId);
+		const assignmentKey = `${uniqueTestId}-${consumerId}`;
+		const assignment = this.assignedTests.get(assignmentKey);
 
 		if (!assignment) {
-			console.warn(`⚠️  Test start for unknown test: ${uniqueTestId}`);
+			console.warn(`⚠️  Test start for unknown test: ${uniqueTestId} (consumer: ${consumerId})`);
 			return;
 		}
 
@@ -216,10 +239,11 @@ export class BatchOrchestrator {
 
 	private handleTestResult(message: TestResult) {
 		const { consumerId, uniqueTestId, outcome, duration } = message;
-		const assignment = this.assignedTests.get(uniqueTestId);
+		const assignmentKey = `${uniqueTestId}-${consumerId}`;
+		const assignment = this.assignedTests.get(assignmentKey);
 
 		if (!assignment) {
-			console.warn(`⚠️  Result for unknown test: ${uniqueTestId}`);
+			console.warn(`⚠️  Result for unknown test: ${uniqueTestId} (consumer: ${consumerId})`);
 			return;
 		}
 
@@ -229,11 +253,15 @@ export class BatchOrchestrator {
 			consumer.testsCompleted++;
 			consumer.testsRunning--;
 			consumer.lastSeen = Date.now();
+			// Mark this test as completed by this consumer
+			consumer.completedTestIds.add(uniqueTestId);
 		}
 
-		// Store result
-		this.completedTests.set(uniqueTestId, message);
-		this.assignedTests.delete(uniqueTestId);
+		// Store result with consumer-specific key
+		// Each consumer's results are stored separately
+		const consumerSpecificKey = `${uniqueTestId}-${consumerId}`;
+		this.completedTests.set(consumerSpecificKey, message);
+		this.assignedTests.delete(assignmentKey);
 
 		const statusIcon = outcome === "success" ? "✅" : "❌";
 		console.log(
@@ -257,16 +285,81 @@ export class BatchOrchestrator {
 	}
 
 	private getNextTestForConsumer(consumerId: string): TestCase | null {
-		// Simple FIFO for now - could be enhanced with dependency-aware scheduling
-		return this.testQueue.length > 0 ? this.testQueue[0] : null;
+		const consumer = this.consumers.get(consumerId);
+		if (!consumer) {
+			return null;
+		}
+
+		// Find the next test that this consumer hasn't completed yet
+		// Each consumer should run ALL tests, so we check which tests they've already done
+		// Multiple consumers can run the same test simultaneously
+		return this.testQueue.find(test => !consumer.completedTestIds.has(test.id)) ?? null;
 	}
 
 	private checkBatchComplete() {
-		const queueEmpty = this.testQueue.length === 0;
+		// Check if all consumers have completed all tests
+		// Don't check queue empty - tests stay in queue for all consumers to run
 		const noAssignedTests = this.assignedTests.size === 0;
 
-		if (queueEmpty && noAssignedTests) {
+		// Don't shut down if tests are still assigned
+		if (!noAssignedTests) {
+			return;
+		}
+
+		// Check if any consumer is still running tests
+		const anyConsumerRunning = Array.from(this.consumers.values()).some(
+			consumer => consumer.testsRunning > 0
+		);
+
+		// Don't shut down if any consumer is still running tests
+		if (anyConsumerRunning) {
+			return;
+		}
+
+		// Get all active consumers (those that haven't been notified queue is empty)
+		// These are consumers that might still request tests
+		const activeConsumers = Array.from(this.consumers.keys()).filter(
+			consumerId => !this.consumersNotifiedQueueEmpty.has(consumerId)
+		);
+
+		// If there are active consumers that haven't been notified, wait for them
+		if (activeConsumers.length > 0) {
+			// Log which consumers are still active (but only once per minute to avoid spam)
+			const now = Date.now();
+			if (!this.lastActiveConsumerLog || now - this.lastActiveConsumerLog > 60000) {
+				const activeConsumerInfo = activeConsumers.map(id => {
+					const consumer = this.consumers.get(id);
+					return `${id.split('-').slice(1, 3).join('-')} (${consumer?.platform || 'unknown'})`;
+				}).join(', ');
+				console.log(`⏳ Waiting for ${activeConsumers.length} active consumer(s) to finish: ${activeConsumerInfo}`);
+				this.lastActiveConsumerLog = now;
+			}
+			return;
+		}
+
+		// All active consumers have been notified queue is empty
+		// Double-check: ensure no consumer has tests running (safety check)
+		const allConsumersDone = Array.from(this.consumers.values()).every(
+			consumer => consumer.testsRunning === 0
+		);
+
+		if (allConsumersDone) {
+			// Log consumer completion status for debugging
+			const consumerStatus = Array.from(this.consumers.entries()).map(([id, info]) => {
+				const shortId = id.split('-').slice(1, 3).join('-');
+				return `${shortId} (${info.platform}): ${info.testsCompleted} tests, notified: ${this.consumersNotifiedQueueEmpty.has(id)}`;
+			}).join('; ');
+			console.log(`✅ All consumers have completed - shutting down producer`);
+			console.log(`   Consumer status: ${consumerStatus}`);
 			this.completeBatch();
+		} else {
+			// Some consumers still have tests running - log for debugging
+			const runningConsumers = Array.from(this.consumers.entries())
+				.filter(([_, info]) => info.testsRunning > 0)
+				.map(([id, info]) => `${id.split('-').slice(1, 3).join('-')} (${info.platform}): ${info.testsRunning} running`);
+			if (runningConsumers.length > 0) {
+				console.log(`⏳ Still waiting - consumers with running tests: ${runningConsumers.join(', ')}`);
+			}
 		}
 	}
 
@@ -283,9 +376,11 @@ export class BatchOrchestrator {
 
 		if (timeouts.length > 0) {
 			console.log(`\n⏱️  ${timeouts.length} test(s) timed out:`);
-			for (const uniqueTestId of timeouts) {
-				const assignment = this.assignedTests.get(uniqueTestId);
+			for (const assignmentKey of timeouts) {
+				const assignment = this.assignedTests.get(assignmentKey);
 				if (assignment) {
+					// Extract test ID from assignment key (format: "testId-consumerId")
+					const uniqueTestId = assignment.testCase.id;
 					console.log(
 						`   - ${assignment.testCase.testId} (${assignment.consumerId})`,
 					);
@@ -301,13 +396,17 @@ export class BatchOrchestrator {
 						error: `Test timed out after ${assignment.timeoutMs}ms`,
 					};
 
-					this.completedTests.set(uniqueTestId, timeoutResult);
-					this.assignedTests.delete(uniqueTestId);
+					// Use consumer-specific key for timeout result
+					this.completedTests.set(assignmentKey, timeoutResult);
+					this.assignedTests.delete(assignmentKey);
 
 					// Update consumer stats
 					const consumer = this.consumers.get(assignment.consumerId);
 					if (consumer) {
 						consumer.testsRunning--;
+						consumer.testsCompleted++;
+						// Mark this test as completed by this consumer (even though it timed out)
+						consumer.completedTestIds.add(uniqueTestId);
 					}
 				}
 			}
@@ -317,14 +416,17 @@ export class BatchOrchestrator {
 	}
 
 	private displayStatus() {
-		const total = this.testQueue.length + this.assignedTests.size + this.completedTests.size;
+		// Total should be: number of unique tests * number of consumers
+		// Each consumer runs ALL tests, so total = uniqueTests * consumers
+		const uniqueTests = this.testQueue.length > 0 ? this.testQueue.length : this.allTestIds.length;
+		const total = uniqueTests * Math.max(this.consumers.size, 1); // At least 1 to avoid division by zero
 		const completed = this.completedTests.size;
 		const running = this.assignedTests.size;
 		const queued = this.testQueue.length;
 		const consumers = this.consumers.size;
 
 		console.log(
-			`\n📊 Status: ${completed}/${total} completed | ${running} running | ${queued} queued | ${consumers} consumers\n`,
+			`\n📊 Status: ${completed}/${total} completed (${uniqueTests} unique tests × ${consumers} consumer${consumers !== 1 ? 's' : ''}) | ${running} running | ${queued} queued\n`,
 		);
 	}
 
@@ -406,7 +508,7 @@ export class BatchOrchestrator {
 			// Extract category from testId
 			let category = result.testId;
 			if (category.includes("-")) {
-				category = category.split("-")[0];
+				category = category.split("-")[0] ?? category;
 			}
 
 			if (!categories.has(category)) {
@@ -446,18 +548,23 @@ export class BatchOrchestrator {
 			: builder.buildTestsBySection([], section);
 
 		// Apply test filtering if TEST_FILTER env var is set
-		const testFilter = env.TEST_FILTER || section;
+		const testFilter = env.TEST_FILTER || (section !== "all" ? section : undefined);
 		let filteredTests = allTests;
 		
-		if (testFilter) {
+		if (testFilter && testFilter !== "all") {
 			const filters = testFilter.split(',').map(f => f.trim()).filter(Boolean);
 			console.log(`🔍 Filtering tests by: ${filters.join(', ')}`);
 			
 			filteredTests = allTests.filter(test => 
-				filters.some(filter => 
-					// Match by testId prefix OR by dependency (e.g., "llm", "whisper")
-					test.testId.startsWith(filter) || test.dependency === filter
-				)
+				filters.some(filter => {
+					// Normalize filter for common section name mismatches
+					// "embedding" section -> match "embed-" prefix or "embeddings" dependency
+					const normalizedFilter = filter === "embedding" ? "embed" : filter;
+					const normalizedDependency = filter === "embedding" ? "embeddings" : filter;
+					
+					// Match by testId prefix OR by dependency (e.g., "llm", "whisper", "embeddings")
+					return test.testId.startsWith(normalizedFilter) || test.dependency === normalizedDependency;
+				})
 			);
 			
 			console.log(`📋 Filtered: ${filteredTests.length} of ${allTests.length} tests\n`);
@@ -489,6 +596,10 @@ export class BatchOrchestrator {
 			console.log(`   - ${dep}: ${count} tests`);
 		}
 		console.log();
+
+		// Store all test IDs - each consumer will run ALL of these tests
+		this.allTestIds = this.testQueue.map(t => t.id);
+		console.log(`📋 Each consumer will run all ${this.allTestIds.length} tests\n`);
 	}
 
 	public start() {
@@ -513,6 +624,14 @@ export class BatchOrchestrator {
 				this.displayStatus();
 			}
 		}, 30000);
+
+		// Periodically check for batch completion (every 5 seconds)
+		// This ensures we catch completion even if checkBatchComplete() isn't called
+		setInterval(() => {
+			if (this.testQueue.length === 0 && this.assignedTests.size === 0) {
+				this.checkBatchComplete();
+			}
+		}, 5000);
 	}
 
 	public shutdown() {
