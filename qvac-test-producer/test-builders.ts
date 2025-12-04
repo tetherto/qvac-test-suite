@@ -223,6 +223,273 @@ export class TestBuilder {
 		};
 	}
 
+	buildShardedModelInferenceTest(): TestDefinition {
+		return {
+			testId: "sharded-model-inference",
+			payload: JSON.stringify({
+				testId: "sharded-model-inference",
+				params: {
+					modelType: "embeddings",
+					modelConstant: "GTE_LARGE_335M_FP16_SHARD",
+					text: "This is a test sentence for embedding generation using a sharded model.",
+				},
+				expectation: {
+					type: "inference-success",
+					validation: "generates-valid-embeddings",
+					minDimensions: 1024, // GTE-Large produces 1024-dimensional embeddings
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 45000,
+		};
+	}
+
+	buildShardedModelBatchInferenceTest(): TestDefinition {
+		return {
+			testId: "sharded-model-batch-inference",
+			payload: JSON.stringify({
+				testId: "sharded-model-batch-inference",
+				params: {
+					modelType: "embeddings",
+					modelConstant: "GTE_LARGE_335M_FP16_SHARD",
+					texts: [
+						"First test sentence for batch embedding.",
+						"Second test sentence for batch embedding.",
+						"Third test sentence for batch embedding.",
+					],
+				},
+				expectation: {
+					type: "batch-inference-success",
+					validation: "generates-multiple-embeddings",
+					expectedCount: 3,
+					minDimensions: 1024,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 60000,
+		};
+	}
+
+	buildShardedModelLongTextInferenceTest(): TestDefinition {
+		return {
+			testId: "sharded-model-long-text-inference",
+			payload: JSON.stringify({
+				testId: "sharded-model-long-text-inference",
+				params: {
+					modelType: "embeddings",
+					modelConstant: "GTE_LARGE_335M_FP16_SHARD",
+					text: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(20), // ~1000 chars
+				},
+				expectation: {
+					type: "inference-success",
+					validation: "handles-long-text",
+					minDimensions: 1024,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 50000,
+		};
+	}
+
+	// ========== STRUCTURED ERROR TESTS (PR #243) ==========
+
+	buildErrorInvalidModelIdTest(): TestDefinition {
+		return {
+			testId: "error-invalid-model-id",
+			payload: JSON.stringify({
+				testId: "error-invalid-model-id",
+				params: {
+					modelId: "nonexistent-model-id-12345",
+					operation: "embed",
+				},
+				expectation: {
+					type: "error",
+					validation: "throws-structured-error",
+					errorCode: 52401, // EMBED_FAILED - SDK returns this when model doesn't exist
+					errorName: "EMBED_FAILED",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildErrorInvalidResponseTypeTest(): TestDefinition {
+		return {
+			testId: "error-invalid-response-type",
+			payload: JSON.stringify({
+				testId: "error-invalid-response-type",
+				params: {
+					testInvalidResponse: true,
+				},
+				expectation: {
+					type: "error",
+					validation: "throws-structured-error",
+					errorCode: 50001, // INVALID_RESPONSE_TYPE
+					errorName: "INVALID_RESPONSE_TYPE",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildErrorEmbedNoEmbeddingsTest(): TestDefinition {
+		return {
+			testId: "error-embed-no-embeddings",
+			payload: JSON.stringify({
+				testId: "error-embed-no-embeddings",
+				params: {
+					text: "", // Empty text may produce no embeddings
+					expectNoEmbeddings: true,
+				},
+				expectation: {
+					type: "error",
+					validation: "throws-structured-error",
+					errorCode: 52402, // EMBED_NO_EMBEDDINGS
+					errorName: "EMBED_NO_EMBEDDINGS",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildErrorModelLoadFailedTest(): TestDefinition {
+		return {
+			testId: "error-model-load-failed",
+			payload: JSON.stringify({
+				testId: "error-model-load-failed",
+				params: {
+					modelPath: "/invalid/path/to/model.gguf",
+					modelType: "llm",
+				},
+				expectation: {
+					type: "error",
+					validation: "throws-structured-error",
+					errorCode: 52200, // MODEL_LOAD_FAILED or 52201 MODEL_FILE_NOT_FOUND
+					errorName: "MODEL_LOAD_FAILED",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildErrorDeleteCacheInvalidParamsTest(): TestDefinition {
+		return {
+			testId: "error-delete-cache-invalid-params",
+			payload: JSON.stringify({
+				testId: "error-delete-cache-invalid-params",
+				params: {
+					// Neither modelId nor cacheKey provided
+					invalidParams: true,
+				},
+				expectation: {
+					type: "error",
+					validation: "throws-structured-error",
+					errorCode: 53201, // INVALID_DELETE_CACHE_PARAMS
+					errorName: "INVALID_DELETE_CACHE_PARAMS",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildErrorStructuredErrorCodeTest(): TestDefinition {
+		return {
+			testId: "error-structured-error-code",
+			payload: JSON.stringify({
+				testId: "error-structured-error-code",
+				params: {
+					verifyErrorCodes: true,
+				},
+				expectation: {
+					type: "error-codes-valid",
+					validation: "error-codes-exported",
+					clientCodesRange: [50001, 52000],
+					serverCodesRange: [52001, 54000],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 2000,
+		};
+	}
+
+	buildErrorChainingTest(): TestDefinition {
+		return {
+			testId: "error-chaining-cause",
+			payload: JSON.stringify({
+				testId: "error-chaining-cause",
+				params: {
+					triggerChainedError: true,
+				},
+				expectation: {
+					type: "error",
+					validation: "error-has-cause",
+					hasCause: true,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildErrorRAGOperationFailedTest(): TestDefinition {
+		return {
+			testId: "error-rag-operation-failed",
+			payload: JSON.stringify({
+				testId: "error-rag-operation-failed",
+				params: {
+					operation: "search",
+					modelId: "nonexistent-model",
+					query: "test query",
+				},
+				expectation: {
+					type: "error",
+					validation: "throws-structured-error",
+					errorCode: 52801, // RAG_SEARCH_FAILED
+					errorName: "RAG_SEARCH_FAILED",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embeddings",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildErrorTranscriptionFailedTest(): TestDefinition {
+		return {
+			testId: "error-transcription-failed",
+			payload: JSON.stringify({
+				testId: "error-transcription-failed",
+				params: {
+					audioPath: "/nonexistent/audio/file.wav",
+				},
+				expectation: {
+					type: "error",
+					validation: "throws-structured-error",
+					errorCode: 52404, // AUDIO_FILE_NOT_FOUND
+					errorName: "AUDIO_FILE_NOT_FOUND",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 5000,
+		};
+	}
+
 	// ========== LLM COMPLETION TESTS (Requires llm model) ==========
 
 	buildCompletionStreamingTest(): TestDefinition {
@@ -1990,6 +2257,9 @@ export class TestBuilder {
 			tests.push(this.buildShardedModelProgressTest());
 			tests.push(this.buildShardedModelResumeTest());
 			tests.push(this.buildShardedModelCancellationTest());
+			tests.push(this.buildShardedModelInferenceTest());
+			tests.push(this.buildShardedModelBatchInferenceTest());
+			tests.push(this.buildShardedModelLongTextInferenceTest());
 		}
 
 		// LLM completion tests
@@ -2079,6 +2349,9 @@ export class TestBuilder {
 			tests.push(this.buildShardedModelProgressTest());
 			tests.push(this.buildShardedModelResumeTest());
 			tests.push(this.buildShardedModelCancellationTest());
+			tests.push(this.buildShardedModelInferenceTest());
+			tests.push(this.buildShardedModelBatchInferenceTest());
+			tests.push(this.buildShardedModelLongTextInferenceTest());
 		}
 
 		// LLM completion tests (run for all sections - ensures comprehensive coverage)
@@ -2344,6 +2617,18 @@ export class TestBuilder {
 		}
 
 		// ========== PHASE 5.5: ERROR HANDLING & PARAMETER VALIDATION (Sprint 1 - Priority 1) ==========
+		// Structured error tests (PR #243)
+		if (section === "all" || section === "error") {
+			tests.push(this.buildErrorInvalidModelIdTest());
+			tests.push(this.buildErrorInvalidResponseTypeTest());
+			tests.push(this.buildErrorModelLoadFailedTest());
+			tests.push(this.buildErrorDeleteCacheInvalidParamsTest());
+			tests.push(this.buildErrorStructuredErrorCodeTest());
+			tests.push(this.buildErrorChainingTest());
+			tests.push(this.buildErrorRAGOperationFailedTest());
+			tests.push(this.buildErrorTranscriptionFailedTest());
+		}
+
 		if (section === "all" || section === "error") {
 			console.log("\n✅ Adding Error Handling & Parameter Validation Tests (Priority 1)");
 

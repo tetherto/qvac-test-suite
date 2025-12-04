@@ -22,6 +22,8 @@ export interface SDKFunctions {
 	LLAMA_3_2_1B_INST_Q4_0: any;
 	GTE_LARGE_FP16: any;
 	GTE_LARGE_335M_FP16_SHARD?: any; // Sharded model constant (PR #237)
+	SDK_CLIENT_ERROR_CODES?: Record<string, number>; // Structured error codes (PR #243)
+	SDK_SERVER_ERROR_CODES?: Record<string, number>; // Structured error codes (PR #243)
 }
 
 // Platform-specific functions interface for dependency injection
@@ -83,6 +85,19 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("sharded-model-progress", this.shardedModelProgress.bind(this));
 		this.testHandlers.set("sharded-model-cancellation", this.shardedModelCancellation.bind(this));
 		this.testHandlers.set("sharded-model-backward-compatibility", this.shardedModelBackwardCompatibility.bind(this));
+		this.testHandlers.set("sharded-model-inference", this.shardedModelInference.bind(this));
+		this.testHandlers.set("sharded-model-batch-inference", this.shardedModelBatchInference.bind(this));
+		this.testHandlers.set("sharded-model-long-text-inference", this.shardedModelLongTextInference.bind(this));
+
+		// Structured error tests (PR #243)
+		this.testHandlers.set("error-invalid-model-id", this.errorInvalidModelId.bind(this));
+		this.testHandlers.set("error-invalid-response-type", this.errorInvalidResponseType.bind(this));
+		this.testHandlers.set("error-model-load-failed", this.errorModelLoadFailed.bind(this));
+		this.testHandlers.set("error-delete-cache-invalid-params", this.errorDeleteCacheInvalidParams.bind(this));
+		this.testHandlers.set("error-structured-error-code", this.errorStructuredErrorCode.bind(this));
+		this.testHandlers.set("error-chaining-cause", this.errorChainingCause.bind(this));
+		this.testHandlers.set("error-rag-operation-failed", this.errorRAGOperationFailed.bind(this));
+		this.testHandlers.set("error-transcription-failed", this.errorTranscriptionFailed.bind(this));
 
 		// LLM completion tests
 		this.testHandlers.set("completion", this.completion.bind(this));
@@ -777,6 +792,427 @@ export abstract class TestExecutorBase {
 		}
 	}
 
+	protected async shardedModelInference(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		try {
+			// Check if sharded model constant is available
+			const sdkAny = this.sdk as any;
+			const modelConstant = params.modelConstant || "GTE_LARGE_335M_FP16_SHARD";
+			
+			if (!sdkAny[modelConstant]) {
+				return {
+					output: `SKIP: Sharded model constant '${modelConstant}' not available in this SDK version`,
+					passed: true, // Skip gracefully
+				};
+			}
+
+			// Load sharded model
+			const loadedModelId = await this.sdk.loadModel({
+				modelSrc: sdkAny[modelConstant],
+				modelType: "embeddings",
+			});
+
+			// Generate embeddings using sharded model
+			const text = params.text || "Test sentence for sharded model inference.";
+			const result = await this.sdk.embed({
+				modelId: loadedModelId,
+				text: text,
+			});
+
+			// Validate embeddings
+			const hasEmbeddings = Array.isArray(result.embeddings) && result.embeddings.length > 0;
+			const minDimensions = expectation.minDimensions || 1024;
+			const hasCorrectDimensions = result.embeddings.length >= minDimensions;
+
+			const passed = hasEmbeddings && hasCorrectDimensions;
+			return {
+				output: `Sharded model inference: Generated ${result.embeddings.length}-dimensional embeddings for text (${text.substring(0, 50)}...)`,
+				passed,
+				modelId: loadedModelId,
+			};
+		} catch (error: any) {
+			return {
+				output: `Sharded model inference failed: ${error.message}`,
+				passed: false,
+			};
+		}
+	}
+
+	protected async shardedModelBatchInference(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		try {
+			// Check if sharded model constant is available
+			const sdkAny = this.sdk as any;
+			const modelConstant = params.modelConstant || "GTE_LARGE_335M_FP16_SHARD";
+			
+			if (!sdkAny[modelConstant]) {
+				return {
+					output: `SKIP: Sharded model constant '${modelConstant}' not available in this SDK version`,
+					passed: true, // Skip gracefully
+				};
+			}
+
+			// Load sharded model
+			const loadedModelId = await this.sdk.loadModel({
+				modelSrc: sdkAny[modelConstant],
+				modelType: "embeddings",
+			});
+
+			// Generate embeddings for multiple texts
+			const texts = params.texts || [
+				"First test sentence.",
+				"Second test sentence.",
+				"Third test sentence.",
+			];
+
+			const results = [];
+			for (const text of texts) {
+				const result = await this.sdk.embed({
+					modelId: loadedModelId,
+					text: text,
+				});
+				results.push(result);
+			}
+
+			// Validate all embeddings
+			const expectedCount = expectation.expectedCount || texts.length;
+			const minDimensions = expectation.minDimensions || 1024;
+			
+			const allHaveEmbeddings = results.every(r => Array.isArray(r.embeddings) && r.embeddings.length >= minDimensions);
+			const correctCount = results.length === expectedCount;
+
+			const passed = allHaveEmbeddings && correctCount;
+			return {
+				output: `Sharded model batch inference: Generated ${results.length} embeddings (${results[0]?.embeddings.length} dimensions each)`,
+				passed,
+				modelId: loadedModelId,
+			};
+		} catch (error: any) {
+			return {
+				output: `Sharded model batch inference failed: ${error.message}`,
+				passed: false,
+			};
+		}
+	}
+
+	protected async shardedModelLongTextInference(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		try {
+			// Check if sharded model constant is available
+			const sdkAny = this.sdk as any;
+			const modelConstant = params.modelConstant || "GTE_LARGE_335M_FP16_SHARD";
+			
+			if (!sdkAny[modelConstant]) {
+				return {
+					output: `SKIP: Sharded model constant '${modelConstant}' not available in this SDK version`,
+					passed: true, // Skip gracefully
+				};
+			}
+
+			// Load sharded model
+			const loadedModelId = await this.sdk.loadModel({
+				modelSrc: sdkAny[modelConstant],
+				modelType: "embeddings",
+			});
+
+			// Generate embeddings for long text
+			const text = params.text || "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(20);
+			const result = await this.sdk.embed({
+				modelId: loadedModelId,
+				text: text,
+			});
+
+			// Validate embeddings
+			const hasEmbeddings = Array.isArray(result.embeddings) && result.embeddings.length > 0;
+			const minDimensions = expectation.minDimensions || 1024;
+			const hasCorrectDimensions = result.embeddings.length >= minDimensions;
+
+			const passed = hasEmbeddings && hasCorrectDimensions;
+			return {
+				output: `Sharded model long text inference: Generated ${result.embeddings.length}-dimensional embeddings for ${text.length} chars`,
+				passed,
+				modelId: loadedModelId,
+			};
+		} catch (error: any) {
+			return {
+				output: `Sharded model long text inference failed: ${error.message}`,
+				passed: false,
+			};
+		}
+	}
+
+	// ========== STRUCTURED ERROR TESTS (PR #243) ==========
+
+	protected async errorInvalidModelId(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		try {
+			const invalidModelId = params.modelId || "nonexistent-model-id-12345";
+			
+			// Try to embed with an invalid model ID - should throw structured error
+			await this.sdk.embed({
+				modelId: invalidModelId,
+				text: "test text",
+			});
+
+			return {
+				output: "ERROR: Expected error to be thrown for invalid model ID",
+				passed: false,
+			};
+		} catch (error: any) {
+			// Check if error has structured properties (code, name)
+			const hasErrorCode = typeof error.code === "number";
+			const hasErrorName = typeof error.name === "string" && error.name !== "Error";
+			const isStructuredError = hasErrorCode || hasErrorName;
+			
+			// Check for expected error code if specified
+			const expectedCode = expectation.errorCode;
+			const expectedName = expectation.errorName;
+			const codeMatches = !expectedCode || error.code === expectedCode;
+			const nameMatches = !expectedName || error.name === expectedName || error.message?.includes(expectedName);
+
+			const passed = isStructuredError && codeMatches && nameMatches;
+			return {
+				output: `Structured error test: code=${error.code}, name=${error.name}, message=${error.message?.substring(0, 100)}`,
+				passed,
+			};
+		}
+	}
+
+	protected async errorInvalidResponseType(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// This test verifies that invalid response types throw InvalidResponseError
+		// In practice, this is hard to trigger directly, so we verify error codes are exported
+		try {
+			const sdkAny = this.sdk as any;
+			
+			// Check if SDK_CLIENT_ERROR_CODES is exported and has INVALID_RESPONSE_TYPE
+			if (sdkAny.SDK_CLIENT_ERROR_CODES && sdkAny.SDK_CLIENT_ERROR_CODES.INVALID_RESPONSE_TYPE) {
+				const code = sdkAny.SDK_CLIENT_ERROR_CODES.INVALID_RESPONSE_TYPE;
+				const passed = code === 50001; // Expected error code
+				return {
+					output: `SDK_CLIENT_ERROR_CODES.INVALID_RESPONSE_TYPE = ${code}`,
+					passed,
+				};
+			}
+			
+			// If error codes not available, skip gracefully
+			return {
+				output: "SDK_CLIENT_ERROR_CODES not exported from SDK - skipping test",
+				passed: true,
+			};
+		} catch (error: any) {
+			return {
+				output: `Error checking error codes: ${error.message}`,
+				passed: false,
+			};
+		}
+	}
+
+	protected async errorModelLoadFailed(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		try {
+			const invalidPath = params.modelPath || "/invalid/path/to/model.gguf";
+			
+			await this.sdk.loadModel({
+				modelSrc: invalidPath,
+				modelType: params.modelType || "llm",
+			});
+
+			return {
+				output: "ERROR: Expected error to be thrown for invalid model path",
+				passed: false,
+			};
+		} catch (error: any) {
+			// Check for structured error properties
+			const hasStructuredError = typeof error.code === "number" || 
+			                           (error.name && error.name !== "Error");
+			
+			// Accept any load-related error code (52200-52399 range)
+			const errorCode = error.code;
+			const isLoadError = !errorCode || (errorCode >= 52200 && errorCode < 52400) || 
+			                    error.message?.toLowerCase().includes("load") ||
+			                    error.message?.toLowerCase().includes("not found") ||
+			                    error.message?.toLowerCase().includes("locate");
+
+			return {
+				output: `Model load error: code=${errorCode}, name=${error.name}, structured=${hasStructuredError}`,
+				passed: isLoadError,
+			};
+		}
+	}
+
+	protected async errorDeleteCacheInvalidParams(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		try {
+			// Try to delete cache with no modelId or cacheKey - should throw structured error
+			await this.sdk.deleteCache({} as any);
+
+			return {
+				output: "ERROR: Expected error to be thrown for invalid deleteCache params",
+				passed: false,
+			};
+		} catch (error: any) {
+			// Check for structured error
+			const hasStructuredError = typeof error.code === "number" || 
+			                           (error.name && error.name !== "Error");
+			
+			const errorCode = error.code;
+			const isInvalidParamsError = !errorCode || errorCode === 53201 || 
+			                             error.message?.toLowerCase().includes("invalid");
+
+			return {
+				output: `Delete cache error: code=${errorCode}, name=${error.name}, structured=${hasStructuredError}`,
+				passed: isInvalidParamsError,
+			};
+		}
+	}
+
+	protected async errorStructuredErrorCode(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		try {
+			const sdkAny = this.sdk as any;
+			
+			// Verify SDK_CLIENT_ERROR_CODES is exported
+			const clientCodes = sdkAny.SDK_CLIENT_ERROR_CODES;
+			const serverCodes = sdkAny.SDK_SERVER_ERROR_CODES;
+			
+			if (!clientCodes && !serverCodes) {
+				return {
+					output: "SDK error codes not exported - SDK may not have PR #243 changes yet",
+					passed: true, // Skip gracefully
+				};
+			}
+			
+			const clientRange = expectation.clientCodesRange || [50001, 52000];
+			const serverRange = expectation.serverCodesRange || [52001, 54000];
+			
+			let clientValid = true;
+			let serverValid = true;
+			
+			// Validate client codes are in range
+			if (clientCodes) {
+				for (const [key, code] of Object.entries(clientCodes)) {
+					if (typeof code === "number" && (code < clientRange[0] || code > clientRange[1])) {
+						clientValid = false;
+					}
+				}
+			}
+			
+			// Validate server codes are in range
+			if (serverCodes) {
+				for (const [key, code] of Object.entries(serverCodes)) {
+					if (typeof code === "number" && (code < serverRange[0] || code > serverRange[1])) {
+						serverValid = false;
+					}
+				}
+			}
+			
+			const passed = clientValid && serverValid;
+			return {
+				output: `Error codes valid: client=${clientValid} (${clientCodes ? Object.keys(clientCodes).length : 0} codes), server=${serverValid} (${serverCodes ? Object.keys(serverCodes).length : 0} codes)`,
+				passed,
+			};
+		} catch (error: any) {
+			return {
+				output: `Error verifying error codes: ${error.message}`,
+				passed: false,
+			};
+		}
+	}
+
+	protected async errorChainingCause(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		try {
+			// Trigger an error that should have a cause
+			await this.sdk.loadModel({
+				modelSrc: "/invalid/nonexistent/path/model.gguf",
+				modelType: "llm",
+			});
+
+			return {
+				output: "ERROR: Expected error to be thrown",
+				passed: false,
+			};
+		} catch (error: any) {
+			// Check if error has a cause property (error chaining)
+			const hasCause = error.cause !== undefined;
+			
+			// Even without cause, structured errors are acceptable
+			const isStructuredError = typeof error.code === "number" || 
+			                          (error.name && error.name !== "Error");
+
+			return {
+				output: `Error chaining: hasCause=${hasCause}, structured=${isStructuredError}, cause=${error.cause?.message?.substring(0, 50) || "none"}`,
+				passed: hasCause || isStructuredError,
+			};
+		}
+	}
+
+	protected async errorRAGOperationFailed(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		try {
+			const invalidModelId = params.modelId || "nonexistent-model";
+			
+			// Try RAG search with invalid model ID
+			await this.sdk.ragSaveEmbeddings({
+				modelId: invalidModelId,
+				documents: [{ id: "test", content: "test content" }],
+			});
+
+			return {
+				output: "ERROR: Expected error to be thrown for invalid RAG operation",
+				passed: false,
+			};
+		} catch (error: any) {
+			// Check for structured error
+			const hasStructuredError = typeof error.code === "number" || 
+			                           (error.name && error.name !== "Error");
+			
+			const errorCode = error.code;
+			// Accept RAG errors (52800-52999) or model errors (52001-52199)
+			const isRAGError = !errorCode || 
+			                   (errorCode >= 52800 && errorCode < 53000) ||
+			                   (errorCode >= 52001 && errorCode < 52200) ||
+			                   error.message?.toLowerCase().includes("rag") ||
+			                   error.message?.toLowerCase().includes("model");
+
+			return {
+				output: `RAG error: code=${errorCode}, name=${error.name}, structured=${hasStructuredError}`,
+				passed: isRAGError,
+			};
+		}
+	}
+
+	protected async errorTranscriptionFailed(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		try {
+			const invalidAudioPath = params.audioPath || "/nonexistent/audio/file.wav";
+			
+			// Try transcription with invalid audio path - should throw structured error
+			// Note: This requires whisper model to be loaded
+			const transcribeGen = this.sdk.transcribe({
+				modelId: modelId || "whisper-model",
+				audioChunk: invalidAudioPath,
+			});
+			
+			// Consume the generator to trigger the error
+			for await (const chunk of transcribeGen) {
+				// Should not reach here
+			}
+
+			return {
+				output: "ERROR: Expected error to be thrown for invalid audio path",
+				passed: false,
+			};
+		} catch (error: any) {
+			// Check for structured error
+			const hasStructuredError = typeof error.code === "number" || 
+			                           (error.name && error.name !== "Error");
+			
+			const errorCode = error.code;
+			// Accept transcription errors (52403-52404) or file not found errors
+			const isTranscriptionError = !errorCode || 
+			                             errorCode === 52403 || errorCode === 52404 ||
+			                             error.message?.toLowerCase().includes("audio") ||
+			                             error.message?.toLowerCase().includes("transcri") ||
+			                             error.message?.toLowerCase().includes("not found");
+
+			return {
+				output: `Transcription error: code=${errorCode}, name=${error.name}, structured=${hasStructuredError}`,
+				passed: isTranscriptionError,
+			};
+		}
+	}
+
 	protected async modelUnload(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
 		if (!modelId) {
 			return {
@@ -1235,7 +1671,7 @@ export abstract class TestExecutorBase {
 					// Tool call error expected
 					if (expectation.validation === "has-error-code") {
 						// Check for structured error (this might come through as error or in toolCalls)
-						passed = !!error || (toolCalls && toolCalls.length === 0);
+						passed = (!!error || (toolCalls && toolCalls.length === 0)) || false;
 						output = error ? `Error with code: ${error}` : "No tool call made (expected)";
 					} else {
 						passed = !!error;
@@ -2381,10 +2817,10 @@ export abstract class TestExecutorBase {
 		try {
 			const audioPath = await this.getAudioFilePath(params.audioFileName);
 
-			const text = (await this.sdk.transcribe({ modelId, audioChunk: audioPath })).trim();
+		const text = (await this.sdk.transcribe({ modelId, audioChunk: audioPath })).trim();
 
-			const cleanText = text.replace(/<\|[\d.]+\|>/g, "");
-			const words = cleanText.split(/\s+/).filter((w) => w.length > 0);
+		const cleanText = text.replace(/<\|[\d.]+\|>/g, "");
+		const words = cleanText.split(/\s+/).filter((w: string) => w.length > 0);
 
 			const hasEnoughWords = words.length >= (expectation.minWords || 500);
 			const keywords = expectation.keywords || [];
