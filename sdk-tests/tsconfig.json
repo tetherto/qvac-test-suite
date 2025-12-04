@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "lib": ["ES2022"],
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    // noEmit required: allowImportingTsExtensions prevents TS from emitting
+    // (can't rewrite .ts imports to .js). Bundler (esbuild) handles transpilation.
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true
+  },
+  "include": ["tests/**/*"],
+  "exclude": ["node_modules", "build"]
+}

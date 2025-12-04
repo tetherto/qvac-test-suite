@@ -6,5 +6,8 @@ package-lock.json
 reports/
 *.log
 *.apk
-
 **/.DS_Store
+
+# Build outputs
+dist/
+build/
