@@ -130,15 +130,6 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Configure registry for publishing
-        env:
-          GIT_PAT: ${{ secrets.PAT_TOKEN }}
-        run: |
-          cat > .npmrc <<NPMRC
-          @tetherto:registry=https://npm.pkg.github.com/
-          //npm.pkg.github.com/:_authToken=${GIT_PAT}
-          NPMRC
-
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -147,6 +138,8 @@ jobs:
 
       - name: Update package version and publish
         working-directory: framework
+        env:
+          GIT_PAT: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ needs.build.outputs.version }}"
           TAG="${{ needs.build.outputs.tag }}"
@@ -155,10 +148,15 @@ jobs:
           echo "📌 Version: $VERSION"
           echo "🏷️  Tag: $TAG"
 
+          # Configure auth for GPR (registry from package.json publishConfig)
+          cat > .npmrc <<NPMRC
+          //npm.pkg.github.com/:_authToken=${GIT_PAT}
+          NPMRC
+
           # Update version
           npm version $VERSION --no-git-tag-version --allow-same-version
 
-          # Publish (registry from package.json publishConfig)
+          # Publish
           npm publish --tag $TAG
 
           echo "✅ Published @tetherto/qvac-test-suite@$VERSION with tag $TAG"
