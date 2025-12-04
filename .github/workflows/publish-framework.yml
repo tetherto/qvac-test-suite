@@ -6,6 +6,11 @@ on:
     paths:
       - 'framework/**'
       - '.github/workflows/publish-framework.yml'
+  pull_request_target:
+    branches: ['main']
+    paths:
+      - 'framework/**'
+      - '.github/workflows/publish-framework.yml'
   workflow_dispatch:
     inputs:
       tag:
@@ -24,6 +29,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -32,7 +38,6 @@ jobs:
 
       - name: Configure scoped registry for @tetherto and @qvac packages
         env:
-          GPR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           GIT_PAT: ${{ secrets.PAT_TOKEN }}
         shell: bash
@@ -40,7 +45,7 @@ jobs:
           echo "Configuring scoped registry for @tetherto and @qvac packages..."
           set -eu
           echo "Writing .npmrc for dual registry install..."
-          cat > .npmrc <<NPMRC
+          cat > .npmrc << 'EOF'
           always-auth=true
           ignore-scripts=true
           foreground-scripts=true
@@ -49,7 +54,7 @@ jobs:
           @tetherto:registry=https://npm.pkg.github.com/
           //registry.npmjs.org/:_authToken=${NPM_TOKEN}
           //npm.pkg.github.com/:_authToken=${GIT_PAT}
-          NPMRC
+          EOF
 
           # Configure git for private deps
           if [ -n "${GIT_PAT:-}" ]; then
@@ -73,44 +78,21 @@ jobs:
           path: framework/dist/
           retention-days: 1
 
-      - name: Determine version and tag
-        id: version
+      - name: Check if version already published (main only)
+        id: check
+        if: github.ref == 'refs/heads/main'
         working-directory: framework
         run: |
-          BRANCH_NAME=${GITHUB_REF#refs/heads/}
           BASE_VERSION=$(node -p "require('./package.json').version")
-
-          if [ "$BRANCH_NAME" = "main" ]; then
-            # Main branch: check if version already exists
-            if npm view "@tetherto/qvac-test-suite@${BASE_VERSION}" version 2>/dev/null; then
-              echo "Version ${BASE_VERSION} already published, skipping"
-              echo "skip=true" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-
-            VERSION="$BASE_VERSION"
-            TAG="latest"
-            echo "Publishing main branch as @latest with version $VERSION"
-            echo "create_git_tag=true" >> $GITHUB_OUTPUT
+          if npm view "@tetherto/qvac-test-suite@${BASE_VERSION}" version 2>/dev/null; then
+            echo "Version ${BASE_VERSION} already published, skipping"
+            echo "skip=true" >> $GITHUB_OUTPUT
           else
-            # Feature/fix branches: timestamped prerelease
-            CLEAN_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9.-]/-/g')
-            VERSION="${BASE_VERSION}-${CLEAN_BRANCH}.$(date +%s).${GITHUB_SHA:0:7}"
-            TAG="$CLEAN_BRANCH"
-            echo "Publishing branch '$BRANCH_NAME' as @$TAG with version $VERSION"
-            echo "create_git_tag=false" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
-
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      tag: ${{ steps.version.outputs.tag }}
-      branch: ${{ steps.version.outputs.branch }}
-      skip: ${{ steps.version.outputs.skip }}
-      create_git_tag: ${{ steps.version.outputs.create_git_tag }}
+      skip: ${{ steps.check.outputs.skip }}
 
   publish-gpr:
     needs: build
@@ -124,11 +106,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.PAT_TOKEN }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -136,37 +114,9 @@ jobs:
           name: dist
           path: framework/dist/
 
-      - name: Update package version and publish
-        working-directory: framework
-        env:
-          GIT_PAT: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ needs.build.outputs.version }}"
-          TAG="${{ needs.build.outputs.tag }}"
-
-          echo "📦 Package: @tetherto/qvac-test-suite"
-          echo "📌 Version: $VERSION"
-          echo "🏷️  Tag: $TAG"
-
-          # Configure auth for GPR (registry from package.json publishConfig)
-          cat > .npmrc <<NPMRC
-          //npm.pkg.github.com/:_authToken=${GIT_PAT}
-          NPMRC
-
-          # Update version
-          npm version $VERSION --no-git-tag-version --allow-same-version
-
-          # Publish
-          npm publish --tag $TAG
-
-          echo "✅ Published @tetherto/qvac-test-suite@$VERSION with tag $TAG"
-
-      - name: Create Git Tag (main branch only)
-        if: ${{ needs.build.outputs.branch == 'main' && needs.build.outputs.create_git_tag == 'true' }}
-        run: |
-          VERSION="${{ needs.build.outputs.version }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "v${VERSION}"
-          git push origin "v${VERSION}"
-          echo "Created and pushed git tag: v${VERSION}"
+      - name: Publish to GitHub Package Registry
+        uses: tetherto/qvac-devops/.github/actions/publish-library-to-gpr@v1.1.1
+        with:
+          secret-token: ${{ secrets.PAT_TOKEN }}
+          tag: ${{ github.event.inputs.tag || '' }}
+          path: framework
