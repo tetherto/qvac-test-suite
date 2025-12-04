@@ -5,6 +5,8 @@
     "lib": ["ES2022"],
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
+    // noEmit required: allowImportingTsExtensions prevents TS from emitting
+    // (can't rewrite .ts imports to .js). Bundler (esbuild) handles transpilation.
     "noEmit": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

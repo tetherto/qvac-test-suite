@@ -24,6 +24,9 @@ node ../framework/dist/cli/index.js build:consumer:desktop --platform macos
 # Terminal 1: mosquitto -v
 # Terminal 2: node ../framework/dist/cli/index.js run:producer --runId=sdk-test
 # Terminal 3: node ../build/consumers/macos/consumer.js --runId=sdk-test --mqtt-broker=mqtt://localhost:1883
+
+# Filter to run subset (by category or testId prefix):
+# node ../framework/dist/cli/index.js run:producer --runId=sdk-test --filter=error
 ```
 
 ## Current Tests

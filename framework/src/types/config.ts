@@ -28,13 +28,6 @@ export const qvacTestConfigSchema = z.object({
     .default('mqtt://localhost:1883')
     .describe('MQTT broker URL for producer-consumer coordination'),
 
-  sourceRepo: z
-    .string()
-    .optional()
-    .describe(
-      'Path to source repository being tested (for remote testing, e.g., "../sdk-repo"). If omitted, uses ./src from current directory'
-    ),
-
   testDir: z.string().describe('Directory containing test definitions (e.g., "./tests")'),
 
   runIdStrategy: z

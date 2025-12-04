@@ -1,11 +1,13 @@
 // Type exports
 export type { QvacTestConfig } from './types/config.js';
-export type { Expectation, TestDefinition } from './types/test-definition.js';
+export type { Expectation } from './schemas/expectations.js';
+export type { TestDefinition } from './types/test-definition.js';
 export type { TestExecutor, TestResult } from './core/consumer-base.js';
 export type { TestHandler, TestExecutorConfig } from './types/test-handler.js';
 
 // Schema exports (for validation)
-export { expectationSchema, testDefinitionSchema } from './types/test-definition.js';
+export { expectationSchema } from './schemas/expectations.js';
+export { testDefinitionSchema } from './types/test-definition.js';
 export { qvacTestConfigSchema } from './types/config.js';
 export {
   consumerRegistrationSchema,
@@ -19,7 +21,7 @@ export {
 } from './schemas/messages.js';
 
 // Helper function exports
-export { defineTests } from './types/test-definition.js';
+export { defineTests } from './core/define-tests.js';
 export { defineConfig } from './types/config.js';
 
 // Core exports

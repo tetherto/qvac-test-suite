@@ -1,34 +1,10 @@
+---
+description: Framework architecture reference for @tetherto/qvac-test-suite
+globs:
+  - framework/**/*.ts
+---
+
 # Framework Architecture Reference
-
-## Package Structure
-
-```
-@tetherto/qvac-test-suite/
-├── src/
-│   ├── types/
-│   │   ├── test-definition.ts    # TestDefinition, Expectation types
-│   │   ├── test-handler.ts       # TestHandler, TestExecutor, TestResult
-│   │   └── config.ts              # QvacTestConfig
-│   ├── core/
-│   │   ├── batch-orchestrator.ts # Producer orchestration
-│   │   ├── consumer-base.ts      # Consumer base class
-│   │   └── test-executor.ts      # Handler routing
-│   ├── utils/
-│   │   ├── config-loader.ts      # Load qvac-test.config.ts
-│   │   ├── test-loader.ts        # Load test definitions
-│   │   └── validation-helpers.ts # Built-in validators
-│   └── cli/
-│       ├── index.ts               # CLI entry point
-│       └── commands/
-│           ├── run-producer.ts
-│           ├── run-consumer-desktop.ts
-│           ├── build-consumer-desktop.ts
-│           ├── build-consumer-ios.ts
-│           ├── build-consumer-android.ts
-│           ├── report-compare.ts
-│           └── report-format.ts
-└── index.ts                       # Public API exports
-```
 
 ## Core Interfaces
 
@@ -54,7 +30,6 @@
 ```typescript
 {
   brokerUrl: string;
-  sourceRepo?: string;  // For remote testing
   consumers: {
     desktop: { platforms, entry, include, dependencies },
     mobile: { platforms, entry, include, dependencies }
@@ -93,7 +68,7 @@ qvac/batch-complete     # Producer → All: batch done
 
 ### Desktop
 ```
-1. Read config (sourceRepo, include, dependencies)
+1. Read config (include, dependencies)
 2. Create temp directory
 3. Install dependencies from package.json → temp/node_modules/
 4. Bundle entry + includes with esbuild

@@ -50,11 +50,6 @@ qvac-test-suite/
 - ValidationHelpers for common expectations
 - Generic design - not SDK-specific (works for API, DB, SDK testing)
 
-### Remote Testing Support
-- Config option: sourceRepo: '../sdk-repo'
-- Framework can test code in different repo/directory
-- Enables qvac-test-suite testing SDK repo during development
-
 ### Producer/Consumer Flow
 - Per-platform runId: repo-branch-commit-timestamp-PLATFORM
 - Consumer starts in background

@@ -1,7 +1,6 @@
 // SDK tests configuration
 export default {
   brokerUrl: 'mqtt://localhost:1883',
-  sourceRepo: '../path-to-sdk-repo', // Will need actual SDK repo path
   testDir: './tests',
   consumers: {
     desktop: {
