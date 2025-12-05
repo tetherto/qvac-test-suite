@@ -8,7 +8,6 @@ import {
 	ragSaveEmbeddings,
 	deleteCache,
 	getModelInfo,
-	setConfig,
 	LLAMA_3_2_1B_INST_Q4_0,
 	GTE_LARGE_FP16,
 } from "@tetherto/sdk-dev";
@@ -28,9 +27,11 @@ export class TestExecutor extends TestExecutorBase {
 			ragSaveEmbeddings,
 			deleteCache,
 			getModelInfo,
-			setConfig,
+			setConfig: undefined, // Not available in this SDK version
 			LLAMA_3_2_1B_INST_Q4_0,
 			GTE_LARGE_FP16,
+			SDK_CLIENT_ERROR_CODES: undefined, // Not available in this SDK version
+			SDK_SERVER_ERROR_CODES: undefined, // Not available in this SDK version
 		};
 		const platform: PlatformFunctions = {
 			pathJoin: path.join,
