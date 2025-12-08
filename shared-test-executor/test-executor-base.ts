@@ -1277,26 +1277,152 @@ export abstract class TestExecutorBase {
 	}
 
 	protected async errorGenericStructuredError(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
-		// Generic error test handler for structured errors
-		// Returns a pass indicating the test is configured correctly
-		// Actual error throwing will be tested when integrated with SDK operations
-		
-		return {
-			output: `Error test configured: ${expectation.errorName || 'structured error'} (code: ${expectation.errorCode || 'N/A'})`,
-			passed: true,
-		};
+		// Generic error test handler for validating structured error properties
+		// Triggers the specified SDK operation to generate an error, then validates structure
+		try {
+			const operation = params.operation || 'embed';
+			const errorType = params.errorType || 'invalid_model';
+			
+			// Trigger different types of SDK errors based on params
+			switch (operation) {
+				case 'embed':
+					await this.sdk.embed({
+						modelId: params.invalidModelId || 'nonexistent-model-xyz',
+						text: 'test text',
+					});
+					break;
+					
+				case 'loadModel':
+					await this.sdk.loadModel({
+						modelSrc: params.invalidPath || '/invalid/nonexistent/model.gguf',
+						modelType: params.modelType || 'llm',
+					});
+					break;
+					
+				case 'deleteCache':
+					await this.sdk.deleteCache(params.invalidParams || {} as any);
+					break;
+					
+				case 'ragSaveEmbeddings':
+					await this.sdk.ragSaveEmbeddings({
+						modelId: params.invalidModelId || 'nonexistent-model-xyz',
+						chunks: params.chunks || ['test'],
+						namespace: params.namespace || 'test',
+					});
+					break;
+					
+				default:
+					// Default: try to use invalid model ID
+					await this.sdk.embed({
+						modelId: 'nonexistent-model-generic',
+						text: 'test',
+					});
+			}
+			
+			return {
+				output: `ERROR: Expected ${operation} operation to throw structured error`,
+				passed: false,
+			};
+		} catch (error: any) {
+			// Validate structured error properties
+			const hasErrorCode = typeof error.code === 'number';
+			const hasErrorName = typeof error.name === 'string' && error.name !== 'Error';
+			const hasMessage = typeof error.message === 'string' && error.message.length > 0;
+			const isStructuredError = hasErrorCode && hasErrorName && hasMessage;
+			
+			// Validate against expected values if provided
+			const expectedCode = expectation.errorCode;
+			const expectedName = expectation.errorName;
+			const expectedCodeRange = expectation.errorCodeRange; // [min, max]
+			
+			const codeMatches = !expectedCode || error.code === expectedCode;
+			const nameMatches = !expectedName || error.name === expectedName;
+			const codeInRange = !expectedCodeRange || 
+			                    (error.code >= expectedCodeRange[0] && error.code <= expectedCodeRange[1]);
+			
+			const passed = isStructuredError && codeMatches && nameMatches && codeInRange;
+			
+			return {
+				output: `Structured error: code=${error.code}, name=${error.name}, hasMessage=${hasMessage}, codeMatch=${codeMatches}, nameMatch=${nameMatches}, rangeMatch=${codeInRange}`,
+				passed,
+			};
+		}
 	}
 
 	protected async errorMetadataValidation(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
 		// Validates error metadata properties (timestamp, stack trace, serialization)
-		const validationType = expectation.validation;
-		
-		// For metadata tests, we verify the test is properly configured
-		// Actual metadata validation happens when errors are thrown in integration
-		return {
-			output: `Error metadata test: ${validationType}`,
-			passed: true,
-		};
+		try {
+			// Trigger an SDK error to validate its metadata
+			await this.sdk.loadModel({
+				modelSrc: '/invalid/path/for/metadata/test.gguf',
+				modelType: 'llm',
+			});
+			
+			return {
+				output: 'ERROR: Expected error to be thrown for metadata validation',
+				passed: false,
+			};
+		} catch (error: any) {
+			const validationType = expectation.validation || 'all';
+			const results: string[] = [];
+			let allPassed = true;
+			
+			// Validate stack trace
+			if (validationType === 'stack' || validationType === 'all') {
+				const hasStack = typeof error.stack === 'string' && error.stack.length > 0;
+				results.push(`stack=${hasStack}`);
+				if (!hasStack) allPassed = false;
+			}
+			
+			// Validate error name
+			if (validationType === 'name' || validationType === 'all') {
+				const hasValidName = typeof error.name === 'string' && 
+				                     error.name !== 'Error' && 
+				                     error.name.length > 0;
+				results.push(`name=${hasValidName}`);
+				if (!hasValidName) allPassed = false;
+			}
+			
+			// Validate error code (numeric)
+			if (validationType === 'code' || validationType === 'all') {
+				const hasValidCode = typeof error.code === 'number' && error.code > 0;
+				results.push(`code=${hasValidCode}`);
+				if (!hasValidCode) allPassed = false;
+			}
+			
+			// Validate message
+			if (validationType === 'message' || validationType === 'all') {
+				const hasMessage = typeof error.message === 'string' && error.message.length > 0;
+				results.push(`message=${hasMessage}`);
+				if (!hasMessage) allPassed = false;
+			}
+			
+			// Validate serialization (can be JSON stringified)
+			if (validationType === 'serialization' || validationType === 'all') {
+				let canSerialize = false;
+				try {
+					const serialized = JSON.stringify(error);
+					const deserialized = JSON.parse(serialized);
+					canSerialize = deserialized.message === error.message;
+				} catch {
+					canSerialize = false;
+				}
+				results.push(`serializable=${canSerialize}`);
+				// Serialization is optional, don't fail if not serializable
+			}
+			
+			// Validate cause chain (optional)
+			if (validationType === 'cause' || validationType === 'all') {
+				const hasCause = error.cause !== undefined;
+				results.push(`cause=${hasCause ? 'present' : 'none'}`);
+				// Cause is optional, don't fail if not present
+			}
+			
+			return {
+				output: `Error metadata: ${results.join(', ')}, errorCode=${error.code}, errorName=${error.name}`,
+				passed: allPassed,
+			};
+		}
 	}
 
 	protected async modelUnload(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
