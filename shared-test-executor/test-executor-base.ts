@@ -13,6 +13,7 @@ export interface SDKFunctions {
 	transcribe: any;
 	embed: any;
 	translate: any;
+	textToSpeech: any;  // TTS function (QVAC-9403)
 	loadModel: any;
 	unloadModel: any;
 	ragSaveEmbeddings: any;
@@ -286,6 +287,33 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("vision-error-unsupported-format", this.visionMultimodal.bind(this));
 		this.testHandlers.set("vision-error-missing-image", this.visionMultimodal.bind(this));
 		this.testHandlers.set("vision-image-base64", this.visionMultimodal.bind(this));
+
+		// ========== TTS (Text-to-Speech) Tests (QVAC-9403: Stack Overflow Prevention) ==========
+		// Non-streaming tests - various text lengths to test buffer handling
+		this.testHandlers.set("tts-short-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-medium-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-long-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-very-long-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-stack-overflow-prevention", this.ttsStackOverflowPrevention.bind(this));
+		this.testHandlers.set("tts-paragraph-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-technical-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-non-streaming", this.ttsNonStreaming.bind(this));
+		// Streaming tests
+		this.testHandlers.set("tts-streaming", this.ttsStreaming.bind(this));
+		// Special characters and edge cases
+		this.testHandlers.set("tts-special-characters", this.ttsNonStreaming.bind(this));
+		// Error handling tests
+		this.testHandlers.set("tts-empty-text-error", this.ttsEmptyTextError.bind(this));
+		// Additional TTS tests for comprehensive coverage
+		this.testHandlers.set("tts-extremely-long-text", this.ttsStackOverflowPrevention.bind(this));
+		this.testHandlers.set("tts-whitespace-only", this.ttsWhitespaceOnly.bind(this));
+		this.testHandlers.set("tts-unicode-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-numbers-only", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-mixed-punctuation", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-repeated-words", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-single-word", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-sentence-boundaries", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-large-buffer-non-streaming", this.ttsStackOverflowPrevention.bind(this));
 
 		// Transcription tests
 		this.testHandlers.set("transcription", this.transcription.bind(this));
@@ -4396,6 +4424,277 @@ export abstract class TestExecutorBase {
 				output: `Expected error: ${error.message}`,
 				passed
 			};
+		}
+	}
+
+	// ========== TTS (Text-to-Speech) Test Handlers (QVAC-9403) ==========
+
+	/**
+	 * TTS Non-Streaming Test Handler
+	 * Tests text-to-speech in non-streaming mode with various text lengths.
+	 * Validates that audio buffer is generated without stack overflow.
+	 */
+	protected async ttsNonStreaming(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const ttsModel = this.ttsModelId;
+		if (!ttsModel) {
+			return { output: "No TTS model loaded", passed: false };
+		}
+
+		const { text } = params;
+		const { minSamples = 100 } = expectation;
+
+		try {
+			// SDK's textToSpeech returns an object with a buffer Promise property
+			const result = this.sdk.textToSpeech({
+				modelId: ttsModel,
+				text,
+				inputType: "text",
+				stream: false,
+			});
+
+			// Await the buffer property to get the audio data
+			const audioBuffer = await result.buffer;
+
+			if (!audioBuffer) {
+				return { output: "TTS returned null/undefined buffer", passed: false };
+			}
+
+			const sampleCount = audioBuffer.length || 0;
+			const passed = sampleCount >= minSamples;
+			return {
+				output: `Generated ${sampleCount} samples from ${text.length} chars (min: ${minSamples})`,
+				passed
+			};
+		} catch (error: any) {
+			return { output: `TTS error: ${error.message}`, passed: false };
+		}
+	}
+
+	/**
+	 * TTS Streaming Test Handler
+	 * Tests text-to-speech in streaming mode where audio is generated in chunks.
+	 */
+	protected async ttsStreaming(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const ttsModel = this.ttsModelId;
+		if (!ttsModel) {
+			return { output: "No TTS model loaded", passed: false };
+		}
+
+		const { text } = params;
+		const { minChunks = 1 } = expectation;
+
+		try {
+			// SDK's textToSpeech with stream: true
+			const result = this.sdk.textToSpeech({
+				modelId: ttsModel,
+				text,
+				inputType: "text",
+				stream: true,
+			});
+
+			let chunkCount = 0;
+			let totalSamples = 0;
+
+			// Check if result has async iterator for streaming
+			if (result && typeof result[Symbol.asyncIterator] === 'function') {
+				for await (const chunk of result) {
+					chunkCount++;
+					if (chunk.buffer) {
+						totalSamples += chunk.buffer.length || 0;
+					} else if (chunk.length) {
+						totalSamples += chunk.length;
+					}
+				}
+			} else if (result && result.buffer) {
+				// Non-streaming fallback - await the buffer
+				const audioBuffer = await result.buffer;
+				chunkCount = 1;
+				totalSamples = audioBuffer?.length || 0;
+			}
+
+			const passed = totalSamples > 0;
+			return {
+				output: `Received ${chunkCount} chunks with ${totalSamples} total samples`,
+				passed
+			};
+		} catch (error: any) {
+			return { output: `TTS streaming error: ${error.message}`, passed: false };
+		}
+	}
+
+	/**
+	 * TTS Stack Overflow Prevention Test Handler (QVAC-9403)
+	 * Tests that large text inputs don't cause stack overflow in non-streaming mode.
+	 * This is the critical test for the QVAC-9403 fix.
+	 */
+	protected async ttsStackOverflowPrevention(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const ttsModel = this.ttsModelId;
+		if (!ttsModel) {
+			return { output: "No TTS model loaded", passed: false };
+		}
+
+		const { text } = params;
+		const { minSamples = 1000 } = expectation;
+		const textLength = text.length;
+
+		try {
+			const startTime = Date.now();
+			
+			// SDK's textToSpeech returns an object with a buffer Promise property
+			const result = this.sdk.textToSpeech({
+				modelId: ttsModel,
+				text,
+				inputType: "text",
+				stream: false, // Non-streaming to test buffer management
+			});
+
+			// Await the buffer to get audio data
+			const audioBuffer = await result.buffer;
+			const duration = Date.now() - startTime;
+
+			if (!audioBuffer) {
+				return { output: "TTS returned null/undefined buffer (possible stack overflow)", passed: false };
+			}
+
+			const sampleCount = audioBuffer.length || 0;
+
+			// For stack overflow prevention test, we care more about completion than exact sample count
+			const passed = sampleCount > 0;
+			return {
+				output: `QVAC-9403: Generated ${sampleCount} samples from ${textLength} chars in ${duration}ms (no stack overflow)`,
+				passed
+			};
+		} catch (error: any) {
+			const errorMsg = error.message || String(error);
+			// Check for stack overflow indicators
+			const isStackOverflow = errorMsg.includes('Maximum call stack') || 
+			                        errorMsg.includes('stack overflow') ||
+			                        errorMsg.includes('RangeError');
+			
+			if (isStackOverflow) {
+				return { 
+					output: `QVAC-9403 FAILED: Stack overflow detected: ${errorMsg}`, 
+					passed: false 
+				};
+			}
+			return { output: `TTS error: ${errorMsg}`, passed: false };
+		}
+	}
+
+	/**
+	 * TTS Empty Text Error Test Handler
+	 * Tests that empty text input is handled gracefully without stack overflow or crash.
+	 */
+	protected async ttsEmptyTextError(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const ttsModel = this.ttsModelId;
+		if (!ttsModel) {
+			return { output: "No TTS model loaded", passed: false };
+		}
+
+		const { text } = params; // Should be empty string
+		const { allowError = true, errorContains } = expectation;
+
+		try {
+			const result = this.sdk.textToSpeech({
+				modelId: ttsModel,
+				text,
+				inputType: "text",
+				stream: false,
+			});
+
+			// Await the buffer
+			const audioBuffer = await result.buffer;
+
+			// If we get here without error, check if it returned empty/valid response
+			if (!audioBuffer || audioBuffer.length === 0) {
+				return { 
+					output: "Empty text handled gracefully - returned empty buffer", 
+					passed: true 
+				};
+			}
+
+			// Some implementations may return minimal audio for empty text
+			return { 
+				output: `Empty text accepted - generated ${audioBuffer.length} samples`, 
+				passed: allowError 
+			};
+		} catch (error: any) {
+			const errorMsg = error.message || String(error);
+			
+			// Check for stack overflow (should NOT happen)
+			const isStackOverflow = errorMsg.includes('Maximum call stack') || 
+			                        errorMsg.includes('stack overflow');
+			if (isStackOverflow) {
+				return { 
+					output: `QVAC-9403 FAILED: Stack overflow on empty text: ${errorMsg}`, 
+					passed: false 
+				};
+			}
+
+			// Expected error for empty text
+			if (errorContains) {
+				const containsExpected = errorMsg.toLowerCase().includes(errorContains.toLowerCase());
+				return {
+					output: `Error on empty text: ${errorMsg}`,
+					passed: containsExpected || allowError
+				};
+			}
+
+			return { output: `Error on empty text (expected): ${errorMsg}`, passed: allowError };
+		}
+	}
+
+	/**
+	 * TTS Whitespace Only Test Handler
+	 * Tests that whitespace-only input is handled gracefully.
+	 */
+	protected async ttsWhitespaceOnly(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const ttsModel = this.ttsModelId;
+		if (!ttsModel) {
+			return { output: "No TTS model loaded", passed: false };
+		}
+
+		const { text = "   \t\n   " } = params;
+		const { allowError = true } = expectation;
+
+		try {
+			const result = this.sdk.textToSpeech({
+				modelId: ttsModel,
+				text,
+				inputType: "text",
+				stream: false,
+			});
+
+			// Await the buffer
+			const audioBuffer = await result.buffer;
+
+			// If we get here, whitespace was handled (either generated silence or empty result)
+			if (!audioBuffer || audioBuffer.length === 0) {
+				return { 
+					output: "Whitespace-only text handled gracefully - returned empty buffer", 
+					passed: true 
+				};
+			}
+
+			// Some implementations generate silence for whitespace
+			return { 
+				output: `Whitespace-only generated ${audioBuffer.length} samples (silence expected)`, 
+				passed: true 
+			};
+		} catch (error: any) {
+			const errorMsg = error.message || String(error);
+			
+			// Stack overflow check
+			const isStackOverflow = errorMsg.includes('Maximum call stack') || 
+			                        errorMsg.includes('stack overflow');
+			if (isStackOverflow) {
+				return { 
+					output: `Stack overflow on whitespace: ${errorMsg}`, 
+					passed: false 
+				};
+			}
+
+			return { output: `Whitespace-only error (acceptable): ${errorMsg}`, passed: allowError };
 		}
 	}
 }

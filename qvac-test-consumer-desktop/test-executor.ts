@@ -3,6 +3,7 @@ import {
 	transcribe,
 	embed,
 	translate,
+	textToSpeech,
 	loadModel,
 	unloadModel,
 	ragSaveEmbeddings,
@@ -22,6 +23,7 @@ export class TestExecutor extends TestExecutorBase {
 			transcribe,
 			embed,
 			translate,
+			textToSpeech,
 			loadModel,
 			unloadModel,
 			ragSaveEmbeddings,
@@ -52,4 +54,3 @@ export class TestExecutor extends TestExecutorBase {
 		return this.platform.pathResolve(this.platform.getCwd(), "../shared-test-data/audio", filename);
 	}
 }
-

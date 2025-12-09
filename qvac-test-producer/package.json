@@ -16,7 +16,8 @@
 		"batch:translation": "bun run batch-orchestrator.ts --section=translation",
 		"batch:tools": "bun run batch-orchestrator.ts --section=tools",
 		"batch:cache": "bun run batch-orchestrator.ts --section=cache",
-		"batch:errors": "bun run batch-orchestrator.ts --section=error"
+		"batch:errors": "bun run batch-orchestrator.ts --section=error",
+		"batch:tts": "bun run batch-orchestrator.ts --section=tts"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",

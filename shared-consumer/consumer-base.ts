@@ -75,6 +75,42 @@ export abstract class ConsumerBase {
 		this.callbacks.updateStats(update);
 	}
 
+	/**
+	 * Get platform-specific eSpeak-ng-data path
+	 * First checks ESPEAK_DATA_PATH environment variable, then falls back to platform defaults
+	 */
+	protected getESpeakDataPath(): string {
+		// Check environment variable first
+		if (process.env.ESPEAK_DATA_PATH) {
+			return process.env.ESPEAK_DATA_PATH;
+		}
+
+		// Platform-specific default paths
+		const platform = process.platform;
+		const arch = process.arch;
+		
+		if (platform === 'win32') {
+			// Windows
+			return 'C:/Program Files/eSpeak NG/espeak-ng-data';
+		} else if (platform === 'darwin') {
+			// macOS - different paths for Intel vs Apple Silicon
+			if (arch === 'arm64') {
+				return '/opt/homebrew/share/espeak-ng-data'; // Apple Silicon (M1/M2/M3)
+			} else {
+				return '/usr/local/share/espeak-ng-data'; // Intel Mac
+			}
+		} else if (platform === 'linux') {
+			// Linux
+			return '/usr/share/espeak-ng-data';
+		} else if (platform === 'android') {
+			// Android - app-specific path (adjust package name as needed)
+			return '/data/data/com.tetherto.qvac/files/espeak-ng-data';
+		} else {
+			// iOS or unknown - fallback to relative path (iOS resolves from app bundle)
+			return 'espeak-ng-data';
+		}
+	}
+
 	// Abstract methods that platforms must implement
 	protected abstract loadLlmModel(): Promise<string>;
 	protected abstract loadWhisperModel(): Promise<string>;
@@ -473,6 +509,7 @@ export abstract class ConsumerBase {
 		const isTranscriptionTest = testId.startsWith("transcription-");
 		const isToolsTest = testId.startsWith("tools-");
 		const isEmbeddingTest = testId.startsWith("embed-") || testId.startsWith("rag-");
+		const isTtsTest = testId.startsWith("tts-");
 		
 		// Mobile devices need more time for heavy operations
 		const isMobile = this.platform === "mobile" || this.platform.includes("mobile");
@@ -488,6 +525,14 @@ export abstract class ConsumerBase {
 			return Math.round(60000 * mobileMultiplier); // 60s desktop, 90s mobile
 		} else if (isTranscriptionTest) {
 			return Math.round(60000 * mobileMultiplier); // 60s desktop, 90s mobile
+		} else if (isTtsTest) {
+			// TTS tests: longer timeout for stack overflow prevention tests (QVAC-9403)
+			const isLongTts = testId.includes("stack-overflow") || testId.includes("very-long") || 
+			                  testId.includes("extremely-long") || testId.includes("large-buffer");
+			if (isLongTts) {
+				return Math.round(90000 * mobileMultiplier); // 90s desktop, 135s mobile for large buffer tests
+			}
+			return Math.round(45000 * mobileMultiplier); // 45s desktop, 67.5s mobile for regular TTS
 		} else if (isToolsTest && isMobile) {
 			return 90000; // 90s for tools tests on mobile (QWEN 7B is heavy)
 		} else if (isEmbeddingTest && isMobile) {

@@ -90,9 +90,15 @@ export class MobileConsumer extends ConsumerBase {
 	}
 
 	protected async loadTtsModel(): Promise<string> {
-		// TODO: TTS model loading requires additional configuration
-		// For now, throw an error to indicate it's not implemented
-		throw new Error("TTS model loading not yet implemented - requires configSrc and eSpeakDataPath");
+		return await loadModel({
+			modelSrc: TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM,
+			modelType: "tts",
+			configSrc: TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG,
+			eSpeakDataPath: this.getESpeakDataPath(),
+			modelConfig: {
+				language: "en",
+			},
+		});
 	}
 
 	protected async getSDKFunctions() {
