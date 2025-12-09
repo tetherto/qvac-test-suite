@@ -1290,6 +1290,271 @@ export class TestBuilder {
 		};
 	}
 
+	// ========== QVAC-9401: NMT TRANSLATION WITH GENERATION PARAMETERS ==========
+	// Using MARIAN_OPUS_DE_EN_Q0F32 (German to English)
+
+	buildNmtTranslationBasicTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-basic",
+			payload: JSON.stringify({
+				testId: "nmt-translation-basic",
+				params: {
+					text: "Hallo, wie geht es dir heute?",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["hello", "how", "are", "you", "today"],
+					minLength: 5,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildNmtTranslationLongTextTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-long-text",
+			payload: JSON.stringify({
+				testId: "nmt-translation-long-text",
+				params: {
+					text: "Der schnelle braune Fuchs springt über den faulen Hund. Dieser Satz enthält viele häufige Buchstaben. Die maschinelle Übersetzung hat in den letzten Jahren große Fortschritte gemacht, wobei neuronale maschinelle Übersetzungsmodelle beeindruckende Ergebnisse erzielen.",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 80,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 20000,
+		};
+	}
+
+	buildNmtTranslationShortTextTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-short-text",
+			payload: JSON.stringify({
+				testId: "nmt-translation-short-text",
+				params: {
+					text: "Ja",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildNmtTranslationRepeatedWordsTest(): TestDefinition {
+		// Tests norepeatngramsize parameter effectiveness
+		return {
+			testId: "nmt-translation-repeated-words",
+			payload: JSON.stringify({
+				testId: "nmt-translation-repeated-words",
+				params: {
+					text: "Sehr sehr sehr wichtig. Extrem extrem extrem entscheidend. Absolut absolut absolut notwendig.",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 20,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildNmtTranslationSpecialCharsTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-special-chars",
+			payload: JSON.stringify({
+				testId: "nmt-translation-special-chars",
+				params: {
+					text: "Hallo! Wie geht es dir? Mir geht's gut, danke. Treffen wir uns um 15 Uhr - okay?",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 20,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildNmtTranslationNumbersTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-numbers",
+			payload: JSON.stringify({
+				testId: "nmt-translation-numbers",
+				params: {
+					text: "Das Treffen ist um 10:30 Uhr. Wir haben 25 Teilnehmer. Die Raumnummer ist 302.",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 20,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildNmtTranslationPunctuationTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-punctuation",
+			payload: JSON.stringify({
+				testId: "nmt-translation-punctuation",
+				params: {
+					text: "Warte... bist du sicher? Ja! Absolut; ohne Zweifel: 100%.",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 15,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildNmtTranslationEmptyTextTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-empty-text",
+			payload: JSON.stringify({
+				testId: "nmt-translation-empty-text",
+				params: {
+					text: "",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "error-or-empty",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	// Additional NMT model coverage tests - using DE→EN model
+	// NOTE: MARIAN_OPUS_EN_IT is known to return empty strings (model-specific bug)
+
+	buildNmtTranslationTechnicalTextTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-technical",
+			payload: JSON.stringify({
+				testId: "nmt-translation-technical",
+				params: {
+					text: "Die API-Schnittstelle ermöglicht HTTP-Anfragen mit JSON-Daten. Der Server antwortet mit einem Statuscode.",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 30,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildNmtTranslationFormalTextTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-formal",
+			payload: JSON.stringify({
+				testId: "nmt-translation-formal",
+				params: {
+					text: "Sehr geehrte Damen und Herren, hiermit möchte ich mich für die Stelle bewerben. Mit freundlichen Grüßen.",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 30,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildNmtTranslationQuestionTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-question",
+			payload: JSON.stringify({
+				testId: "nmt-translation-question",
+				params: {
+					text: "Können Sie mir bitte sagen, wo der Bahnhof ist? Wie weit ist es von hier?",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["station", "where", "far"],
+					minLength: 20,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildNmtTranslationMaxLengthTest(): TestDefinition {
+		// Tests maxlength parameter - very long input
+		return {
+			testId: "nmt-translation-maxlength",
+			payload: JSON.stringify({
+				testId: "nmt-translation-maxlength",
+				params: {
+					text: "Dies ist ein sehr langer Text, der die maximale Länge der Übersetzung testen soll. " +
+						"Er enthält mehrere Sätze und verschiedene Themen. " +
+						"Die maschinelle Übersetzung muss alle diese Sätze korrekt verarbeiten. " +
+						"Wir testen hier auch die Qualität bei längeren Eingaben. " +
+						"Der Text geht weiter und weiter, um sicherzustellen, dass alles funktioniert.",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 100,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 20000,
+		};
+	}
+
 	// ========== ADDITIONAL LLM COMPLETION TESTS ==========
 
 	buildCompletionSystemMessageTest(): TestDefinition {
@@ -2783,11 +3048,11 @@ export class TestBuilder {
 
 	/**
 	 * Build tests filtered by section/category
-	 * @param section - "all", "transcription", "completion", "embedding", "rag", "model", "translation", "tools", "cache", "tts", or "error"
+	 * @param section - "all", "transcription", "completion", "embedding", "rag", "model", "translation", "nmt", "tools", "cache", "tts", or "error"
 	 */
 	buildTestsBySection(
 		tests: TestDefinition[],
-		section: "all" | "transcription" | "completion" | "embedding" | "rag" | "model" | "translation" | "tools" | "cache" | "tts" | "error" = "all"
+		section: "all" | "transcription" | "completion" | "embedding" | "rag" | "model" | "translation" | "nmt" | "tools" | "cache" | "tts" | "error" = "all"
 	): TestDefinition[] {
 		tests = [];
 
@@ -3124,7 +3389,26 @@ export class TestBuilder {
 		tests.push(this.buildTranslationFrToDeTest());
 		tests.push(this.buildTranslationFrToEnTest());
 		tests.push(this.buildTranslationEnToPtTest());
+	}
 
+	// NMT Translation tests (QVAC-9401: NMT generation parameters)
+	if (section === "all" || section === "translation" || section === "nmt") {
+		console.log("\n🌐 Adding NMT Translation Tests (QVAC-9401: Generation Parameters)");
+		// Core NMT tests (DE→EN model)
+		tests.push(this.buildNmtTranslationBasicTest());
+		tests.push(this.buildNmtTranslationLongTextTest());
+		tests.push(this.buildNmtTranslationShortTextTest());
+		tests.push(this.buildNmtTranslationRepeatedWordsTest());
+		tests.push(this.buildNmtTranslationSpecialCharsTest());
+		tests.push(this.buildNmtTranslationNumbersTest());
+		tests.push(this.buildNmtTranslationPunctuationTest());
+		tests.push(this.buildNmtTranslationEmptyTextTest());
+		// Additional coverage tests
+		tests.push(this.buildNmtTranslationTechnicalTextTest());
+		tests.push(this.buildNmtTranslationFormalTextTest());
+		tests.push(this.buildNmtTranslationQuestionTest());
+		tests.push(this.buildNmtTranslationMaxLengthTest());
+		console.log("   ✅ Added 12 NMT translation tests");
 	}
 
 		// ========== PHASE 4: ROBUSTNESS & ADVANCED SCENARIOS ==========

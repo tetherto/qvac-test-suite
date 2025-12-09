@@ -39,6 +39,7 @@ export abstract class TestExecutorBase {
 	protected visionModelId: string | null = null;
 	protected toolsModelId: string | null = null;
 	protected ttsModelId: string | null = null;
+	protected nmtModelId: string | null = null;
 	protected sdk: SDKFunctions;
 	protected platform: PlatformFunctions;
 
@@ -60,6 +61,10 @@ export abstract class TestExecutorBase {
 
 	setToolsModelId(modelId: string) {
 		this.toolsModelId = modelId;
+	}
+
+	setNmtModelId(modelId: string) {
+		this.nmtModelId = modelId;
 	}
 
 	setTtsModelId(modelId: string) {
@@ -380,6 +385,21 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("translation-fr-to-de", this.translation.bind(this));
 		this.testHandlers.set("translation-fr-to-en", this.translation.bind(this));
 		this.testHandlers.set("translation-en-to-pt", this.translation.bind(this));
+
+		// NMT Translation tests (QVAC-9401: NMT generation parameters)
+		this.testHandlers.set("nmt-translation-basic", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-long-text", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-short-text", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-repeated-words", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-special-chars", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-numbers", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-punctuation", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-empty-text", this.nmtTranslationEmptyText.bind(this));
+		// Additional NMT coverage tests
+		this.testHandlers.set("nmt-translation-technical", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-formal", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-question", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-maxlength", this.nmtTranslation.bind(this));
 
 		// Model management tests
 		this.testHandlers.set("model-load-concurrent", this.modelLoadConcurrent.bind(this));
@@ -3511,6 +3531,87 @@ export abstract class TestExecutorBase {
 			// We expect an error for invalid params
 			return {
 				output: `Correctly threw error: ${error.message}`,
+				passed: true,
+			};
+		}
+	}
+
+	// ========== NMT TRANSLATION TESTS (QVAC-9401) ==========
+
+	protected async nmtTranslation(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Use NMT model ID if available, otherwise fall back to passed modelId
+		const nmtId = this.nmtModelId || modelId;
+		if (!nmtId) {
+			return { output: "No NMT model loaded", passed: false };
+		}
+
+		try {
+			const { text } = params;
+
+			console.log(`   🌐 NMT translating: "${text.substring(0, 50)}..."`);
+
+			// NMT translate call - from/to are set at model load time, NOT here
+			const result = this.sdk.translate({
+				modelId: nmtId,
+				text,
+				modelType: "nmt",
+				stream: false,
+			});
+
+			// Await the .text promise
+			const translatedText = await (result as any).text;
+			console.log(`   ✨ NMT result: "${(translatedText || '').substring(0, 100)}..."`);
+
+			// Validate translation output
+			const isNonEmpty = translatedText && translatedText.trim().length > 0;
+			const minLength = expectation.minLength || 1;
+			const meetsMinLength = translatedText.length >= minLength;
+
+			// Check for expected keywords if provided
+			const keywords = expectation.keywords || [];
+			const translatedLower = translatedText.toLowerCase();
+			const hasKeywords = keywords.length === 0 || keywords.some((kw: string) => translatedLower.includes(kw.toLowerCase()));
+
+			const passed = isNonEmpty && meetsMinLength && hasKeywords;
+
+			return {
+				output: `NMT translated "${text.substring(0, 30)}..." → "${translatedText.substring(0, 50)}..." (length: ${translatedText.length}, minReq: ${minLength})`,
+				passed,
+			};
+		} catch (error: any) {
+			return { output: `NMT Error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async nmtTranslationEmptyText(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const nmtId = this.nmtModelId || modelId;
+		if (!nmtId) {
+			return { output: "No NMT model loaded", passed: false };
+		}
+
+		try {
+			const { text } = params;
+
+			// Try to translate empty/whitespace text - from/to are set at model load time
+			const result = this.sdk.translate({
+				modelId: nmtId,
+				text,
+				modelType: "nmt",
+				stream: false,
+			});
+
+			const translatedText = await (result as any).text;
+
+			// Empty text should either return empty or throw an error - both are acceptable
+			const isEmpty = !translatedText || translatedText.trim().length === 0;
+			return {
+				output: `Empty text handled gracefully: result="${translatedText || "(empty)"}"`,
+				passed: isEmpty,
+			};
+		} catch (error: any) {
+			// Error on empty text is also acceptable
+			return {
+				output: `Empty text correctly rejected: ${error.message.substring(0, 100)}`,
 				passed: true,
 			};
 		}

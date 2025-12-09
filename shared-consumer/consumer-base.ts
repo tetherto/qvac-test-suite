@@ -38,6 +38,7 @@ export abstract class ConsumerBase {
 	protected whisperModelId: string | null = null;
 	protected embeddingModelId: string | null = null;
 	protected translationModelId: string | null = null;
+	protected nmtModelId: string | null = null;
 	protected toolsModelId: string | null = null;
 	protected visionModelId: string | null = null;
 	protected ttsModelId: string | null = null;
@@ -118,11 +119,14 @@ export abstract class ConsumerBase {
 	protected abstract loadToolsModel(): Promise<string>;
 	protected abstract loadVisionModel(): Promise<string>;
 	protected abstract loadTtsModel(): Promise<string>;
+	protected abstract loadNmtModel(): Promise<string>;
 
 	// Determine which model type a test needs
-	protected getRequiredModelType(testId: string): 'llm' | 'whisper' | 'embedding' | 'translation' | 'tools' | 'vision' | 'tts' | null {
+	protected getRequiredModelType(testId: string): 'llm' | 'whisper' | 'embedding' | 'translation' | 'nmt' | 'tools' | 'vision' | 'tts' | null {
 		if (testId.startsWith("transcription")) {
 			return 'whisper';
+		} else if (testId.startsWith("nmt-")) {
+			return 'nmt';
 		} else if (testId.startsWith("translation")) {
 			return 'translation';
 		} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
@@ -199,6 +203,18 @@ export abstract class ConsumerBase {
 			}
 			this.translationModelId = this.llmModelId;
 			return this.llmModelId;
+		}
+
+		if (requiredModelType === 'nmt') {
+			if (!this.nmtModelId) {
+				this.log(`   📦 Loading NMT model (Marian/Opus)...`);
+				this.nmtModelId = await this.loadNmtModel();
+				// Set the NMT model ID in the executor
+				if (this.executor.setNmtModelId) {
+					this.executor.setNmtModelId(this.nmtModelId);
+				}
+			}
+			return this.nmtModelId;
 		}
 
 		if (requiredModelType === 'tools') {
