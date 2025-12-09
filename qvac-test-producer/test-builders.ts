@@ -1726,6 +1726,112 @@ export class TestBuilder {
 	};
 	}
 
+	// ========== QVAC-9402: TRANSCRIPTION PROMPT PARAMETER TESTS ==========
+
+	buildTranscriptionWithPromptTest(): TestDefinition {
+		return {
+			testId: "transcription-with-prompt",
+			payload: JSON.stringify({
+				testId: "transcription-with-prompt",
+				params: {
+					audioFileName: "transcription-short.wav",
+					prompt: "This is a test recording about QVAC SDK automation testing.",
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["test", "QVAC"],
+					minLength: 10,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	buildTranscriptionPromptTechnicalTermsTest(): TestDefinition {
+		return {
+			testId: "transcription-prompt-technical",
+			payload: JSON.stringify({
+				testId: "transcription-prompt-technical",
+				params: {
+					audioFileName: "transcription-short.wav",
+					prompt: "Technical terms: SDK, API, TypeScript, JavaScript, QVAC, Whisper, transcription.",
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["test"],
+					minLength: 5,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	buildTranscriptionPromptPunctuationTest(): TestDefinition {
+		return {
+			testId: "transcription-prompt-punctuation",
+			payload: JSON.stringify({
+				testId: "transcription-prompt-punctuation",
+				params: {
+					audioFileName: "transcription-short.wav",
+					prompt: "Use proper punctuation. Include periods, commas, and question marks.",
+				},
+				expectation: {
+					validation: "has-punctuation",
+					minLength: 5,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	buildTranscriptionWithoutPromptTest(): TestDefinition {
+		return {
+			testId: "transcription-without-prompt",
+			payload: JSON.stringify({
+				testId: "transcription-without-prompt",
+				params: {
+					audioFileName: "transcription-short.wav",
+					prompt: null, // Explicitly no prompt
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["test"],
+					minLength: 5,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	buildTranscriptionPromptEmptyStringTest(): TestDefinition {
+		return {
+			testId: "transcription-prompt-empty",
+			payload: JSON.stringify({
+				testId: "transcription-prompt-empty",
+				params: {
+					audioFileName: "transcription-short.wav",
+					prompt: "", // Empty string prompt
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["test"],
+					minLength: 5,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 30000,
+		};
+	}
+
 	// ========== QVAC-9403: TTS STACK OVERFLOW PREVENTION TESTS ==========
 
 	buildTtsShortTextTest(): TestDefinition {
@@ -2775,7 +2881,12 @@ export class TestBuilder {
 			tests.push(this.buildTranscriptionM4aTest());
 			tests.push(this.buildTranscriptionCorruptedMp3Test());
 			tests.push(this.buildTranscriptionCorruptedWavTest());
-
+			// QVAC-9402: Transcription prompt parameter tests
+			tests.push(this.buildTranscriptionWithPromptTest());
+			tests.push(this.buildTranscriptionPromptTechnicalTermsTest());
+			tests.push(this.buildTranscriptionPromptPunctuationTest());
+			tests.push(this.buildTranscriptionWithoutPromptTest());
+			tests.push(this.buildTranscriptionPromptEmptyStringTest());
 		}
 
 		// Model loading tests (run for all sections - ensures they're always included)

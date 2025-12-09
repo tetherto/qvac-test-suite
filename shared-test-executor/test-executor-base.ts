@@ -329,6 +329,12 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("transcription-corrupted-wav", this.transcriptionCorrupted.bind(this));
 		this.testHandlers.set("transcription-streaming", this.transcriptionFormat.bind(this));
 		this.testHandlers.set("transcription-very-short", this.transcriptionVeryShort.bind(this));
+		// QVAC-9402: Transcription with prompt parameter
+		this.testHandlers.set("transcription-with-prompt", this.transcriptionWithPrompt.bind(this));
+		this.testHandlers.set("transcription-prompt-technical", this.transcriptionWithPrompt.bind(this));
+		this.testHandlers.set("transcription-prompt-punctuation", this.transcriptionWithPromptPunctuation.bind(this));
+		this.testHandlers.set("transcription-without-prompt", this.transcriptionWithPrompt.bind(this));
+		this.testHandlers.set("transcription-prompt-empty", this.transcriptionWithPrompt.bind(this));
 
 		// Embedding tests
 		this.testHandlers.set("embed-simple-text", this.embedSimpleText.bind(this));
@@ -3128,6 +3134,101 @@ export abstract class TestExecutorBase {
 				output: `Very short audio handled with error: ${errorMsg.substring(0, 100)}`,
 				passed: true,
 			};
+		}
+	}
+
+	// ========== QVAC-9402: TRANSCRIPTION WITH PROMPT PARAMETER ==========
+
+	/**
+	 * Transcription with Prompt Test Handler (QVAC-9402)
+	 * Tests the new prompt parameter that guides Whisper transcription using initial_prompt.
+	 * The prompt helps Whisper understand context, technical terms, or expected output style.
+	 */
+	protected async transcriptionWithPrompt(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No Whisper model loaded", passed: false };
+		}
+
+		try {
+			const audioPath = await this.getAudioFilePath(params.audioFileName);
+			const prompt = params.prompt;
+
+			// Call transcribe with optional prompt parameter
+			const transcribeParams: { modelId: string; audioChunk: string; prompt?: string } = {
+				modelId,
+				audioChunk: audioPath,
+			};
+
+			// Only add prompt if it's a non-empty string
+			if (prompt && typeof prompt === 'string' && prompt.trim().length > 0) {
+				transcribeParams.prompt = prompt;
+			}
+
+			const text = (await this.sdk.transcribe(transcribeParams)).trim();
+
+			// Validate based on expectation
+			const keywords = expectation.keywords || [];
+			const minLength = expectation.minLength || 0;
+
+			let passed = text.length >= minLength;
+			let keywordMatches = 0;
+
+			if (keywords.length > 0) {
+				const lowerText = text.toLowerCase();
+				for (const keyword of keywords) {
+					if (lowerText.includes(keyword.toLowerCase())) {
+						keywordMatches++;
+					}
+				}
+				// Pass if at least one keyword is found (prompt guidance may alter exact words)
+				passed = passed && keywordMatches > 0;
+			}
+
+			const promptInfo = prompt ? `with prompt "${prompt.substring(0, 50)}..."` : "without prompt";
+			return {
+				output: `Transcription ${promptInfo}: "${text.substring(0, 100)}..." (${text.length} chars, ${keywordMatches}/${keywords.length} keywords)`,
+				passed,
+			};
+		} catch (error: any) {
+			return { output: `Transcription with prompt error: ${error.message}`, passed: false };
+		}
+	}
+
+	/**
+	 * Transcription with Punctuation Prompt Test Handler (QVAC-9402)
+	 * Tests that the prompt parameter can guide punctuation style in transcription.
+	 */
+	protected async transcriptionWithPromptPunctuation(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No Whisper model loaded", passed: false };
+		}
+
+		try {
+			const audioPath = await this.getAudioFilePath(params.audioFileName);
+			const prompt = params.prompt;
+
+			const transcribeParams: { modelId: string; audioChunk: string; prompt?: string } = {
+				modelId,
+				audioChunk: audioPath,
+			};
+
+			if (prompt && typeof prompt === 'string' && prompt.trim().length > 0) {
+				transcribeParams.prompt = prompt;
+			}
+
+			const text = (await this.sdk.transcribe(transcribeParams)).trim();
+
+			// Check for punctuation marks
+			const hasPunctuation = /[.!?,;:]/.test(text);
+			const minLength = expectation.minLength || 0;
+			const passed = text.length >= minLength && hasPunctuation;
+
+			return {
+				output: `Transcription with punctuation prompt: "${text.substring(0, 100)}..." (has punctuation: ${hasPunctuation})`,
+				passed,
+			};
+		} catch (error: any) {
+			return { output: `Transcription punctuation test error: ${error.message}`, passed: false };
 		}
 	}
 
