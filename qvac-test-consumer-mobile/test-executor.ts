@@ -3,18 +3,18 @@ import {
 	transcribe,
 	embed,
 	translate,
+	textToSpeech,
 	loadModel,
 	unloadModel,
 	ragSaveEmbeddings,
 	deleteCache,
 	getModelInfo,
-	setConfig,
 	LLAMA_3_2_1B_INST_Q4_0,
 	GTE_LARGE_FP16,
 } from "@tetherto/sdk-dev";
-import { TestExecutorBase, type SDKFunctions, type PlatformFunctions, type TestResult } from "../shared-test-executor/test-executor-base";
+import { TestExecutorBase, type SDKFunctions, type PlatformFunctions } from "../shared-test-executor/test-executor-base";
 import { Asset } from "expo-asset";
-import { File, Paths } from "expo-file-system";
+import { File } from "expo-file-system";
 import { audio, documents, code } from "../shared-test-data/assets";
 
 export class TestExecutor extends TestExecutorBase {
@@ -24,14 +24,16 @@ export class TestExecutor extends TestExecutorBase {
 			transcribe,
 			embed,
 			translate,
+			textToSpeech,
 			loadModel,
 			unloadModel,
 			ragSaveEmbeddings,
 			deleteCache,
 			getModelInfo,
-			setConfig,
 			LLAMA_3_2_1B_INST_Q4_0,
 			GTE_LARGE_FP16,
+			SDK_CLIENT_ERROR_CODES: undefined, // Not available in this SDK version
+			SDK_SERVER_ERROR_CODES: undefined, // Not available in this SDK version
 		};
 		const platform: PlatformFunctions = {
 			pathJoin: (...paths: string[]) => require("path").join(...paths),
@@ -78,50 +80,4 @@ export class TestExecutor extends TestExecutorBase {
 		return audioPath;
 	}
 
-	// Override cacheConfigDirectory to use mobile-appropriate cache directory
-	protected async cacheConfigDirectory(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
-		const { cacheDirectory } = params;
-		
-		// On mobile, use the app's cache directory instead of /tmp
-		// If the test specifies /tmp, replace it with the mobile cache directory
-		let mobileCacheDirectory = cacheDirectory;
-		if (cacheDirectory === "/tmp/qvac-test-cache" || cacheDirectory?.startsWith("/tmp/")) {
-			// Use modern FileSystem API: Paths.cache.uri
-			// Paths.cache returns a Directory instance, and .uri gives us the file:// URL
-			let cacheDir = Paths.cache.uri;
-			
-			// Remove file:// prefix if present
-			if (cacheDir.startsWith("file://")) {
-				cacheDir = cacheDir.substring(7);
-			}
-			
-			// Ensure it's an absolute path and ends with /
-			if (!cacheDir.startsWith("/")) {
-				// If not absolute, try to get document directory as fallback
-				const docDir = Paths.document.uri;
-				if (docDir.startsWith("file://")) {
-					cacheDir = docDir.substring(7);
-				} else {
-					cacheDir = docDir;
-				}
-			}
-			
-			// Ensure trailing slash
-			if (!cacheDir.endsWith("/")) {
-				cacheDir += "/";
-			}
-			
-			mobileCacheDirectory = `${cacheDir}qvac-test-cache`;
-		}
-		
-		try {
-			const result = await this.sdk.setConfig({ cacheDirectory: mobileCacheDirectory });
-			return {
-				output: `Set cache directory to '${mobileCacheDirectory}' (mapped from '${cacheDirectory}'): ${result.success}`,
-				passed: result.success === expectation.success
-			};
-		} catch (error: any) {
-			return { output: `Error: ${error.message}`, passed: false };
-		}
-	}
 }

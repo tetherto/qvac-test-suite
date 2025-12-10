@@ -3036,15 +3036,13 @@ export class TestBuilder {
 			testId: "cache-config-directory",
 			payload: JSON.stringify({
 				testId: "cache-config-directory",
-				params: {
-					cacheDirectory: "/tmp/qvac-test-cache"
-				},
+				params: {},
 				expectation: {
-					validation: "config-set",
-					success: true
+					validation: "sdk-defaults",
+					usesDefaults: true
 				},
 				expectedOutcome: "pass",
-				debugInfo: "PR #249: setConfig({ cacheDirectory }) should configure custom cache directory"
+				debugInfo: "QVAC-9407: Verify SDK works with default config (no qvac.config.json)"
 			}),
 			dependency: "none",
 			estimatedDurationMs: 5000,
