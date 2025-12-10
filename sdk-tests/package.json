@@ -5,7 +5,9 @@
   "type": "module",
   "description": "SDK tests using QVAC test framework",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
   },
   "dependencies": {
     "@qvac/sdk": "^0.4.1",
