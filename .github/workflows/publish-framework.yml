@@ -117,6 +117,6 @@ jobs:
       - name: Publish to GitHub Package Registry
         uses: tetherto/qvac-devops/.github/actions/publish-library-to-gpr@v1.1.1
         with:
-          secret-token: ${{ secrets.PAT_TOKEN }}
+          secret-token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.event.inputs.tag || '' }}
           path: framework
