@@ -25,7 +25,7 @@ export async function buildConsumerDesktop(options: BuildOptions) {
     // Resolve paths
     const configDir = path.resolve(options.config);
     const entryPath = path.resolve(configDir, desktopConfig.entry);
-    const outputDir = path.resolve(configDir, '../build/consumers', options.platform);
+    const outputDir = path.resolve(configDir, 'build/consumers', options.platform);
 
     console.log(`📂 Entry point: ${desktopConfig.entry}`);
     console.log(`📦 Output directory: ${outputDir}\n`);
