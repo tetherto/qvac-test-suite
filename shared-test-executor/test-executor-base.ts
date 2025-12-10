@@ -401,6 +401,14 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("nmt-translation-question", this.nmtTranslation.bind(this));
 		this.testHandlers.set("nmt-translation-maxlength", this.nmtTranslation.bind(this));
 
+		// Config Hot Reload tests (QVAC-9409: Config HotReload)
+		this.testHandlers.set("config-reload-whisper-language", this.configReloadWhisperLanguage.bind(this));
+		this.testHandlers.set("config-reload-whisper-params", this.configReloadWhisperParams.bind(this));
+		this.testHandlers.set("config-reload-preserves-id", this.configReloadPreservesId.bind(this));
+		this.testHandlers.set("config-reload-invalid-model-id", this.configReloadInvalidModelId.bind(this));
+		this.testHandlers.set("config-reload-wrong-model-type", this.configReloadWrongModelType.bind(this));
+		this.testHandlers.set("config-reload-then-transcribe", this.configReloadThenTranscribe.bind(this));
+
 		// Model management tests
 		this.testHandlers.set("model-load-concurrent", this.modelLoadConcurrent.bind(this));
 		this.testHandlers.set("completion-invalid-model", this.completionInvalidModel.bind(this));
@@ -3614,6 +3622,224 @@ export abstract class TestExecutorBase {
 				output: `Empty text correctly rejected: ${error.message.substring(0, 100)}`,
 				passed: true,
 			};
+		}
+	}
+
+	// ========== CONFIG HOT RELOAD TESTS (QVAC-9409) ==========
+
+	protected async configReloadWhisperLanguage(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Tests hot reloading Whisper config to change language
+		if (!modelId) {
+			return { output: "No Whisper model loaded", passed: false };
+		}
+
+		try {
+			const newLanguage = params.newLanguage || "es";
+			
+			console.log(`   🔄 Hot reloading Whisper config: language → ${newLanguage}`);
+			
+			// Call loadModel with modelId (not modelSrc) to trigger config reload
+			const reloadedId = await this.sdk.loadModel({
+				modelId: modelId,
+				modelType: "whisper",
+				modelConfig: {
+					language: newLanguage,
+				},
+			});
+
+			const sameId = reloadedId === modelId;
+			console.log(`   ✅ Config reloaded, same model ID: ${sameId}`);
+
+			return {
+				output: `Config reload success: language=${newLanguage}, sameId=${sameId}`,
+				passed: true,
+			};
+		} catch (error: any) {
+			// Check if it's a "not supported" error (expected for unsupported SDK versions)
+			const isNotSupported = error.message?.includes("not supported") || 
+			                       error.code === 52410;
+			if (isNotSupported) {
+				return {
+					output: `Config reload not yet supported in this SDK version: ${error.message?.substring(0, 100)}`,
+					passed: false,
+				};
+			}
+			return { output: `Config reload error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async configReloadWhisperParams(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Tests hot reloading multiple Whisper config params at once
+		if (!modelId) {
+			return { output: "No Whisper model loaded", passed: false };
+		}
+
+		try {
+			const newConfig = params.newConfig || {
+				language: "de",
+				temperature: 0.2,
+				suppress_blank: false,
+			};
+			
+			console.log(`   🔄 Hot reloading Whisper config with multiple params...`);
+			
+			const reloadedId = await this.sdk.loadModel({
+				modelId: modelId,
+				modelType: "whisper",
+				modelConfig: newConfig,
+			});
+
+			return {
+				output: `Multi-param config reload success: params=${Object.keys(newConfig).join(',')}`,
+				passed: reloadedId === modelId,
+			};
+		} catch (error: any) {
+			return { output: `Config reload error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async configReloadPreservesId(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Verifies that config reload returns the same model ID
+		if (!modelId) {
+			return { output: "No Whisper model loaded", passed: false };
+		}
+
+		try {
+			console.log(`   🔄 Verifying model ID preserved after config reload...`);
+			console.log(`   📋 Original model ID: ${modelId}`);
+			
+			const reloadedId = await this.sdk.loadModel({
+				modelId: modelId,
+				modelType: "whisper",
+				modelConfig: {
+					language: "fr",
+				},
+			});
+
+			const preserved = reloadedId === modelId;
+			console.log(`   📋 Reloaded model ID: ${reloadedId}`);
+			console.log(`   ${preserved ? '✅' : '❌'} Model ID ${preserved ? 'preserved' : 'changed'}`);
+
+			return {
+				output: `Model ID ${preserved ? 'preserved' : 'NOT preserved'}: original=${modelId}, reloaded=${reloadedId}`,
+				passed: preserved,
+			};
+		} catch (error: any) {
+			return { output: `Config reload error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async configReloadInvalidModelId(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Tests that config reload with invalid model ID fails appropriately
+		try {
+			const invalidModelId = params.invalidModelId || "0000000000000000";
+			
+			console.log(`   🔄 Attempting config reload with invalid model ID: ${invalidModelId}`);
+			
+			await this.sdk.loadModel({
+				modelId: invalidModelId,
+				modelType: "whisper",
+				modelConfig: {
+					language: "en",
+				},
+			});
+
+			// Should not reach here
+			return {
+				output: "ERROR: Expected error for invalid model ID, but reload succeeded",
+				passed: false,
+			};
+		} catch (error: any) {
+			// Expected to fail - check for appropriate error
+			const isModelNotFound = error.message?.toLowerCase().includes("not found") ||
+			                        error.message?.toLowerCase().includes("invalid") ||
+			                        error.code === 52001; // MODEL_NOT_FOUND
+			
+			console.log(`   ✅ Correctly rejected invalid model ID: ${error.message?.substring(0, 50)}`);
+			
+			return {
+				output: `Invalid model ID correctly rejected: ${error.message?.substring(0, 100)}`,
+				passed: isModelNotFound || error.message?.includes("model"),
+			};
+		}
+	}
+
+	protected async configReloadWrongModelType(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Tests that config reload with wrong model type fails
+		if (!modelId) {
+			return { output: "No Whisper model loaded", passed: false };
+		}
+
+		try {
+			console.log(`   🔄 Attempting config reload with wrong model type (llm instead of whisper)...`);
+			
+			await this.sdk.loadModel({
+				modelId: modelId,
+				modelType: "llm", // Wrong type - model is whisper
+				modelConfig: {
+					n_ctx: 2048,
+				},
+			} as any);
+
+			// Should not reach here
+			return {
+				output: "ERROR: Expected error for model type mismatch, but reload succeeded",
+				passed: false,
+			};
+		} catch (error: any) {
+			// Expected to fail with model type mismatch error
+			const isMismatch = error.message?.toLowerCase().includes("mismatch") ||
+			                   error.message?.toLowerCase().includes("type") ||
+			                   error.code === 52411; // MODEL_TYPE_MISMATCH
+			
+			console.log(`   ✅ Correctly rejected model type mismatch: ${error.message?.substring(0, 50)}`);
+			
+			return {
+				output: `Model type mismatch correctly rejected: ${error.message?.substring(0, 100)}`,
+				passed: isMismatch || error.message?.includes("model"),
+			};
+		}
+	}
+
+	protected async configReloadThenTranscribe(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Tests that transcription works correctly after config reload
+		if (!modelId) {
+			return { output: "No Whisper model loaded", passed: false };
+		}
+
+		try {
+			const audioFileName = params.audioFileName || "transcription-short.wav";
+			const newLanguage = params.newLanguage || "en";
+			
+			console.log(`   🔄 Reloading Whisper config with language=${newLanguage}...`);
+			
+			// First reload config
+			await this.sdk.loadModel({
+				modelId: modelId,
+				modelType: "whisper",
+				modelConfig: {
+					language: newLanguage,
+				},
+			});
+
+			console.log(`   🎤 Transcribing audio after config reload...`);
+			
+			// Then transcribe to verify config was applied
+			const audioPath = await this.getAudioFilePath(audioFileName);
+			const transcribedText = (await this.sdk.transcribe({
+				modelId: modelId,
+				audioChunk: audioPath,
+			})).trim();
+
+			const hasOutput = transcribedText.length > 0;
+			console.log(`   📝 Transcription result: "${transcribedText.substring(0, 50)}..."`);
+
+			return {
+				output: `Config reload + transcribe: language=${newLanguage}, output="${transcribedText.substring(0, 50)}..."`,
+				passed: hasOutput,
+			};
+		} catch (error: any) {
+			return { output: `Config reload + transcribe error: ${error.message}`, passed: false };
 		}
 	}
 

@@ -123,7 +123,8 @@ export abstract class ConsumerBase {
 
 	// Determine which model type a test needs
 	protected getRequiredModelType(testId: string): 'llm' | 'whisper' | 'embedding' | 'translation' | 'nmt' | 'tools' | 'vision' | 'tts' | null {
-		if (testId.startsWith("transcription")) {
+		if (testId.startsWith("transcription") || testId.startsWith("config-reload")) {
+			// Config reload tests (QVAC-9409) require Whisper model
 			return 'whisper';
 		} else if (testId.startsWith("nmt-")) {
 			return 'nmt';

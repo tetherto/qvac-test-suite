@@ -11,7 +11,7 @@ const envSchema = z.object({
 	MQTT_BROKER_URL: z.url().default("mqtt://127.0.0.1:1883"),
 	MQTT_TOPIC: z.string().min(1).default("qvac/test"),
 	MQTT_PUBLISH_INTERVAL_MS: z.coerce.number().int().positive().default(3000),
-	SECTION: z.enum(["all", "transcription", "completion", "embedding", "rag", "model", "translation", "nmt", "tools", "cache", "tts", "error"]).default("all"),
+	SECTION: z.enum(["all", "transcription", "completion", "embedding", "rag", "model", "translation", "nmt", "tools", "cache", "tts", "error", "config-reload"]).default("all"),
 	TEST_FILTER: z.string().optional(),
 	RUN_ID: z.string().optional(),
 	ALLOW_WILDCARD_CONSUMERS: z.enum(["true", "false"]).default("false"),

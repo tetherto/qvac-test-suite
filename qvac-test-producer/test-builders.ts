@@ -1555,6 +1555,120 @@ export class TestBuilder {
 		};
 	}
 
+	// ========== CONFIG HOT RELOAD TESTS (QVAC-9409) ==========
+
+	buildConfigReloadWhisperLanguageTest(): TestDefinition {
+		return {
+			testId: "config-reload-whisper-language",
+			payload: JSON.stringify({
+				testId: "config-reload-whisper-language",
+				params: {
+					newLanguage: "es",
+				},
+				expectation: {
+					validation: "config-reload-success",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildConfigReloadWhisperParamsTest(): TestDefinition {
+		return {
+			testId: "config-reload-whisper-params",
+			payload: JSON.stringify({
+				testId: "config-reload-whisper-params",
+				params: {
+					newConfig: {
+						language: "de",
+						temperature: 0.2,
+						suppress_blank: false,
+					},
+				},
+				expectation: {
+					validation: "config-reload-success",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildConfigReloadPreservesIdTest(): TestDefinition {
+		return {
+			testId: "config-reload-preserves-id",
+			payload: JSON.stringify({
+				testId: "config-reload-preserves-id",
+				params: {},
+				expectation: {
+					validation: "model-id-preserved",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildConfigReloadInvalidModelIdTest(): TestDefinition {
+		return {
+			testId: "config-reload-invalid-model-id",
+			payload: JSON.stringify({
+				testId: "config-reload-invalid-model-id",
+				params: {
+					invalidModelId: "0000000000000000",
+				},
+				expectation: {
+					validation: "error-expected",
+					errorType: "model-not-found",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildConfigReloadWrongModelTypeTest(): TestDefinition {
+		return {
+			testId: "config-reload-wrong-model-type",
+			payload: JSON.stringify({
+				testId: "config-reload-wrong-model-type",
+				params: {},
+				expectation: {
+					validation: "error-expected",
+					errorType: "model-type-mismatch",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildConfigReloadThenTranscribeTest(): TestDefinition {
+		return {
+			testId: "config-reload-then-transcribe",
+			payload: JSON.stringify({
+				testId: "config-reload-then-transcribe",
+				params: {
+					audioFileName: "transcription-short.wav",
+					newLanguage: "en",
+				},
+				expectation: {
+					validation: "transcription-after-reload",
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 15000,
+		};
+	}
+
 	// ========== ADDITIONAL LLM COMPLETION TESTS ==========
 
 	buildCompletionSystemMessageTest(): TestDefinition {
@@ -3048,11 +3162,11 @@ export class TestBuilder {
 
 	/**
 	 * Build tests filtered by section/category
-	 * @param section - "all", "transcription", "completion", "embedding", "rag", "model", "translation", "nmt", "tools", "cache", "tts", or "error"
+	 * @param section - "all", "transcription", "completion", "embedding", "rag", "model", "translation", "nmt", "tools", "cache", "tts", "error", or "config-reload"
 	 */
 	buildTestsBySection(
 		tests: TestDefinition[],
-		section: "all" | "transcription" | "completion" | "embedding" | "rag" | "model" | "translation" | "nmt" | "tools" | "cache" | "tts" | "error" = "all"
+		section: "all" | "transcription" | "completion" | "embedding" | "rag" | "model" | "translation" | "nmt" | "tools" | "cache" | "tts" | "error" | "config-reload" = "all"
 	): TestDefinition[] {
 		tests = [];
 
@@ -3409,6 +3523,18 @@ export class TestBuilder {
 		tests.push(this.buildNmtTranslationQuestionTest());
 		tests.push(this.buildNmtTranslationMaxLengthTest());
 		console.log("   ✅ Added 12 NMT translation tests");
+	}
+
+	// Config Hot Reload tests (QVAC-9409)
+	if (section === "all" || section === "transcription" || section === "config-reload") {
+		console.log("\n🔄 Adding Config Hot Reload Tests (QVAC-9409)");
+		tests.push(this.buildConfigReloadWhisperLanguageTest());
+		tests.push(this.buildConfigReloadWhisperParamsTest());
+		tests.push(this.buildConfigReloadPreservesIdTest());
+		tests.push(this.buildConfigReloadInvalidModelIdTest());
+		tests.push(this.buildConfigReloadWrongModelTypeTest());
+		tests.push(this.buildConfigReloadThenTranscribeTest());
+		console.log("   ✅ Added 6 config hot reload tests");
 	}
 
 		// ========== PHASE 4: ROBUSTNESS & ADVANCED SCENARIOS ==========
