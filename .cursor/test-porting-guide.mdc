@@ -1,3 +1,7 @@
+---
+description: When asked to port tests from old setup (producer/consumer in root repo) to framework, follow this guide
+alwaysApply: false
+---
 # Test Porting Guide
 
 ## Critical Nuances to Understand
