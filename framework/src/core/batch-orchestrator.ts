@@ -1,4 +1,4 @@
-import mqtt, { type MqttClient } from 'mqtt';
+import type { MqttClient } from 'mqtt';
 import type { TestDefinition } from '../types/test-definition.js';
 import {
   consumerRegistrationSchema,
@@ -50,8 +50,8 @@ export class BatchOrchestrator {
   private batchStarted = false;
   private shutdownTimer?: NodeJS.Timeout;
 
-  constructor(brokerUrl: string, runId: string, allowWildcardConsumers: boolean = false) {
-    this.client = mqtt.connect(brokerUrl);
+  constructor(client: MqttClient, runId: string, allowWildcardConsumers: boolean = false) {
+    this.client = client;
     this.runId = runId;
     this.allowWildcardConsumers = allowWildcardConsumers;
     this.setupMqttHandlers();

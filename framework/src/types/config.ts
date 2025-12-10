@@ -19,14 +19,81 @@ const consumerPlatformSchema = z.object({
 });
 
 /**
+ * MQTT broker configuration schema (separate host/port)
+ */
+const mqttBrokerSchema = z.object({
+  protocol: z
+    .union([z.enum(['mqtt', 'mqtts', 'ws', 'wss']), z.object({ env: z.string() })])
+    .optional()
+    .default('mqtt')
+    .describe('MQTT protocol. Provide directly or { env: "VAR_NAME" }'),
+
+  host: z
+    .union([z.string(), z.object({ env: z.string() })])
+    .describe('MQTT broker host. Provide directly or { env: "VAR_NAME" }'),
+
+  port: z
+    .union([z.number(), z.object({ env: z.string() })])
+    .optional()
+    .describe(
+      'MQTT broker port. Provide directly or { env: "VAR_NAME" }. Defaults: mqtt=1883, mqtts=8883, ws=8080, wss=8081'
+    ),
+});
+
+/**
+ * Complete MQTT configuration schema (broker + auth + certs)
+ */
+const mqttConfigSchema = z.object({
+  // Broker configuration - Option A: URL
+  brokerUrl: z
+    .union([z.string().url(), z.object({ env: z.string() })])
+    .optional()
+    .describe('MQTT broker URL. Provide URL directly or { env: "VAR_NAME" }. Alternative: use broker object'),
+
+  // Broker configuration - Option B: Separate components
+  broker: mqttBrokerSchema.optional().describe('MQTT broker configuration (host/port). Alternative to brokerUrl'),
+
+  // Authentication
+  username: z
+    .union([z.string(), z.object({ env: z.string() })])
+    .optional()
+    .describe('Username for MQTT authentication. Provide string directly or { env: "VAR_NAME" } to read from env'),
+
+  password: z
+    .union([z.string(), z.object({ env: z.string() })])
+    .optional()
+    .describe('Password for MQTT authentication. Provide string directly or { env: "VAR_NAME" } to read from env'),
+
+  // TLS Certificates
+  caPath: z
+    .union([z.string(), z.object({ env: z.string() })])
+    .optional()
+    .describe('Path to CA certificate. Provide path directly or { env: "VAR_NAME" } to read from env'),
+
+  certPath: z
+    .union([z.string(), z.object({ env: z.string() })])
+    .optional()
+    .describe('Path to client certificate. Provide path directly or { env: "VAR_NAME" } to read from env'),
+
+  keyPath: z
+    .union([z.string(), z.object({ env: z.string() })])
+    .optional()
+    .describe('Path to client key. Provide path directly or { env: "VAR_NAME" } to read from env'),
+
+  rejectUnauthorized: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe('Verify TLS certificates (default: true). Set to false to disable certificate validation (testing only)'),
+});
+
+/**
  * Main configuration schema for QVAC test suite
  */
 export const qvacTestConfigSchema = z.object({
-  brokerUrl: z
-    .string()
-    .url()
-    .default('mqtt://localhost:1883')
-    .describe('MQTT broker URL for producer-consumer coordination'),
+  mqtt: mqttConfigSchema
+    .optional()
+    .describe('MQTT broker and authentication configuration. All MQTT-related settings go here'),
 
   testDir: z.string().describe('Directory containing test definitions (e.g., "./tests")'),
 

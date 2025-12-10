@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import { config as loadDotenv } from 'dotenv';
+
+// Load .env file from current working directory if it exists
+loadDotenv();
 
 import { Command } from 'commander';
 import { runProducer } from './commands/run-producer.js';
@@ -22,7 +26,7 @@ program
   .command('run:producer')
   .description('Start test producer/orchestrator')
   .option('--runId <id>', 'Unique run identifier')
-  .option('--mqtt-broker <url>', 'MQTT broker URL', 'mqtt://localhost:1883')
+  .option('--mqtt-broker <url>', 'MQTT broker URL (overrides config)')
   .option('--config <path>', 'Path to config directory', process.cwd())
   .option(
     '--filter <categories>',
@@ -34,7 +38,7 @@ program
   .command('run:consumer:desktop')
   .description('Start desktop test consumer')
   .requiredOption('--runId <id>', 'Unique run identifier (must match producer)')
-  .option('--mqtt-broker <url>', 'MQTT broker URL', 'mqtt://localhost:1883')
+  .option('--mqtt-broker <url>', 'MQTT broker URL (overrides config)')
   .option('--config <path>', 'Path to config directory', process.cwd())
   .action(runConsumerDesktop);
 

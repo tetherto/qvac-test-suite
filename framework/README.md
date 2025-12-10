@@ -137,7 +137,27 @@ qvac-test report:format \
 
 ## Configuration
 
-See [full documentation](../../docs/PRD.md) for detailed configuration options.
+### MQTT Authentication
+
+```javascript
+// qvac-test.config.js
+export default {
+  mqtt: {
+    broker: {
+      protocol: 'mqtts',                  // or { env: 'MQTT_PROTOCOL' }
+      host: { env: 'MQTT_HOST' },
+      port: 8883,
+    },
+    username: { env: 'MQTT_USERNAME' },
+    password: { env: 'MQTT_PASSWORD' },
+    rejectUnauthorized: false,            // Optional: disable cert validation
+  },
+  testDir: './tests',
+  consumers: { /* ... */ },
+};
+```
+
+Framework loads `.env` files automatically. For GitHub Actions, set env vars in workflow.
 
 ## Publishing
 
