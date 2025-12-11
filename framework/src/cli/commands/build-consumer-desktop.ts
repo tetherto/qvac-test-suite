@@ -25,7 +25,7 @@ export async function buildConsumerDesktop(options: BuildOptions) {
     // Resolve paths
     const configDir = path.resolve(options.config);
     const entryPath = path.resolve(configDir, desktopConfig.entry);
-    const outputDir = path.resolve(configDir, '../build/consumers', options.platform);
+    const outputDir = path.resolve(configDir, 'build/consumers', options.platform);
 
     console.log(`📂 Entry point: ${desktopConfig.entry}`);
     console.log(`📦 Output directory: ${outputDir}\n`);
@@ -41,14 +41,8 @@ export async function buildConsumerDesktop(options: BuildOptions) {
     // Create consumer wrapper entry point
     const wrapperPath = path.join(outputDir, '_consumer-wrapper.js');
     const wrapperCode = createConsumerWrapper(entryPath, configDir);
-    console.log(`📝 Generated wrapper at: ${wrapperPath}`);
     fs.writeFileSync(wrapperPath, wrapperCode);
 
-    // Debug: show first few lines
-    console.log('📄 Wrapper imports:');
-    console.log(wrapperCode.split('\n').slice(0, 6).join('\n'));
-
-    // Bundle with esbuild (keep dependencies external)
     console.log('🔧 Bundling with esbuild...');
     await build({
       entryPoints: [wrapperPath],
@@ -57,13 +51,7 @@ export async function buildConsumerDesktop(options: BuildOptions) {
       target: 'node22',
       format: 'esm',
       outfile: path.join(outputDir, 'consumer.js'),
-      external: [
-        'mqtt',
-        '@qvac/*', // Keep SDK in node_modules
-        'expo-*', // React Native packages
-        'react-native*',
-      ],
-      // Note: @tetherto/qvac-test-suite will be bundled into consumer
+      external: ['mqtt', 'dotenv', '@qvac/*', 'expo-*', 'react-native*'],
       sourcemap: true,
       banner: {
         js: '#!/usr/bin/env node',
@@ -108,22 +96,26 @@ async function installDependencies(
     const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
     const deps = { ...pkgJson.dependencies, ...pkgJson.devDependencies };
 
-    // Create package.json in output
     const consumerPkgJson = {
       name: 'qvac-consumer',
       version: '1.0.0',
       type: 'module',
-      dependencies: deps,
+      dependencies: {
+        ...deps,
+        dotenv: '^16.4.5',
+      },
     };
 
     fs.writeFileSync(path.join(outputDir, 'package.json'), JSON.stringify(consumerPkgJson, null, 2));
   } else {
-    // Manual dependencies
     const consumerPkgJson = {
       name: 'qvac-consumer',
       version: '1.0.0',
       type: 'module',
-      dependencies,
+      dependencies: {
+        ...dependencies,
+        dotenv: '^16.4.5',
+      },
     };
 
     fs.writeFileSync(path.join(outputDir, 'package.json'), JSON.stringify(consumerPkgJson, null, 2));
@@ -139,27 +131,24 @@ async function installDependencies(
   console.log('✅ Dependencies installed\n');
 }
 
-/**
- * Create consumer wrapper that imports executor and starts consumer
- */
 function createConsumerWrapper(executorPath: string, configDir: string): string {
-  // Resolve absolute paths for imports
   const absoluteExecutorPath = path.resolve(configDir, executorPath);
-
-  // Get path to framework dist (where this file is running from)
-  // This file is at: framework/dist/cli/commands/build-consumer-desktop.js
-  // We need: framework/dist/core/consumer-base.js
   const currentFilePath = path.dirname(new URL(import.meta.url).pathname);
-  const frameworkDistPath = path.resolve(currentFilePath, '../..'); // Up to dist/
+  const frameworkDistPath = path.resolve(currentFilePath, '../..');
   const consumerBasePath = path.join(frameworkDistPath, 'core/consumer-base.js');
+  const mqttConnectionPath = path.join(frameworkDistPath, 'utils/mqtt-connection.js');
+  const configLoaderPath = path.join(frameworkDistPath, 'utils/config-loader.js');
 
   return `
-import mqtt from 'mqtt';
+import { config as loadDotenv } from 'dotenv';
 import * as os from 'os';
 import { ConsumerBase } from '${consumerBasePath}';
+import { createMqttClient, buildMqttConnectionConfig } from '${mqttConnectionPath}';
+import { loadConfig } from '${configLoaderPath}';
 import { executor } from '${absoluteExecutorPath}';
 
-// Parse CLI arguments
+loadDotenv();
+
 const args = process.argv.slice(2);
 const getArg = (name) => {
   const arg = args.find(a => a.startsWith('--' + name + '='));
@@ -167,16 +156,22 @@ const getArg = (name) => {
 };
 
 const runId = getArg('runId');
-const mqttBroker = getArg('mqtt-broker') || 'mqtt://localhost:1883';
+const mqttBrokerOverride = getArg('mqtt-broker');
 
 if (!runId) {
   console.error('❌ --runId is required');
   process.exit(1);
 }
 
-// Create consumer
+const config = await loadConfig('${configDir}');
+const mqttConfig = buildMqttConnectionConfig(config);
+
+if (mqttBrokerOverride) {
+  mqttConfig.brokerUrl = mqttBrokerOverride;
+}
+
+const client = createMqttClient(mqttConfig);
 const consumerId = \`consumer-desktop-\${os.hostname()}-\${Date.now()}\`;
-const client = mqtt.connect(mqttBroker);
 
 const consumer = new ConsumerBase(
   client,

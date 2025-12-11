@@ -7,6 +7,7 @@ export type { TestHandler, TestExecutorConfig } from './types/test-handler.js';
 
 // Schema exports (for validation)
 export { expectationSchema } from './schemas/expectations.js';
+export { mqttConnectionSchema } from './schemas/mqtt-config.js';
 export { testDefinitionSchema } from './types/test-definition.js';
 export { qvacTestConfigSchema } from './types/config.js';
 export {
@@ -33,3 +34,10 @@ export { createExecutor } from './core/test-executor.js';
 export { findConfig, loadConfig } from './utils/config-loader.js';
 export { loadTests } from './utils/test-loader.js';
 export { ValidationHelpers } from './utils/validation-helpers.js';
+export {
+  createMqttClient,
+  buildMqttOptions,
+  buildMqttConnectionConfig,
+  logMqttConnectionSecurity,
+} from './utils/mqtt-connection.js';
+export type { MqttConnectionConfig } from './utils/mqtt-connection.js';

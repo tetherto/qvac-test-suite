@@ -1,3 +1,7 @@
+---
+description: This should be updated when user mentions that something should be done later after completing the main implementation plan. Implementation plan should be updated to have these.
+alwaysApply: false
+---
 # Future Improvements
 
 ## Test Executor Pattern Enhancement

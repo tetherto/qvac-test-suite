@@ -1,9 +1,18 @@
+---
+alwaysApply: true
+---
 # QVAC Test Suite Framework - Project Context
 
 ## Current State
 
-**Branch**: feature/framework-extraction
 **Goal**: Transform monolithic test suite into `@tetherto/qvac-test-suite` library
+
+**CRITICAL - Do NOT modify these directories** (old structure, kept as reference):
+- qvac-test-producer/
+- qvac-test-consumer-desktop/
+- qvac-test-consumer-mobile/
+- shared-consumer/
+- shared-test-executor/
 
 ## Repo Structure
 
@@ -72,7 +81,7 @@ qvac-test-suite/
 - ANY command that stays running/blocks waiting for input
 
 **SAFE TO RUN** (short-running, exits immediately):
-- npm install
+- npm install (if user has confirmed package to be installed, or changes to package.json)
 - npm run build / tsc
 - npm run format / npm run lint
 - File operations (read, write, delete)
@@ -86,9 +95,16 @@ qvac-test-suite/
   - Parse incoming data: `const message = messageSchema.parse(rawData)`
   - Store schemas in `src/schemas/` directory
   - Infer TypeScript types: `type Message = z.infer<typeof messageSchema>`
+  - **Use Zod for defaults and transformations** - don't manually handle fallbacks
+  - **Use Zod transforms** for env var resolution, computed values, etc.
 - **Use inferred TypeScript types internally** - once validated, pass typed data
 - Don't re-validate already validated data
 - Use generics for dynamic types
+
+**Anti-patterns to avoid**:
+- Manual fallback chains: `value || fallback1 || fallback2` (use Zod defaults)
+- Manual type casting everywhere: `as string`, `as number` (use Zod transforms)
+- Duplicated validation logic (validate once with Zod, use typed data after)
 
 **Workflow**:
 - Complete each step

@@ -1,7 +1,29 @@
 // SDK tests configuration
 export default {
-  brokerUrl: 'mqtt://localhost:1883',
+  // All MQTT configuration under one object
+  mqtt: {
+    // Broker configuration (separate host/port)
+    broker: {
+      protocol: { env: 'MQTT_PROTOCOL' },
+      host: { env: 'MQTT_HOST' },
+      port: { env: 'MQTT_PORT' },
+    },
+
+    // Authentication
+    username: { env: 'MQTT_USERNAME' },
+    password: { env: 'MQTT_PASSWORD' },
+
+    // Disable certificate validation for self-signed certs (testing only)
+    rejectUnauthorized: false,
+
+    // Optional: TLS certificates
+    caPath: { env: 'MQTT_CA_PATH' },
+    // certPath: { env: 'MQTT_CERT_PATH' },
+    // keyPath: { env: 'MQTT_KEY_PATH' },
+  },
+
   testDir: './tests',
+
   consumers: {
     desktop: {
       platforms: ['macos'],
