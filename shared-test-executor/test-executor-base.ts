@@ -399,8 +399,9 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("nmt-translation-maxlength", this.nmtTranslation.bind(this));
 
 		// Config Hot Reload tests (QVAC-9409: Config HotReload)
-		this.testHandlers.set("config-reload-whisper-language", this.configReloadWhisperLanguage.bind(this));
-		this.testHandlers.set("config-reload-whisper-params", this.configReloadWhisperParams.bind(this));
+		// Both use same handler - params.newConfig differentiates single vs multi-param reload
+		this.testHandlers.set("config-reload-whisper-language", this.configReloadWhisperConfig.bind(this));
+		this.testHandlers.set("config-reload-whisper-params", this.configReloadWhisperConfig.bind(this));
 		this.testHandlers.set("config-reload-preserves-id", this.configReloadPreservesId.bind(this));
 		this.testHandlers.set("config-reload-invalid-model-id", this.configReloadInvalidModelId.bind(this));
 		this.testHandlers.set("config-reload-wrong-model-type", this.configReloadWrongModelType.bind(this));
@@ -3624,61 +3625,18 @@ export abstract class TestExecutorBase {
 
 	// ========== CONFIG HOT RELOAD TESTS (QVAC-9409) ==========
 
-	protected async configReloadWhisperLanguage(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
-		// Tests hot reloading Whisper config to change language
+	protected async configReloadWhisperConfig(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Consolidated handler for Whisper config reload (single or multi-param)
 		if (!modelId) {
 			return { output: "No Whisper model loaded", passed: false };
 		}
 
 		try {
-			const newLanguage = params.newLanguage || "es";
+			// Use newConfig if provided, otherwise create from newLanguage
+			const newConfig = params.newConfig || { language: params.newLanguage || "es" };
+			const paramKeys = Object.keys(newConfig).join(',');
 			
-			console.log(`   🔄 Hot reloading Whisper config: language → ${newLanguage}`);
-			
-			// Call loadModel with modelId (not modelSrc) to trigger config reload
-			const reloadedId = await this.sdk.loadModel({
-				modelId: modelId,
-				modelType: "whisper",
-				modelConfig: {
-					language: newLanguage,
-				},
-			});
-
-			const sameId = reloadedId === modelId;
-			console.log(`   ✅ Config reloaded, same model ID: ${sameId}`);
-
-			return {
-				output: `Config reload success: language=${newLanguage}, sameId=${sameId}`,
-				passed: true,
-			};
-		} catch (error: any) {
-			// Check if it's a "not supported" error (expected for unsupported SDK versions)
-			const isNotSupported = error.message?.includes("not supported") || 
-			                       error.code === 52410;
-			if (isNotSupported) {
-				return {
-					output: `Config reload not yet supported in this SDK version: ${error.message?.substring(0, 100)}`,
-					passed: false,
-				};
-			}
-			return { output: `Config reload error: ${error.message}`, passed: false };
-		}
-	}
-
-	protected async configReloadWhisperParams(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
-		// Tests hot reloading multiple Whisper config params at once
-		if (!modelId) {
-			return { output: "No Whisper model loaded", passed: false };
-		}
-
-		try {
-			const newConfig = params.newConfig || {
-				language: "de",
-				temperature: 0.2,
-				suppress_blank: false,
-			};
-			
-			console.log(`   🔄 Hot reloading Whisper config with multiple params...`);
+			console.log(`   🔄 Hot reloading Whisper config: ${paramKeys}`);
 			
 			const reloadedId = await this.sdk.loadModel({
 				modelId: modelId,
@@ -3686,9 +3644,10 @@ export abstract class TestExecutorBase {
 				modelConfig: newConfig,
 			});
 
+			const sameId = reloadedId === modelId;
 			return {
-				output: `Multi-param config reload success: params=${Object.keys(newConfig).join(',')}`,
-				passed: reloadedId === modelId,
+				output: `Config reload success: ${paramKeys}, sameId=${sameId}`,
+				passed: sameId,
 			};
 		} catch (error: any) {
 			return { output: `Config reload error: ${error.message}`, passed: false };
