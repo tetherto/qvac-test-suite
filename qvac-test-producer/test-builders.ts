@@ -1380,12 +1380,13 @@ export class TestBuilder {
 	}
 
 	buildNmtTranslationSpecialCharsTest(): TestDefinition {
+		// Using punctuation, currency, and accented chars (emojis crash mobile NMT)
 		return {
 			testId: "nmt-translation-special-chars",
 			payload: JSON.stringify({
 				testId: "nmt-translation-special-chars",
 				params: {
-					text: "Hallo! Wie geht es dir? Mir geht's gut, danke. Treffen wir uns um 15 Uhr - okay?",
+					text: "Hallo! Wie geht's dir? Das kostet 50€ - nicht $60! Très bien, señor. Müller & Co.",
 					sourceLang: "de",
 					targetLang: "en",
 				},
@@ -3031,23 +3032,7 @@ export class TestBuilder {
 		};
 	}
 
-	buildCacheConfigDirectoryTest(): TestDefinition {
-		return {
-			testId: "cache-config-directory",
-			payload: JSON.stringify({
-				testId: "cache-config-directory",
-				params: {},
-				expectation: {
-					validation: "sdk-defaults",
-					usesDefaults: true
-				},
-				expectedOutcome: "pass",
-				debugInfo: "QVAC-9407: Verify SDK works with default config (no qvac.config.json)"
-			}),
-			dependency: "none",
-			estimatedDurationMs: 5000,
-		};
-	}
+	// buildCacheConfigDirectoryTest removed - setConfig() API no longer exists (QVAC-9407)
 
 	buildCacheVerifyFilesTest(): TestDefinition {
 		return {
@@ -3585,13 +3570,13 @@ export class TestBuilder {
 			tests.push(this.buildCacheDeleteAllTest());
 			tests.push(this.buildCacheDeleteByKeyTest());
 			tests.push(this.buildCacheDeleteByModelTest());
-			tests.push(this.buildCacheConfigDirectoryTest());
+			// cache-config-directory removed - setConfig() API no longer exists
 			tests.push(this.buildCacheVerifyFilesTest());
 			tests.push(this.buildCacheHypercoreDeletionTest());
 			tests.push(this.buildCacheMultipleModelsTest());
 			tests.push(this.buildCacheAfterUnloadTest());
 			tests.push(this.buildCacheInvalidKeyTest());
-			console.log("   ✅ Added 10 cache management tests");
+			console.log("   ✅ Added 9 cache management tests");
 		}
 
 		// ========== PHASE 5.5: ERROR HANDLING & PARAMETER VALIDATION (Sprint 1 - Priority 1) ==========
