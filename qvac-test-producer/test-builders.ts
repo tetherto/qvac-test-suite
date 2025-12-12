@@ -1748,6 +1748,26 @@ export class TestBuilder {
 		};
 	}
 
+	// SDK Server Logging tests (QVAC-9211)
+	buildAddonLoggingSdkServerTest(): TestDefinition {
+		return {
+			testId: "addon-logging-sdk-server",
+			payload: JSON.stringify({
+				testId: "addon-logging-sdk-server",
+				params: {},
+				expectation: {
+					modelType: "sdk",
+					namespace: "sdk:server",
+					minLogs: 1,
+					timeoutMs: 5000,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",  // Need SDK worker running
+			estimatedDurationMs: 8000,
+		};
+	}
+
 	// Edge case tests
 	buildAddonLoggingInvalidModelIdTest(): TestDefinition {
 		return {
@@ -3638,16 +3658,18 @@ export class TestBuilder {
 
 	// Addon Logging tests (QVAC-9206)
 	if (section === "all" || section === "addon-logging") {
-		console.log("\n📡 Adding Addon Logging Tests (QVAC-9206)");
+		console.log("\n📡 Adding Addon Logging Tests (QVAC-9206, QVAC-9211)");
 		// Core addon type tests - verify buffered logs from model load
 		tests.push(this.buildAddonLoggingLlmTest());
 		tests.push(this.buildAddonLoggingEmbedTest());
 		tests.push(this.buildAddonLoggingWhisperTest());
 		tests.push(this.buildAddonLoggingTtsTest());
+		// SDK server logs (QVAC-9211) - unified SDK logging
+		tests.push(this.buildAddonLoggingSdkServerTest());
 		// Edge cases - error handling and real-time logging
 		tests.push(this.buildAddonLoggingInvalidModelIdTest());
 		tests.push(this.buildAddonLoggingDuringInferenceTest());
-		console.log("   ✅ Added 6 addon logging tests (4 core + 2 edge cases)");
+		console.log("   ✅ Added 7 logging tests (4 addon + 1 SDK server + 2 edge cases)");
 	}
 
 		// ========== PHASE 4: ROBUSTNESS & ADVANCED SCENARIOS ==========

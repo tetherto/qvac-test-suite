@@ -127,11 +127,12 @@ export abstract class ConsumerBase {
 			// Config reload tests (QVAC-9409) require Whisper model
 			return 'whisper';
 		} else if (testId.startsWith("addon-logging-")) {
-			// Addon logging tests (QVAC-9206) - model type based on suffix
+			// Addon logging tests (QVAC-9206) and SDK logging tests (QVAC-9211)
 			if (testId === "addon-logging-llm") return 'llm';
 			if (testId === "addon-logging-embed") return 'embedding';
 			if (testId === "addon-logging-whisper") return 'whisper';
 			if (testId === "addon-logging-tts") return 'tts';
+			if (testId === "addon-logging-sdk-server") return 'llm'; // SDK logs need worker running
 			return 'llm'; // fallback
 		} else if (testId.startsWith("nmt-")) {
 			return 'nmt';

@@ -20,6 +20,7 @@ export interface SDKFunctions {
 	deleteCache: any;
 	getModelInfo: any;
 	loggingStream?: any;  // Addon logging stream (QVAC-9206)
+	SDK_LOG_ID?: string;  // SDK server log ID (QVAC-9211)
 	LLAMA_3_2_1B_INST_Q4_0: any;
 	GTE_LARGE_FP16: any;
 	GTE_LARGE_335M_FP16_SHARD?: any; // Sharded model constant (PR #237)
@@ -417,6 +418,8 @@ export abstract class TestExecutorBase {
 		// Edge cases: Error handling and real-time logging
 		this.testHandlers.set("addon-logging-invalid-model-id", this.addonLoggingInvalidId.bind(this));
 		this.testHandlers.set("addon-logging-during-inference", this.addonLoggingDuringInference.bind(this));
+		// SDK Server Logging tests (QVAC-9211: Unified SDK logs)
+		this.testHandlers.set("addon-logging-sdk-server", this.addonLoggingStream.bind(this));
 
 		// Model management tests
 		this.testHandlers.set("model-load-concurrent", this.modelLoadConcurrent.bind(this));
@@ -3832,34 +3835,38 @@ export abstract class TestExecutorBase {
 		let streamError: string | null = null;
 
 		try {
-			// Get the appropriate model ID based on model type
-			let targetModelId: string | null = null;
+			// Get the appropriate ID based on model type
+			let targetId: string | null = null;
 			switch (modelType) {
 				case "llm":
-					targetModelId = modelId;
+					targetId = modelId;
 					break;
 				case "embedding":
-					targetModelId = modelId;
+					targetId = modelId;
 					break;
 				case "whisper":
-					targetModelId = modelId;
+					targetId = modelId;
 					break;
 				case "tts":
-					targetModelId = this.ttsModelId;
+					targetId = this.ttsModelId;
+					break;
+				case "sdk":
+					// QVAC-9211: SDK server logs use special SDK_LOG_ID
+					targetId = this.sdk.SDK_LOG_ID || "__sdk__";
 					break;
 			}
 
-			if (!targetModelId) {
+			if (!targetId) {
 				return { output: `No ${modelType} model loaded for logging test`, passed: false };
 			}
 
-			console.log(`   📡 Starting logging stream for ${modelType} model (namespace: ${namespace})...`);
+			console.log(`   📡 Starting logging stream for ${modelType} (namespace: ${namespace})...`);
 
 			// Start collecting logs with timeout
-			// Note: loggingStream API uses 'id' parameter, not 'modelId'
+			// Note: loggingStream API uses 'id' parameter
 			const collectLogsPromise = (async () => {
 				try {
-					for await (const log of this.sdk.loggingStream({ id: targetModelId })) {
+					for await (const log of this.sdk.loggingStream({ id: targetId })) {
 						logs.push({
 							level: log.level,
 							namespace: log.namespace,
