@@ -3363,30 +3363,34 @@ export abstract class TestExecutorBase {
 	}
 
 	protected async embedBatch(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// QVAC-8366: Batch embedding API - single call with text array
 		if (!modelId) {
 			return { output: "No embedding model loaded", passed: false };
 		}
 
 		try {
-			const texts = params.texts || [];
-			const embeddings = await Promise.all(
-				texts.map((text: string) => this.sdk.embed({ modelId, text }))
-			);
+			const texts: string[] = params.texts || [];
+			
+			// Use batch API: pass array of texts in single call → returns number[][]
+			const embeddings = await this.sdk.embed({ modelId, text: texts });
 
-			const allValid = embeddings.every(emb =>
+			// Validate batch response structure
+			const isBatchArray = Array.isArray(embeddings) && embeddings.length > 0;
+			const correctCount = embeddings.length === (expectation.expectedCount || texts.length);
+			const allValid = embeddings.every((emb: number[]) =>
 				Array.isArray(emb) && emb.length >= (expectation.minDimensions || 100)
 			);
 
-			const correctCount = embeddings.length === expectation.expectedCount;
-			const passed = allValid && correctCount;
+			const passed = isBatchArray && correctCount && allValid;
+			const dimensions = embeddings[0]?.length || 0;
 
 			return {
-				output: `Batch embedded ${embeddings.length} texts (expected ${expectation.expectedCount}), dimensions: ${embeddings[0].length}`,
+				output: `Batch API: ${embeddings.length} embeddings in single call, dimensions: ${dimensions}`,
 				passed,
 			};
 		} catch (error: any) {
 			return {
-				output: `Error: ${error.message}`,
+				output: `Batch embed error: ${error.message}`,
 				passed: false,
 			};
 		}
