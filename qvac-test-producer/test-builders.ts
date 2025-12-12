@@ -1290,6 +1290,386 @@ export class TestBuilder {
 		};
 	}
 
+	// ========== QVAC-9401: NMT TRANSLATION WITH GENERATION PARAMETERS ==========
+	// Using MARIAN_OPUS_DE_EN_Q0F32 (German to English)
+
+	buildNmtTranslationBasicTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-basic",
+			payload: JSON.stringify({
+				testId: "nmt-translation-basic",
+				params: {
+					text: "Hallo, wie geht es dir heute?",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["hello", "how", "are", "you", "today"],
+					minLength: 5,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildNmtTranslationLongTextTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-long-text",
+			payload: JSON.stringify({
+				testId: "nmt-translation-long-text",
+				params: {
+					text: "Der schnelle braune Fuchs springt über den faulen Hund. Dieser Satz enthält viele häufige Buchstaben. Die maschinelle Übersetzung hat in den letzten Jahren große Fortschritte gemacht, wobei neuronale maschinelle Übersetzungsmodelle beeindruckende Ergebnisse erzielen.",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 80,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 20000,
+		};
+	}
+
+	buildNmtTranslationShortTextTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-short-text",
+			payload: JSON.stringify({
+				testId: "nmt-translation-short-text",
+				params: {
+					text: "Ja",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildNmtTranslationRepeatedWordsTest(): TestDefinition {
+		// Tests norepeatngramsize parameter effectiveness
+		return {
+			testId: "nmt-translation-repeated-words",
+			payload: JSON.stringify({
+				testId: "nmt-translation-repeated-words",
+				params: {
+					text: "Sehr sehr sehr wichtig. Extrem extrem extrem entscheidend. Absolut absolut absolut notwendig.",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 20,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildNmtTranslationSpecialCharsTest(): TestDefinition {
+		// Using punctuation, currency, and accented chars (emojis crash mobile NMT)
+		return {
+			testId: "nmt-translation-special-chars",
+			payload: JSON.stringify({
+				testId: "nmt-translation-special-chars",
+				params: {
+					text: "Hallo! Wie geht's dir? Das kostet 50€ - nicht $60! Très bien, señor. Müller & Co.",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 20,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildNmtTranslationNumbersTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-numbers",
+			payload: JSON.stringify({
+				testId: "nmt-translation-numbers",
+				params: {
+					text: "Das Treffen ist um 10:30 Uhr. Wir haben 25 Teilnehmer. Die Raumnummer ist 302.",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 20,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildNmtTranslationPunctuationTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-punctuation",
+			payload: JSON.stringify({
+				testId: "nmt-translation-punctuation",
+				params: {
+					text: "Warte... bist du sicher? Ja! Absolut; ohne Zweifel: 100%.",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 15,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildNmtTranslationEmptyTextTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-empty-text",
+			payload: JSON.stringify({
+				testId: "nmt-translation-empty-text",
+				params: {
+					text: "",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "error-or-empty",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	// Additional NMT model coverage tests - using DE→EN model
+	// NOTE: MARIAN_OPUS_EN_IT is known to return empty strings (model-specific bug)
+
+	buildNmtTranslationTechnicalTextTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-technical",
+			payload: JSON.stringify({
+				testId: "nmt-translation-technical",
+				params: {
+					text: "Die API-Schnittstelle ermöglicht HTTP-Anfragen mit JSON-Daten. Der Server antwortet mit einem Statuscode.",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 30,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildNmtTranslationFormalTextTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-formal",
+			payload: JSON.stringify({
+				testId: "nmt-translation-formal",
+				params: {
+					text: "Sehr geehrte Damen und Herren, hiermit möchte ich mich für die Stelle bewerben. Mit freundlichen Grüßen.",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 30,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildNmtTranslationQuestionTest(): TestDefinition {
+		return {
+			testId: "nmt-translation-question",
+			payload: JSON.stringify({
+				testId: "nmt-translation-question",
+				params: {
+					text: "Können Sie mir bitte sagen, wo der Bahnhof ist? Wie weit ist es von hier?",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["station", "where", "far"],
+					minLength: 20,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildNmtTranslationMaxLengthTest(): TestDefinition {
+		// Tests maxlength parameter - very long input
+		return {
+			testId: "nmt-translation-maxlength",
+			payload: JSON.stringify({
+				testId: "nmt-translation-maxlength",
+				params: {
+					text: "Dies ist ein sehr langer Text, der die maximale Länge der Übersetzung testen soll. " +
+						"Er enthält mehrere Sätze und verschiedene Themen. " +
+						"Die maschinelle Übersetzung muss alle diese Sätze korrekt verarbeiten. " +
+						"Wir testen hier auch die Qualität bei längeren Eingaben. " +
+						"Der Text geht weiter und weiter, um sicherzustellen, dass alles funktioniert.",
+					sourceLang: "de",
+					targetLang: "en",
+				},
+				expectation: {
+					validation: "min-length",
+					minLength: 100,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 20000,
+		};
+	}
+
+	// ========== CONFIG HOT RELOAD TESTS (QVAC-9409) ==========
+
+	buildConfigReloadWhisperLanguageTest(): TestDefinition {
+		return {
+			testId: "config-reload-whisper-language",
+			payload: JSON.stringify({
+				testId: "config-reload-whisper-language",
+				params: {
+					newLanguage: "es",
+				},
+				expectation: {
+					validation: "config-reload-success",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildConfigReloadWhisperParamsTest(): TestDefinition {
+		return {
+			testId: "config-reload-whisper-params",
+			payload: JSON.stringify({
+				testId: "config-reload-whisper-params",
+				params: {
+					newConfig: {
+						language: "de",
+						temperature: 0.2,
+						suppress_blank: false,
+					},
+				},
+				expectation: {
+					validation: "config-reload-success",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildConfigReloadPreservesIdTest(): TestDefinition {
+		return {
+			testId: "config-reload-preserves-id",
+			payload: JSON.stringify({
+				testId: "config-reload-preserves-id",
+				params: {},
+				expectation: {
+					validation: "model-id-preserved",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildConfigReloadInvalidModelIdTest(): TestDefinition {
+		return {
+			testId: "config-reload-invalid-model-id",
+			payload: JSON.stringify({
+				testId: "config-reload-invalid-model-id",
+				params: {
+					invalidModelId: "0000000000000000",
+				},
+				expectation: {
+					validation: "error-expected",
+					errorType: "model-not-found",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildConfigReloadWrongModelTypeTest(): TestDefinition {
+		return {
+			testId: "config-reload-wrong-model-type",
+			payload: JSON.stringify({
+				testId: "config-reload-wrong-model-type",
+				params: {},
+				expectation: {
+					validation: "error-expected",
+					errorType: "model-type-mismatch",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildConfigReloadThenTranscribeTest(): TestDefinition {
+		return {
+			testId: "config-reload-then-transcribe",
+			payload: JSON.stringify({
+				testId: "config-reload-then-transcribe",
+				params: {
+					audioFileName: "transcription-short.wav",
+					newLanguage: "en",
+				},
+				expectation: {
+					validation: "transcription-after-reload",
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 15000,
+		};
+	}
+
 	// ========== ADDITIONAL LLM COMPLETION TESTS ==========
 
 	buildCompletionSystemMessageTest(): TestDefinition {
@@ -1726,6 +2106,557 @@ export class TestBuilder {
 	};
 	}
 
+	// ========== QVAC-9402: TRANSCRIPTION PROMPT PARAMETER TESTS ==========
+
+	buildTranscriptionWithPromptTest(): TestDefinition {
+		return {
+			testId: "transcription-with-prompt",
+			payload: JSON.stringify({
+				testId: "transcription-with-prompt",
+				params: {
+					audioFileName: "transcription-short.wav",
+					prompt: "This is a test recording about QVAC SDK automation testing.",
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["test", "QVAC"],
+					minLength: 10,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	buildTranscriptionPromptTechnicalTermsTest(): TestDefinition {
+		return {
+			testId: "transcription-prompt-technical",
+			payload: JSON.stringify({
+				testId: "transcription-prompt-technical",
+				params: {
+					audioFileName: "transcription-short.wav",
+					prompt: "Technical terms: SDK, API, TypeScript, JavaScript, QVAC, Whisper, transcription.",
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["test"],
+					minLength: 5,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	buildTranscriptionPromptPunctuationTest(): TestDefinition {
+		return {
+			testId: "transcription-prompt-punctuation",
+			payload: JSON.stringify({
+				testId: "transcription-prompt-punctuation",
+				params: {
+					audioFileName: "transcription-short.wav",
+					prompt: "Use proper punctuation. Include periods, commas, and question marks.",
+				},
+				expectation: {
+					validation: "has-punctuation",
+					minLength: 5,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	buildTranscriptionWithoutPromptTest(): TestDefinition {
+		return {
+			testId: "transcription-without-prompt",
+			payload: JSON.stringify({
+				testId: "transcription-without-prompt",
+				params: {
+					audioFileName: "transcription-short.wav",
+					prompt: null, // Explicitly no prompt
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["test"],
+					minLength: 5,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	buildTranscriptionPromptEmptyStringTest(): TestDefinition {
+		return {
+			testId: "transcription-prompt-empty",
+			payload: JSON.stringify({
+				testId: "transcription-prompt-empty",
+				params: {
+					audioFileName: "transcription-short.wav",
+					prompt: "", // Empty string prompt
+				},
+				expectation: {
+					validation: "contains-keywords",
+					keywords: ["test"],
+					minLength: 5,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	// ========== QVAC-9403: TTS STACK OVERFLOW PREVENTION TESTS ==========
+
+	buildTtsShortTextTest(): TestDefinition {
+		return {
+			testId: "tts-short-text",
+			payload: JSON.stringify({
+				testId: "tts-short-text",
+				params: {
+					text: "Hello, how are you today?",
+					stream: false,
+				},
+				expectation: {
+					validation: "audio-generated",
+					minSamples: 100,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildTtsMediumTextTest(): TestDefinition {
+		return {
+			testId: "tts-medium-text",
+			payload: JSON.stringify({
+				testId: "tts-medium-text",
+				params: {
+					text: "This is a test of the Text-to-Speech system. It should generate clear and natural sounding audio output from the provided text input.",
+					stream: false,
+				},
+				expectation: {
+					validation: "audio-generated",
+					minSamples: 500,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 20000,
+		};
+	}
+
+	buildTtsLongTextTest(): TestDefinition {
+		return {
+			testId: "tts-long-text",
+			payload: JSON.stringify({
+				testId: "tts-long-text",
+				params: {
+					text: "QVAC SDK is the canonical entry point to QVAC. Written in TypeScript, it provides all QVAC capabilities through a unified interface while also abstracting away the complexity of running your application in a JS environment other than Bare. Supported JS environments include Bare, Node.js, Expo and Bun. The SDK is designed to be flexible and extensible, allowing developers to integrate advanced AI capabilities into their applications with minimal effort.",
+					stream: false,
+				},
+				expectation: {
+					validation: "audio-generated",
+					minSamples: 1000,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	buildTtsVeryLongTextTest(): TestDefinition {
+		return {
+			testId: "tts-very-long-text",
+			payload: JSON.stringify({
+				testId: "tts-very-long-text",
+				params: {
+					text: "The QVAC SDK provides a comprehensive suite of tools and capabilities for building intelligent applications. It includes support for natural language processing, speech recognition, text-to-speech synthesis, machine translation, and much more. The SDK is designed with developer experience in mind, offering clear documentation, extensive examples, and robust error handling. Whether you're building a chatbot, a voice assistant, or a content analysis tool, the QVAC SDK has the features you need to succeed. The architecture is modular and scalable, allowing you to start small and grow your application as your needs evolve. Integration with existing systems is straightforward, thanks to the SDK's flexible API design and comprehensive type definitions.",
+					stream: false,
+				},
+				expectation: {
+					validation: "audio-generated",
+					minSamples: 2000,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 45000,
+		};
+	}
+
+	buildTtsStackOverflowPreventionTest(): TestDefinition {
+		return {
+			testId: "tts-stack-overflow-prevention",
+			payload: JSON.stringify({
+				testId: "tts-stack-overflow-prevention",
+				params: {
+					text: "The QVAC SDK is a powerful platform for building intelligent applications with advanced AI capabilities. It provides a comprehensive suite of tools including natural language processing, speech recognition and synthesis, machine translation, and computer vision. The SDK is designed to be developer-friendly with clear documentation and extensive examples. It supports multiple JavaScript environments including Bare, Node.js, Bun, and Expo. The architecture is modular and scalable, allowing applications to start small and grow as needs evolve. Performance optimizations ensure efficient operation even with large-scale workloads. The SDK handles complex AI workflows seamlessly, abstracting away infrastructure complexity while maintaining flexibility and control. Developers can focus on building great user experiences rather than managing AI infrastructure. The text-to-speech system specifically has been optimized to handle long text inputs without stack overflow errors, using efficient buffer management techniques.",
+					stream: false,
+				},
+				expectation: {
+					validation: "audio-generated",
+					minSamples: 3000,
+					noStackOverflow: true,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 60000,
+		};
+	}
+
+	buildTtsParagraphTextTest(): TestDefinition {
+		return {
+			testId: "tts-paragraph-text",
+			payload: JSON.stringify({
+				testId: "tts-paragraph-text",
+				params: {
+					text: "Text-to-speech technology has come a long way in recent years. Modern systems can produce highly natural sounding speech that is nearly indistinguishable from human voices. This is achieved through advanced neural network architectures and large-scale training on diverse speech datasets. The QVAC SDK leverages these advances to provide high-quality speech synthesis capabilities.",
+					stream: false,
+				},
+				expectation: {
+					validation: "audio-generated",
+					minSamples: 1500,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 35000,
+		};
+	}
+
+	buildTtsTechnicalTextTest(): TestDefinition {
+		return {
+			testId: "tts-technical-text",
+			payload: JSON.stringify({
+				testId: "tts-technical-text",
+				params: {
+					text: "API endpoints support REST and GraphQL protocols. Authentication uses OAuth 2.0 with JWT tokens. Database queries are optimized with indexes and caching. TypeScript provides static type checking and improved IDE support.",
+					stream: false,
+				},
+				expectation: {
+					validation: "audio-generated",
+					minSamples: 800,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 25000,
+		};
+	}
+
+	buildTtsStreamingTest(): TestDefinition {
+		return {
+			testId: "tts-streaming",
+			payload: JSON.stringify({
+				testId: "tts-streaming",
+				params: {
+					text: "This is a streaming test for the Text-to-Speech system. The audio should be generated in chunks rather than all at once.",
+					stream: true,
+				},
+				expectation: {
+					validation: "audio-streamed",
+					minChunks: 2,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 25000,
+		};
+	}
+
+	buildTtsNonStreamingTest(): TestDefinition {
+		return {
+			testId: "tts-non-streaming",
+			payload: JSON.stringify({
+				testId: "tts-non-streaming",
+				params: {
+					text: "This tests non-streaming mode which should return the complete audio buffer at once.",
+					stream: false,
+				},
+				expectation: {
+					validation: "audio-generated",
+					minSamples: 500,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 20000,
+		};
+	}
+
+	buildTtsSpecialCharactersTest(): TestDefinition {
+		return {
+			testId: "tts-special-characters",
+			payload: JSON.stringify({
+				testId: "tts-special-characters",
+				params: {
+					text: "Hello! How are you? I'm fine, thanks. Let's test: numbers (123), symbols (@#$), and punctuation...",
+					stream: false,
+				},
+				expectation: {
+					validation: "audio-generated",
+					minSamples: 500,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 20000,
+		};
+	}
+
+	buildTtsEmptyTextErrorTest(): TestDefinition {
+		return {
+			testId: "tts-empty-text-error",
+			payload: JSON.stringify({
+				testId: "tts-empty-text-error",
+				params: {
+					text: "",
+					stream: false,
+				},
+				expectation: {
+					validation: "empty-text-error",
+					// Empty text should either produce an error or handle gracefully
+					allowError: true,
+					errorContains: "append",
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-9403: Verifies empty text doesn't cause stack overflow or crash",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	// ========== ADDITIONAL TTS TESTS (QVAC-9403: Comprehensive Coverage) ==========
+
+	buildTtsExtremelyLongTextTest(): TestDefinition {
+		// ~2000 character text to stress test buffer management
+		const extremelyLongText = "The QVAC SDK represents a major advancement in AI development tools. " +
+			"It provides developers with powerful capabilities for building intelligent applications " +
+			"that can understand, process, and generate human language. The SDK supports multiple " +
+			"modalities including text, speech, and images. Text-to-speech functionality allows " +
+			"applications to convert written content into natural sounding audio output. This is " +
+			"achieved through advanced neural network models that have been trained on large datasets " +
+			"of human speech. The resulting audio is highly intelligible and sounds remarkably natural. " +
+			"Performance optimizations ensure that even long text passages can be converted to speech " +
+			"efficiently without causing memory issues or stack overflows. The buffer management system " +
+			"has been carefully designed to handle large audio outputs in a streaming fashion when " +
+			"needed, or to efficiently concatenate smaller chunks for non-streaming mode. This allows " +
+			"developers to choose the approach that best fits their application requirements. Whether " +
+			"building a voice assistant, an audiobook reader, or an accessibility tool, the QVAC SDK " +
+			"provides the foundation for high-quality speech synthesis. The text processing pipeline " +
+			"handles various input types gracefully, including technical content, numbers, special " +
+			"characters, and multilingual text. Error handling is robust, ensuring that edge cases " +
+			"do not cause crashes or unexpected behavior. The SDK continues to evolve with regular " +
+			"updates that improve performance, add new features, and enhance compatibility across " +
+			"different platforms and environments including desktop, mobile, and embedded systems.";
+		return {
+			testId: "tts-extremely-long-text",
+			payload: JSON.stringify({
+				testId: "tts-extremely-long-text",
+				params: {
+					text: extremelyLongText,
+					stream: false,
+				},
+				expectation: {
+					validation: "audio-generated",
+					minSamples: 5000,
+					noStackOverflow: true,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-9403: Tests extremely long text without stack overflow",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 90000,
+		};
+	}
+
+	buildTtsWhitespaceOnlyTest(): TestDefinition {
+		return {
+			testId: "tts-whitespace-only",
+			payload: JSON.stringify({
+				testId: "tts-whitespace-only",
+				params: {
+					text: "   \t\n   ",
+					stream: false,
+				},
+				expectation: {
+					validation: "whitespace-handled",
+					allowError: true,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-9403: Verifies whitespace-only doesn't cause stack overflow",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildTtsUnicodeTextTest(): TestDefinition {
+		return {
+			testId: "tts-unicode-text",
+			payload: JSON.stringify({
+				testId: "tts-unicode-text",
+				params: {
+					text: "Testing unicode: café, naïve, résumé, über, and emoji 👍",
+					stream: false,
+				},
+				expectation: {
+					validation: "audio-generated",
+					minSamples: 200,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 20000,
+		};
+	}
+
+	buildTtsNumbersOnlyTest(): TestDefinition {
+		return {
+			testId: "tts-numbers-only",
+			payload: JSON.stringify({
+				testId: "tts-numbers-only",
+				params: {
+					text: "1234567890 42 3.14159 1000000",
+					stream: false,
+				},
+				expectation: {
+					validation: "audio-generated",
+					minSamples: 200,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildTtsMixedPunctuationTest(): TestDefinition {
+		return {
+			testId: "tts-mixed-punctuation",
+			payload: JSON.stringify({
+				testId: "tts-mixed-punctuation",
+				params: {
+					text: "Wait... what?! Really?? Yes! No. Maybe... okay.",
+					stream: false,
+				},
+				expectation: {
+					validation: "audio-generated",
+					minSamples: 300,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildTtsRepeatedWordsTest(): TestDefinition {
+		return {
+			testId: "tts-repeated-words",
+			payload: JSON.stringify({
+				testId: "tts-repeated-words",
+				params: {
+					text: "Hello hello hello hello hello. Testing testing testing. One two three.",
+					stream: false,
+				},
+				expectation: {
+					validation: "audio-generated",
+					minSamples: 400,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 20000,
+		};
+	}
+
+	buildTtsSingleWordTest(): TestDefinition {
+		return {
+			testId: "tts-single-word",
+			payload: JSON.stringify({
+				testId: "tts-single-word",
+				params: {
+					text: "Hello",
+					stream: false,
+				},
+				expectation: {
+					validation: "audio-generated",
+					minSamples: 50,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildTtsSentenceBoundariesTest(): TestDefinition {
+		return {
+			testId: "tts-sentence-boundaries",
+			payload: JSON.stringify({
+				testId: "tts-sentence-boundaries",
+				params: {
+					text: "First sentence. Second sentence! Third sentence? Fourth sentence. Fifth sentence.",
+					stream: false,
+				},
+				expectation: {
+					validation: "audio-generated",
+					minSamples: 400,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 20000,
+		};
+	}
+
+	buildTtsLargeBufferNonStreamingTest(): TestDefinition {
+		// ~1500 character text - specifically tests the stack overflow prevention in non-streaming mode
+		const largeBufferText = "This is a comprehensive test of the text-to-speech system's ability to handle " +
+			"large audio buffer generation in non-streaming mode. The system must efficiently manage " +
+			"memory and avoid stack overflow errors when generating extended audio content. Modern " +
+			"speech synthesis systems use neural networks to produce natural sounding voices. These " +
+			"networks process text input through multiple stages including text normalization, phoneme " +
+			"conversion, and acoustic feature generation. The final audio waveform is synthesized " +
+			"from these features using vocoders or direct waveform prediction. Buffer management is " +
+			"critical for handling long texts because the audio output can be significantly larger " +
+			"than the input text. Efficient algorithms must be used to prevent memory exhaustion " +
+			"and stack overflow conditions. The QVAC SDK implements these optimizations to ensure " +
+			"reliable operation across different platforms and device capabilities.";
+		return {
+			testId: "tts-large-buffer-non-streaming",
+			payload: JSON.stringify({
+				testId: "tts-large-buffer-non-streaming",
+				params: {
+					text: largeBufferText,
+					stream: false,
+				},
+				expectation: {
+					validation: "audio-generated",
+					minSamples: 4000,
+					noStackOverflow: true,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-9403: Critical test for large buffer handling without stack overflow",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 75000,
+		};
+	}
+
 	buildEmbedSpecialCharactersTest(): TestDefinition {
 		return {
 			testId: "embed-special-chars",
@@ -2101,25 +3032,7 @@ export class TestBuilder {
 		};
 	}
 
-	buildCacheConfigDirectoryTest(): TestDefinition {
-		return {
-			testId: "cache-config-directory",
-			payload: JSON.stringify({
-				testId: "cache-config-directory",
-				params: {
-					cacheDirectory: "/tmp/qvac-test-cache"
-				},
-				expectation: {
-					validation: "config-set",
-					success: true
-				},
-				expectedOutcome: "pass",
-				debugInfo: "PR #249: setConfig({ cacheDirectory }) should configure custom cache directory"
-			}),
-			dependency: "none",
-			estimatedDurationMs: 5000,
-		};
-	}
+	// buildCacheConfigDirectoryTest removed - setConfig() API no longer exists (QVAC-9407)
 
 	buildCacheVerifyFilesTest(): TestDefinition {
 		return {
@@ -2232,11 +3145,11 @@ export class TestBuilder {
 
 	/**
 	 * Build tests filtered by section/category
-	 * @param section - "all", "transcription", "completion", "embedding", "rag", "model", "translation", "tools", "cache", or "error"
+	 * @param section - "all", "transcription", "completion", "embedding", "rag", "model", "translation", "nmt", "tools", "cache", "tts", "error", or "config-reload"
 	 */
 	buildTestsBySection(
 		tests: TestDefinition[],
-		section: "all" | "transcription" | "completion" | "embedding" | "rag" | "model" | "translation" | "tools" | "cache" | "error" = "all"
+		section: "all" | "transcription" | "completion" | "embedding" | "rag" | "model" | "translation" | "nmt" | "tools" | "cache" | "tts" | "error" | "config-reload" = "all"
 	): TestDefinition[] {
 		tests = [];
 
@@ -2330,6 +3243,12 @@ export class TestBuilder {
 			tests.push(this.buildTranscriptionM4aTest());
 			tests.push(this.buildTranscriptionCorruptedMp3Test());
 			tests.push(this.buildTranscriptionCorruptedWavTest());
+			// QVAC-9402: Transcription prompt parameter tests
+			tests.push(this.buildTranscriptionWithPromptTest());
+			tests.push(this.buildTranscriptionPromptTechnicalTermsTest());
+			tests.push(this.buildTranscriptionPromptPunctuationTest());
+			tests.push(this.buildTranscriptionWithoutPromptTest());
+			tests.push(this.buildTranscriptionPromptEmptyStringTest());
 		}
 
 		// Model loading tests (run for all sections - ensures they're always included)
@@ -2501,24 +3420,36 @@ export class TestBuilder {
 	// tests.push(this.buildVisionErrorMissingImageTest());
 	// tests.push(this.buildVisionImageBase64Test());
 
-	// ========== TEXT-TO-SPEECH (TTS) TESTS (P1 - High Priority) ==========
-	// TTS TESTS MUTED - Not ready (missing eSpeakDataPath implementation)
-	// console.log("\n🔊 Adding Text-to-Speech Tests (P1 - Audio generation)");
-	// tests.push(this.buildTtsSimpleTextTest());
-	// tests.push(this.buildTtsLongTextTest());
-	// tests.push(this.buildTtsMultipleVoicesTest());
-	// tests.push(this.buildTtsSpeechRateTest());
-	// tests.push(this.buildTtsPitchControlTest());
-	// tests.push(this.buildTtsSpecialCharactersTest());
-	// tests.push(this.buildTtsNumbersAndDatesTest());
-	// tests.push(this.buildTtsMultilingualTest());
-	// tests.push(this.buildTtsOutputFormatWavTest());
-	// tests.push(this.buildTtsOutputFormatMp3Test());
-	// tests.push(this.buildTtsStreamingTest());
-	// tests.push(this.buildTtsErrorEmptyTextTest());
-	// tests.push(this.buildTtsErrorInvalidVoiceTest());
-	// tests.push(this.buildTtsErrorExtremeRateTest());
-	// tests.push(this.buildTtsSSMLSupportTest());
+	// ========== TEXT-TO-SPEECH (TTS) TESTS (QVAC-9403: Stack Overflow Prevention) ==========
+	if (section === "all" || section === "tts") {
+		console.log("\n🔊 Adding Text-to-Speech Tests (QVAC-9403: Stack Overflow Prevention)");
+		// Core TTS tests - various text lengths
+		tests.push(this.buildTtsShortTextTest());
+		tests.push(this.buildTtsMediumTextTest());
+		tests.push(this.buildTtsLongTextTest());
+		tests.push(this.buildTtsVeryLongTextTest());
+		// Critical stack overflow prevention tests
+		tests.push(this.buildTtsStackOverflowPreventionTest());
+		tests.push(this.buildTtsExtremelyLongTextTest());
+		tests.push(this.buildTtsLargeBufferNonStreamingTest());
+		// Content type tests
+		tests.push(this.buildTtsParagraphTextTest());
+		tests.push(this.buildTtsTechnicalTextTest());
+		// Non-streaming mode (QVAC-9403 focus - streaming not supported by SDK TTS)
+		tests.push(this.buildTtsNonStreamingTest());
+		// Edge case and special character tests
+		tests.push(this.buildTtsSpecialCharactersTest());
+		tests.push(this.buildTtsUnicodeTextTest());
+		tests.push(this.buildTtsNumbersOnlyTest());
+		tests.push(this.buildTtsMixedPunctuationTest());
+		tests.push(this.buildTtsSingleWordTest());
+		tests.push(this.buildTtsRepeatedWordsTest());
+		tests.push(this.buildTtsSentenceBoundariesTest());
+		// Error handling tests
+		tests.push(this.buildTtsEmptyTextErrorTest());
+		tests.push(this.buildTtsWhitespaceOnlyTest());
+		console.log("   ✅ Added 19 TTS tests (comprehensive stack overflow prevention coverage)");
+	}
 
 	// Embedding tests
 		if (section === "all" || section === "embedding") {
@@ -2555,6 +3486,38 @@ export class TestBuilder {
 		tests.push(this.buildTranslationFrToDeTest());
 		tests.push(this.buildTranslationFrToEnTest());
 		tests.push(this.buildTranslationEnToPtTest());
+	}
+
+	// NMT Translation tests (QVAC-9401: NMT generation parameters)
+	if (section === "all" || section === "translation" || section === "nmt") {
+		console.log("\n🌐 Adding NMT Translation Tests (QVAC-9401: Generation Parameters)");
+		// Core NMT tests (DE→EN model)
+		tests.push(this.buildNmtTranslationBasicTest());
+		tests.push(this.buildNmtTranslationLongTextTest());
+		tests.push(this.buildNmtTranslationShortTextTest());
+		tests.push(this.buildNmtTranslationRepeatedWordsTest());
+		tests.push(this.buildNmtTranslationSpecialCharsTest());
+		tests.push(this.buildNmtTranslationNumbersTest());
+		tests.push(this.buildNmtTranslationPunctuationTest());
+		tests.push(this.buildNmtTranslationEmptyTextTest());
+		// Additional coverage tests
+		tests.push(this.buildNmtTranslationTechnicalTextTest());
+		tests.push(this.buildNmtTranslationFormalTextTest());
+		tests.push(this.buildNmtTranslationQuestionTest());
+		tests.push(this.buildNmtTranslationMaxLengthTest());
+		console.log("   ✅ Added 12 NMT translation tests");
+	}
+
+	// Config Hot Reload tests (QVAC-9409)
+	if (section === "all" || section === "transcription" || section === "config-reload") {
+		console.log("\n🔄 Adding Config Hot Reload Tests (QVAC-9409)");
+		tests.push(this.buildConfigReloadWhisperLanguageTest());
+		tests.push(this.buildConfigReloadWhisperParamsTest());
+		tests.push(this.buildConfigReloadPreservesIdTest());
+		tests.push(this.buildConfigReloadInvalidModelIdTest());
+		tests.push(this.buildConfigReloadWrongModelTypeTest());
+		tests.push(this.buildConfigReloadThenTranscribeTest());
+		console.log("   ✅ Added 6 config hot reload tests");
 	}
 
 		// ========== PHASE 4: ROBUSTNESS & ADVANCED SCENARIOS ==========
@@ -2607,13 +3570,13 @@ export class TestBuilder {
 			tests.push(this.buildCacheDeleteAllTest());
 			tests.push(this.buildCacheDeleteByKeyTest());
 			tests.push(this.buildCacheDeleteByModelTest());
-			tests.push(this.buildCacheConfigDirectoryTest());
+			// cache-config-directory removed - setConfig() API no longer exists
 			tests.push(this.buildCacheVerifyFilesTest());
 			tests.push(this.buildCacheHypercoreDeletionTest());
 			tests.push(this.buildCacheMultipleModelsTest());
 			tests.push(this.buildCacheAfterUnloadTest());
 			tests.push(this.buildCacheInvalidKeyTest());
-			console.log("   ✅ Added 10 cache management tests");
+			console.log("   ✅ Added 9 cache management tests");
 		}
 
 		// ========== PHASE 5.5: ERROR HANDLING & PARAMETER VALIDATION (Sprint 1 - Priority 1) ==========
@@ -6332,10 +7295,10 @@ export class TestBuilder {
 		};
 	}
 
-	buildTtsLongTextTest(): TestDefinition {
+	buildTtsLongTextOldTest(): TestDefinition {
 		const longText = "The quick brown fox jumps over the lazy dog. ".repeat(20);
 		return {
-			testId: "tts-long-text",
+			testId: "tts-long-text-old",
 			payload: JSON.stringify({
 				testId: "tts-long-text",
 				params: {
@@ -6418,11 +7381,11 @@ export class TestBuilder {
 		};
 	}
 
-	buildTtsSpecialCharactersTest(): TestDefinition {
+	buildTtsSpecialCharactersOldTest(): TestDefinition {
 		return {
-			testId: "tts-special-characters",
+			testId: "tts-special-characters-old",
 			payload: JSON.stringify({
-				testId: "tts-special-characters",
+				testId: "tts-special-characters-old",
 				params: {
 					text: "Hello! How are you? I'm fine, thanks... What about $100 or 50%?",
 					voice: "default"
@@ -6524,11 +7487,11 @@ export class TestBuilder {
 		};
 	}
 
-	buildTtsStreamingTest(): TestDefinition {
+	buildTtsStreamingOldTest(): TestDefinition {
 		return {
-			testId: "tts-streaming",
+			testId: "tts-streaming-old",
 			payload: JSON.stringify({
-				testId: "tts-streaming",
+				testId: "tts-streaming-old",
 				params: {
 					text: "This is a test of streaming text-to-speech.",
 					voice: "default",

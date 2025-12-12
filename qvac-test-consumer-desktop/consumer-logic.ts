@@ -12,6 +12,7 @@ import {
 	MMPROJ_SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
 	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM,
 	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG,
+	MARIAN_OPUS_DE_EN_Q0F32,
 } from "@tetherto/sdk-dev";
 
 export class DesktopConsumer extends ConsumerBase {
@@ -95,14 +96,37 @@ export class DesktopConsumer extends ConsumerBase {
 	}
 
 	protected async loadTtsModel(): Promise<string> {
-		// TODO: TTS model loading requires additional configuration
-		// For now, throw an error to indicate it's not implemented
-		throw new Error("TTS model loading not yet implemented - requires configSrc and eSpeakDataPath");
+		return await loadModel({
+			modelSrc: TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM,
+			modelType: "tts",
+			configSrc: TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG,
+			eSpeakDataPath: this.getESpeakDataPath(),
+			modelConfig: {
+				language: "en",
+			},
+		});
+	}
+
+	protected async loadNmtModel(): Promise<string> {
+		// QVAC-9401: NMT model with generation parameters
+		return await loadModel({
+			modelSrc: MARIAN_OPUS_DE_EN_Q0F32,
+			modelType: "nmt",
+			modelConfig: {
+				from: "de",
+				to: "en",
+				// Generation parameters (QVAC-9401)
+				beamsize: 4,
+				lengthpenalty: 1.0,
+				maxlength: 512,
+				temperature: 0.3,
+				norepeatngramsize: 3,
+			},
+		});
 	}
 
 	protected async getSDKFunctions() {
 		return { unloadModel };
 	}
 }
-
 

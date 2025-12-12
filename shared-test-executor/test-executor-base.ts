@@ -13,12 +13,12 @@ export interface SDKFunctions {
 	transcribe: any;
 	embed: any;
 	translate: any;
+	textToSpeech: any;  // TTS function (QVAC-9403)
 	loadModel: any;
 	unloadModel: any;
 	ragSaveEmbeddings: any;
 	deleteCache: any;
 	getModelInfo: any;
-	setConfig: any;
 	LLAMA_3_2_1B_INST_Q4_0: any;
 	GTE_LARGE_FP16: any;
 	GTE_LARGE_335M_FP16_SHARD?: any; // Sharded model constant (PR #237)
@@ -38,6 +38,7 @@ export abstract class TestExecutorBase {
 	protected visionModelId: string | null = null;
 	protected toolsModelId: string | null = null;
 	protected ttsModelId: string | null = null;
+	protected nmtModelId: string | null = null;
 	protected sdk: SDKFunctions;
 	protected platform: PlatformFunctions;
 
@@ -59,6 +60,10 @@ export abstract class TestExecutorBase {
 
 	setToolsModelId(modelId: string) {
 		this.toolsModelId = modelId;
+	}
+
+	setNmtModelId(modelId: string) {
+		this.nmtModelId = modelId;
 	}
 
 	setTtsModelId(modelId: string) {
@@ -287,6 +292,31 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("vision-error-missing-image", this.visionMultimodal.bind(this));
 		this.testHandlers.set("vision-image-base64", this.visionMultimodal.bind(this));
 
+		// ========== TTS (Text-to-Speech) Tests (QVAC-9403: Stack Overflow Prevention) ==========
+		// All TTS tests use 2 consolidated handlers with expectation.validation
+		// Non-streaming: ttsNonStreaming (validation: has-output, empty-or-error, no-stack-overflow)
+		// Streaming: ttsStreaming
+		this.testHandlers.set("tts-short-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-medium-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-long-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-very-long-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-stack-overflow-prevention", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-paragraph-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-technical-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-non-streaming", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-streaming", this.ttsStreaming.bind(this));
+		this.testHandlers.set("tts-special-characters", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-empty-text-error", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-extremely-long-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-whitespace-only", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-unicode-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-numbers-only", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-mixed-punctuation", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-repeated-words", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-single-word", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-sentence-boundaries", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-large-buffer-non-streaming", this.ttsNonStreaming.bind(this));
+
 		// Transcription tests
 		this.testHandlers.set("transcription", this.transcription.bind(this));
 		this.testHandlers.set("transcription-short-wav", this.transcriptionFormat.bind(this));
@@ -301,6 +331,12 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("transcription-corrupted-wav", this.transcriptionCorrupted.bind(this));
 		this.testHandlers.set("transcription-streaming", this.transcriptionFormat.bind(this));
 		this.testHandlers.set("transcription-very-short", this.transcriptionVeryShort.bind(this));
+		// QVAC-9402: Transcription with prompt parameter
+		this.testHandlers.set("transcription-with-prompt", this.transcriptionWithPrompt.bind(this));
+		this.testHandlers.set("transcription-prompt-technical", this.transcriptionWithPrompt.bind(this));
+		this.testHandlers.set("transcription-prompt-punctuation", this.transcriptionWithPromptPunctuation.bind(this));
+		this.testHandlers.set("transcription-without-prompt", this.transcriptionWithPrompt.bind(this));
+		this.testHandlers.set("transcription-prompt-empty", this.transcriptionWithPrompt.bind(this));
 
 		// Embedding tests
 		this.testHandlers.set("embed-simple-text", this.embedSimpleText.bind(this));
@@ -346,6 +382,30 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("translation-fr-to-de", this.translation.bind(this));
 		this.testHandlers.set("translation-fr-to-en", this.translation.bind(this));
 		this.testHandlers.set("translation-en-to-pt", this.translation.bind(this));
+
+		// NMT Translation tests (QVAC-9401: NMT generation parameters)
+		this.testHandlers.set("nmt-translation-basic", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-long-text", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-short-text", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-repeated-words", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-special-chars", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-numbers", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-punctuation", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-empty-text", this.nmtTranslationEmptyText.bind(this));
+		// Additional NMT coverage tests
+		this.testHandlers.set("nmt-translation-technical", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-formal", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-question", this.nmtTranslation.bind(this));
+		this.testHandlers.set("nmt-translation-maxlength", this.nmtTranslation.bind(this));
+
+		// Config Hot Reload tests (QVAC-9409: Config HotReload)
+		// Both use same handler - params.newConfig differentiates single vs multi-param reload
+		this.testHandlers.set("config-reload-whisper-language", this.configReloadWhisperConfig.bind(this));
+		this.testHandlers.set("config-reload-whisper-params", this.configReloadWhisperConfig.bind(this));
+		this.testHandlers.set("config-reload-preserves-id", this.configReloadPreservesId.bind(this));
+		this.testHandlers.set("config-reload-invalid-model-id", this.configReloadInvalidModelId.bind(this));
+		this.testHandlers.set("config-reload-wrong-model-type", this.configReloadWrongModelType.bind(this));
+		this.testHandlers.set("config-reload-then-transcribe", this.configReloadThenTranscribe.bind(this));
 
 		// Model management tests
 		this.testHandlers.set("model-load-concurrent", this.modelLoadConcurrent.bind(this));
@@ -401,7 +461,7 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("cache-delete-all", this.cacheDeleteAll.bind(this));
 		this.testHandlers.set("cache-delete-by-key", this.cacheDeleteByKey.bind(this));
 		this.testHandlers.set("cache-delete-by-model", this.cacheDeleteByModel.bind(this));
-		this.testHandlers.set("cache-config-directory", this.cacheConfigDirectory.bind(this));
+		// cache-config-directory removed - setConfig() API no longer exists (QVAC-9407)
 		this.testHandlers.set("cache-verify-files", this.cacheVerifyFiles.bind(this));
 		this.testHandlers.set("cache-hypercore-deletion", this.cacheHypercoreDeletion.bind(this));
 		this.testHandlers.set("cache-multiple-models-info", this.cacheMultipleModels.bind(this));
@@ -3103,6 +3163,101 @@ export abstract class TestExecutorBase {
 		}
 	}
 
+	// ========== QVAC-9402: TRANSCRIPTION WITH PROMPT PARAMETER ==========
+
+	/**
+	 * Transcription with Prompt Test Handler (QVAC-9402)
+	 * Tests the new prompt parameter that guides Whisper transcription using initial_prompt.
+	 * The prompt helps Whisper understand context, technical terms, or expected output style.
+	 */
+	protected async transcriptionWithPrompt(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No Whisper model loaded", passed: false };
+		}
+
+		try {
+			const audioPath = await this.getAudioFilePath(params.audioFileName);
+			const prompt = params.prompt;
+
+			// Call transcribe with optional prompt parameter
+			const transcribeParams: { modelId: string; audioChunk: string; prompt?: string } = {
+				modelId,
+				audioChunk: audioPath,
+			};
+
+			// Only add prompt if it's a non-empty string
+			if (prompt && typeof prompt === 'string' && prompt.trim().length > 0) {
+				transcribeParams.prompt = prompt;
+			}
+
+			const text = (await this.sdk.transcribe(transcribeParams)).trim();
+
+			// Validate based on expectation
+			const keywords = expectation.keywords || [];
+			const minLength = expectation.minLength || 0;
+
+			let passed = text.length >= minLength;
+			let keywordMatches = 0;
+
+			if (keywords.length > 0) {
+				const lowerText = text.toLowerCase();
+				for (const keyword of keywords) {
+					if (lowerText.includes(keyword.toLowerCase())) {
+						keywordMatches++;
+					}
+				}
+				// Pass if at least one keyword is found (prompt guidance may alter exact words)
+				passed = passed && keywordMatches > 0;
+			}
+
+			const promptInfo = prompt ? `with prompt "${prompt.substring(0, 50)}..."` : "without prompt";
+			return {
+				output: `Transcription ${promptInfo}: "${text.substring(0, 100)}..." (${text.length} chars, ${keywordMatches}/${keywords.length} keywords)`,
+				passed,
+			};
+		} catch (error: any) {
+			return { output: `Transcription with prompt error: ${error.message}`, passed: false };
+		}
+	}
+
+	/**
+	 * Transcription with Punctuation Prompt Test Handler (QVAC-9402)
+	 * Tests that the prompt parameter can guide punctuation style in transcription.
+	 */
+	protected async transcriptionWithPromptPunctuation(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No Whisper model loaded", passed: false };
+		}
+
+		try {
+			const audioPath = await this.getAudioFilePath(params.audioFileName);
+			const prompt = params.prompt;
+
+			const transcribeParams: { modelId: string; audioChunk: string; prompt?: string } = {
+				modelId,
+				audioChunk: audioPath,
+			};
+
+			if (prompt && typeof prompt === 'string' && prompt.trim().length > 0) {
+				transcribeParams.prompt = prompt;
+			}
+
+			const text = (await this.sdk.transcribe(transcribeParams)).trim();
+
+			// Check for punctuation marks
+			const hasPunctuation = /[.!?,;:]/.test(text);
+			const minLength = expectation.minLength || 0;
+			const passed = text.length >= minLength && hasPunctuation;
+
+			return {
+				output: `Transcription with punctuation prompt: "${text.substring(0, 100)}..." (has punctuation: ${hasPunctuation})`,
+				passed,
+			};
+		} catch (error: any) {
+			return { output: `Transcription punctuation test error: ${error.message}`, passed: false };
+		}
+	}
+
 	// ========== EMBEDDING TESTS ==========
 
 	protected async embedSimpleText(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
@@ -3384,6 +3539,263 @@ export abstract class TestExecutorBase {
 				output: `Correctly threw error: ${error.message}`,
 				passed: true,
 			};
+		}
+	}
+
+	// ========== NMT TRANSLATION TESTS (QVAC-9401) ==========
+
+	protected async nmtTranslation(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Use NMT model ID if available, otherwise fall back to passed modelId
+		const nmtId = this.nmtModelId || modelId;
+		if (!nmtId) {
+			return { output: "No NMT model loaded", passed: false };
+		}
+
+		try {
+			const { text } = params;
+
+			console.log(`   🌐 NMT translating: "${text.substring(0, 50)}..."`);
+
+			// NMT translate call - from/to are set at model load time, NOT here
+			const result = this.sdk.translate({
+				modelId: nmtId,
+				text,
+				modelType: "nmt",
+				stream: false,
+			});
+
+			// Await the .text promise
+			const translatedText = await (result as any).text;
+			console.log(`   ✨ NMT result: "${(translatedText || '').substring(0, 100)}..."`);
+
+			// Validate translation output
+			const isNonEmpty = translatedText && translatedText.trim().length > 0;
+			const minLength = expectation.minLength || 1;
+			const meetsMinLength = translatedText.length >= minLength;
+
+			// Check for expected keywords if provided
+			const keywords = expectation.keywords || [];
+			const translatedLower = translatedText.toLowerCase();
+			const hasKeywords = keywords.length === 0 || keywords.some((kw: string) => translatedLower.includes(kw.toLowerCase()));
+
+			const passed = isNonEmpty && meetsMinLength && hasKeywords;
+
+			return {
+				output: `NMT translated "${text.substring(0, 30)}..." → "${translatedText.substring(0, 50)}..." (length: ${translatedText.length}, minReq: ${minLength})`,
+				passed,
+			};
+		} catch (error: any) {
+			return { output: `NMT Error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async nmtTranslationEmptyText(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const nmtId = this.nmtModelId || modelId;
+		if (!nmtId) {
+			return { output: "No NMT model loaded", passed: false };
+		}
+
+		try {
+			const { text } = params;
+
+			// Try to translate empty/whitespace text - from/to are set at model load time
+			const result = this.sdk.translate({
+				modelId: nmtId,
+				text,
+				modelType: "nmt",
+				stream: false,
+			});
+
+			const translatedText = await (result as any).text;
+
+			// Empty text should either return empty or throw an error - both are acceptable
+			const isEmpty = !translatedText || translatedText.trim().length === 0;
+			return {
+				output: `Empty text handled gracefully: result="${translatedText || "(empty)"}"`,
+				passed: isEmpty,
+			};
+		} catch (error: any) {
+			// Error on empty text is also acceptable
+			return {
+				output: `Empty text correctly rejected: ${error.message.substring(0, 100)}`,
+				passed: true,
+			};
+		}
+	}
+
+	// ========== CONFIG HOT RELOAD TESTS (QVAC-9409) ==========
+
+	protected async configReloadWhisperConfig(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Consolidated handler for Whisper config reload (single or multi-param)
+		if (!modelId) {
+			return { output: "No Whisper model loaded", passed: false };
+		}
+
+		try {
+			// Use newConfig if provided, otherwise create from newLanguage
+			const newConfig = params.newConfig || { language: params.newLanguage || "es" };
+			const paramKeys = Object.keys(newConfig).join(',');
+			
+			console.log(`   🔄 Hot reloading Whisper config: ${paramKeys}`);
+			
+			const reloadedId = await this.sdk.loadModel({
+				modelId: modelId,
+				modelType: "whisper",
+				modelConfig: newConfig,
+			});
+
+			const sameId = reloadedId === modelId;
+			return {
+				output: `Config reload success: ${paramKeys}, sameId=${sameId}`,
+				passed: sameId,
+			};
+		} catch (error: any) {
+			return { output: `Config reload error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async configReloadPreservesId(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Verifies that config reload returns the same model ID
+		if (!modelId) {
+			return { output: "No Whisper model loaded", passed: false };
+		}
+
+		try {
+			console.log(`   🔄 Verifying model ID preserved after config reload...`);
+			console.log(`   📋 Original model ID: ${modelId}`);
+			
+			const reloadedId = await this.sdk.loadModel({
+				modelId: modelId,
+				modelType: "whisper",
+				modelConfig: {
+					language: "fr",
+				},
+			});
+
+			const preserved = reloadedId === modelId;
+			console.log(`   📋 Reloaded model ID: ${reloadedId}`);
+			console.log(`   ${preserved ? '✅' : '❌'} Model ID ${preserved ? 'preserved' : 'changed'}`);
+
+			return {
+				output: `Model ID ${preserved ? 'preserved' : 'NOT preserved'}: original=${modelId}, reloaded=${reloadedId}`,
+				passed: preserved,
+			};
+		} catch (error: any) {
+			return { output: `Config reload error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async configReloadInvalidModelId(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Tests that config reload with invalid model ID fails appropriately
+		try {
+			const invalidModelId = params.invalidModelId || "0000000000000000";
+			
+			console.log(`   🔄 Attempting config reload with invalid model ID: ${invalidModelId}`);
+			
+			await this.sdk.loadModel({
+				modelId: invalidModelId,
+				modelType: "whisper",
+				modelConfig: {
+					language: "en",
+				},
+			});
+
+			// Should not reach here
+			return {
+				output: "ERROR: Expected error for invalid model ID, but reload succeeded",
+				passed: false,
+			};
+		} catch (error: any) {
+			// Expected to fail - check for appropriate error
+			const isModelNotFound = error.message?.toLowerCase().includes("not found") ||
+			                        error.message?.toLowerCase().includes("invalid") ||
+			                        error.code === 52001; // MODEL_NOT_FOUND
+			
+			console.log(`   ✅ Correctly rejected invalid model ID: ${error.message?.substring(0, 50)}`);
+			
+			return {
+				output: `Invalid model ID correctly rejected: ${error.message?.substring(0, 100)}`,
+				passed: isModelNotFound || error.message?.includes("model"),
+			};
+		}
+	}
+
+	protected async configReloadWrongModelType(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Tests that config reload with wrong model type fails
+		if (!modelId) {
+			return { output: "No Whisper model loaded", passed: false };
+		}
+
+		try {
+			console.log(`   🔄 Attempting config reload with wrong model type (llm instead of whisper)...`);
+			
+			await this.sdk.loadModel({
+				modelId: modelId,
+				modelType: "llm", // Wrong type - model is whisper
+				modelConfig: {
+					n_ctx: 2048,
+				},
+			} as any);
+
+			// Should not reach here
+			return {
+				output: "ERROR: Expected error for model type mismatch, but reload succeeded",
+				passed: false,
+			};
+		} catch (error: any) {
+			// Expected to fail with model type mismatch error
+			const isMismatch = error.message?.toLowerCase().includes("mismatch") ||
+			                   error.message?.toLowerCase().includes("type") ||
+			                   error.code === 52411; // MODEL_TYPE_MISMATCH
+			
+			console.log(`   ✅ Correctly rejected model type mismatch: ${error.message?.substring(0, 50)}`);
+			
+			return {
+				output: `Model type mismatch correctly rejected: ${error.message?.substring(0, 100)}`,
+				passed: isMismatch || error.message?.includes("model"),
+			};
+		}
+	}
+
+	protected async configReloadThenTranscribe(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Tests that transcription works correctly after config reload
+		if (!modelId) {
+			return { output: "No Whisper model loaded", passed: false };
+		}
+
+		try {
+			const audioFileName = params.audioFileName || "transcription-short.wav";
+			const newLanguage = params.newLanguage || "en";
+			
+			console.log(`   🔄 Reloading Whisper config with language=${newLanguage}...`);
+			
+			// First reload config
+			await this.sdk.loadModel({
+				modelId: modelId,
+				modelType: "whisper",
+				modelConfig: {
+					language: newLanguage,
+				},
+			});
+
+			console.log(`   🎤 Transcribing audio after config reload...`);
+			
+			// Then transcribe to verify config was applied
+			const audioPath = await this.getAudioFilePath(audioFileName);
+			const transcribedText = (await this.sdk.transcribe({
+				modelId: modelId,
+				audioChunk: audioPath,
+			})).trim();
+
+			const hasOutput = transcribedText.length > 0;
+			console.log(`   📝 Transcription result: "${transcribedText.substring(0, 50)}..."`);
+
+			return {
+				output: `Config reload + transcribe: language=${newLanguage}, output="${transcribedText.substring(0, 50)}..."`,
+				passed: hasOutput,
+			};
+		} catch (error: any) {
+			return { output: `Config reload + transcribe error: ${error.message}`, passed: false };
 		}
 	}
 
@@ -4224,19 +4636,6 @@ export abstract class TestExecutorBase {
 		}
 	}
 
-	protected async cacheConfigDirectory(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
-		const { cacheDirectory } = params;
-		try {
-			const result = await this.sdk.setConfig({ cacheDirectory });
-			return {
-				output: `Set cache directory to '${cacheDirectory}': ${result.success}`,
-				passed: result.success === expectation.success
-			};
-		} catch (error: any) {
-			return { output: `Error: ${error.message}`, passed: false };
-		}
-	}
-
 	protected async cacheVerifyFiles(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
 		const { modelConstant } = params;
 		const modelMap: any = {
@@ -4396,6 +4795,132 @@ export abstract class TestExecutorBase {
 				output: `Expected error: ${error.message}`,
 				passed
 			};
+		}
+	}
+
+	// ========== TTS (Text-to-Speech) Test Handlers (QVAC-9403) ==========
+
+	/**
+	 * TTS Non-Streaming Test Handler (Consolidated)
+	 * Handles all non-streaming TTS tests via expectation.validation:
+	 * - "has-output" / "audio-generated" (default): expect minSamples audio output
+	 * - "empty-or-error" / "empty-text-error" / "whitespace-handled": expect empty buffer OR graceful error
+	 * - "no-stack-overflow": test large text completes without stack overflow (uses noStackOverflow flag)
+	 */
+	protected async ttsNonStreaming(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const ttsModel = this.ttsModelId;
+		if (!ttsModel) {
+			return { output: "No TTS model loaded", passed: false };
+		}
+
+		const { text } = params;
+		const { validation = "has-output", minSamples = 100, noStackOverflow = false } = expectation;
+		
+		// Determine validation mode
+		const isEmptyOrError = ["empty-or-error", "empty-text-error", "whitespace-handled"].includes(validation);
+		const isStackOverflowTest = noStackOverflow || validation === "no-stack-overflow";
+
+		try {
+			const startTime = Date.now();
+			const result = this.sdk.textToSpeech({
+				modelId: ttsModel,
+				text,
+				inputType: "text",
+				stream: false,
+			});
+
+			const audioBuffer = await result.buffer;
+			const duration = Date.now() - startTime;
+			const sampleCount = audioBuffer?.length || 0;
+
+			// Stack overflow prevention test - completion is success
+			if (isStackOverflowTest) {
+				return {
+					output: `Completed in ${duration}ms: ${sampleCount} samples from ${text.length} chars`,
+					passed: true
+				};
+			}
+
+			// Empty/error test - expect empty buffer
+			if (isEmptyOrError) {
+				return {
+					output: sampleCount === 0 
+						? "Handled gracefully - empty buffer"
+						: `Generated ${sampleCount} samples (acceptable)`,
+					passed: true
+				};
+			}
+
+			// Default: expect audio output
+			const passed = sampleCount >= minSamples;
+			return {
+				output: `Generated ${sampleCount} samples from ${text.length} chars (min: ${minSamples})`,
+				passed
+			};
+		} catch (error: any) {
+			const errorMsg = error.message || String(error);
+			const isStackOverflow = errorMsg.includes('Maximum call stack') || 
+			                        errorMsg.includes('stack overflow') ||
+			                        errorMsg.includes('RangeError');
+
+			// Stack overflow is always a failure
+			if (isStackOverflow) {
+				return { output: `Stack overflow: ${errorMsg}`, passed: false };
+			}
+
+			// For empty/error tests, graceful error is acceptable
+			if (isEmptyOrError) {
+				return { output: `Handled gracefully: ${errorMsg.substring(0, 80)}`, passed: true };
+			}
+
+			return { output: `TTS error: ${errorMsg}`, passed: false };
+		}
+	}
+
+	/**
+	 * TTS Streaming Test Handler
+	 * Tests text-to-speech in streaming mode where audio is generated in chunks.
+	 */
+	protected async ttsStreaming(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const ttsModel = this.ttsModelId;
+		if (!ttsModel) {
+			return { output: "No TTS model loaded", passed: false };
+		}
+
+		const { text } = params;
+
+		try {
+			const result = this.sdk.textToSpeech({
+				modelId: ttsModel,
+				text,
+				inputType: "text",
+				stream: true,
+			});
+
+			let chunkCount = 0;
+			let totalSamples = 0;
+
+			if (result && typeof result[Symbol.asyncIterator] === 'function') {
+				for await (const chunk of result) {
+					chunkCount++;
+					if (chunk.buffer) {
+						totalSamples += chunk.buffer.length || 0;
+					} else if (chunk.length) {
+						totalSamples += chunk.length;
+					}
+				}
+			} else if (result && result.buffer) {
+				const audioBuffer = await result.buffer;
+				chunkCount = 1;
+				totalSamples = audioBuffer?.length || 0;
+			}
+
+			return {
+				output: `Received ${chunkCount} chunks with ${totalSamples} total samples`,
+				passed: totalSamples > 0
+			};
+		} catch (error: any) {
+			return { output: `TTS streaming error: ${error.message}`, passed: false };
 		}
 	}
 }

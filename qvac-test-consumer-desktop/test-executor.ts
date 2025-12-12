@@ -3,6 +3,7 @@ import {
 	transcribe,
 	embed,
 	translate,
+	textToSpeech,
 	loadModel,
 	unloadModel,
 	ragSaveEmbeddings,
@@ -22,12 +23,12 @@ export class TestExecutor extends TestExecutorBase {
 			transcribe,
 			embed,
 			translate,
+			textToSpeech,
 			loadModel,
 			unloadModel,
 			ragSaveEmbeddings,
 			deleteCache,
 			getModelInfo,
-			setConfig: undefined, // Not available in this SDK version
 			LLAMA_3_2_1B_INST_Q4_0,
 			GTE_LARGE_FP16,
 			SDK_CLIENT_ERROR_CODES: undefined, // Not available in this SDK version
@@ -52,4 +53,3 @@ export class TestExecutor extends TestExecutorBase {
 		return this.platform.pathResolve(this.platform.getCwd(), "../shared-test-data/audio", filename);
 	}
 }
-
