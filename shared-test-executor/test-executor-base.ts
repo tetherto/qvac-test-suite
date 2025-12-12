@@ -19,6 +19,7 @@ export interface SDKFunctions {
 	ragSaveEmbeddings: any;
 	deleteCache: any;
 	getModelInfo: any;
+	loggingStream?: any;  // Addon logging stream (QVAC-9206)
 	LLAMA_3_2_1B_INST_Q4_0: any;
 	GTE_LARGE_FP16: any;
 	GTE_LARGE_335M_FP16_SHARD?: any; // Sharded model constant (PR #237)
@@ -406,6 +407,16 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("config-reload-invalid-model-id", this.configReloadInvalidModelId.bind(this));
 		this.testHandlers.set("config-reload-wrong-model-type", this.configReloadWrongModelType.bind(this));
 		this.testHandlers.set("config-reload-then-transcribe", this.configReloadThenTranscribe.bind(this));
+
+		// Addon Logging tests (QVAC-9206: C++ addon log streaming)
+		// Core tests: One per addon type - verifies buffered logs from model load
+		this.testHandlers.set("addon-logging-llm", this.addonLoggingStream.bind(this));
+		this.testHandlers.set("addon-logging-embed", this.addonLoggingStream.bind(this));
+		this.testHandlers.set("addon-logging-whisper", this.addonLoggingStream.bind(this));
+		this.testHandlers.set("addon-logging-tts", this.addonLoggingStream.bind(this));
+		// Edge cases: Error handling and real-time logging
+		this.testHandlers.set("addon-logging-invalid-model-id", this.addonLoggingInvalidId.bind(this));
+		this.testHandlers.set("addon-logging-during-inference", this.addonLoggingDuringInference.bind(this));
 
 		// Model management tests
 		this.testHandlers.set("model-load-concurrent", this.modelLoadConcurrent.bind(this));
@@ -3796,6 +3807,283 @@ export abstract class TestExecutorBase {
 			};
 		} catch (error: any) {
 			return { output: `Config reload + transcribe error: ${error.message}`, passed: false };
+		}
+	}
+
+	// ========== ADDON LOGGING TESTS (QVAC-9206) ==========
+
+	protected async addonLoggingStream(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Single handler for all addon logging tests - behavior driven by expectation
+		// Tests: loggingStream API receives C++ addon logs during model operations
+		
+		if (!this.sdk.loggingStream) {
+			return { output: "loggingStream not available in this SDK version", passed: false };
+		}
+
+		const { 
+			namespace, 
+			modelType, 
+			minLogs = 1, 
+			timeoutMs = 5000,
+			validation = "has-logs",  // "has-logs" | "namespace-exact" | "level-filter" | "timestamp-order"
+			expectedLevel,            // For level-filter validation
+		} = expectation;
+		const logs: Array<{ level: string; namespace: string; message: string; timestamp: number }> = [];
+		let streamError: string | null = null;
+
+		try {
+			// Get the appropriate model ID based on model type
+			let targetModelId: string | null = null;
+			switch (modelType) {
+				case "llm":
+					targetModelId = modelId;
+					break;
+				case "embedding":
+					targetModelId = modelId;
+					break;
+				case "whisper":
+					targetModelId = modelId;
+					break;
+				case "tts":
+					targetModelId = this.ttsModelId;
+					break;
+			}
+
+			if (!targetModelId) {
+				return { output: `No ${modelType} model loaded for logging test`, passed: false };
+			}
+
+			console.log(`   📡 Starting logging stream for ${modelType} model (namespace: ${namespace})...`);
+
+			// Start collecting logs with timeout
+			// Note: loggingStream API uses 'id' parameter, not 'modelId'
+			const collectLogsPromise = (async () => {
+				try {
+					for await (const log of this.sdk.loggingStream({ id: targetModelId })) {
+						logs.push({
+							level: log.level,
+							namespace: log.namespace,
+							message: log.message,
+							timestamp: log.timestamp,
+						});
+						console.log(`   📝 Log received: [${log.level}] ${log.namespace}: ${log.message.substring(0, 50)}...`);
+						
+						if (logs.length >= minLogs) {
+							break;
+						}
+					}
+				} catch (error: any) {
+					streamError = error.message || String(error);
+				}
+			})();
+
+			await Promise.race([
+				collectLogsPromise,
+				new Promise(resolve => setTimeout(resolve, timeoutMs)),
+			]);
+
+			// Validate based on expectation type
+			const hasLogs = logs.length >= minLogs;
+			const hasCorrectNamespace = logs.some(log => 
+				log.namespace === namespace || log.namespace.includes(namespace)
+			);
+			const hasValidLevels = logs.every(log => 
+				["error", "warn", "info", "debug"].includes(log.level.toLowerCase())
+			);
+
+			if (streamError) {
+				return { output: `Logging stream error: ${streamError}`, passed: false };
+			}
+
+			if (!hasLogs) {
+				return {
+					output: `No logs received within ${timeoutMs}ms (expected: ${minLogs}, got: ${logs.length})`,
+					passed: false,
+				};
+			}
+
+			// Additional validation based on type
+			switch (validation) {
+				case "namespace-exact":
+					const exactMatch = logs.every(log => log.namespace === namespace);
+					return {
+						output: `QVAC-9206: ${logs.length} logs, namespace exact match: ${exactMatch ? "✓" : "✗"} (${namespace})`,
+						passed: hasLogs && exactMatch,
+					};
+
+				case "level-filter":
+					const hasExpectedLevel = logs.some(log => log.level.toLowerCase() === expectedLevel?.toLowerCase());
+					return {
+						output: `QVAC-9206: ${logs.length} logs, found ${expectedLevel} level: ${hasExpectedLevel ? "✓" : "✗"}`,
+						passed: hasLogs && hasExpectedLevel,
+					};
+
+				case "timestamp-order":
+					let inOrder = true;
+					for (let i = 1; i < logs.length; i++) {
+						if (logs[i].timestamp < logs[i - 1].timestamp) {
+							inOrder = false;
+							break;
+						}
+					}
+					return {
+						output: `QVAC-9206: ${logs.length} logs, timestamps in order: ${inOrder ? "✓" : "✗"}`,
+						passed: hasLogs && inOrder,
+					};
+
+				case "has-logs":
+				default:
+					return {
+						output: `QVAC-9206: Received ${logs.length} logs from ${modelType} addon. Namespace ${hasCorrectNamespace ? "✓" : "✗"}, Levels ${hasValidLevels ? "✓" : "✗"}`,
+						passed: hasLogs && hasValidLevels,
+					};
+			}
+		} catch (error: any) {
+			return { output: `Addon logging error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async addonLoggingInvalidId(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Test error handling when streaming logs for non-existent model
+		if (!this.sdk.loggingStream) {
+			return { output: "loggingStream not available in this SDK version", passed: false };
+		}
+
+		const invalidId = params.invalidModelId || "non-existent-model-12345";
+		const { expectError = true, timeoutMs = 3000 } = expectation;
+
+		try {
+			console.log(`   📡 Testing loggingStream with invalid model ID: ${invalidId}...`);
+			
+			let receivedLogs = 0;
+			let errorReceived: string | null = null;
+
+			const streamPromise = (async () => {
+				try {
+					for await (const log of this.sdk.loggingStream({ id: invalidId })) {
+						receivedLogs++;
+						// Should not receive logs for invalid model
+						if (receivedLogs >= 3) break;
+					}
+				} catch (error: any) {
+					errorReceived = error.message || String(error);
+				}
+			})();
+
+			await Promise.race([
+				streamPromise,
+				new Promise(resolve => setTimeout(resolve, timeoutMs)),
+			]);
+
+			// For invalid model ID, we expect either:
+			// 1. An error is thrown
+			// 2. No logs are received (stream is empty/silent)
+			if (expectError && errorReceived !== null) {
+				const errorMsg = errorReceived as string;
+				return {
+					output: `QVAC-9206: Invalid model ID handled correctly - error: ${errorMsg.substring(0, 80)}`,
+					passed: true,
+				};
+			}
+
+			if (receivedLogs === 0) {
+				return {
+					output: `QVAC-9206: Invalid model ID handled correctly - no logs received (silent stream)`,
+					passed: true,
+				};
+			}
+
+			return {
+				output: `QVAC-9206: Unexpected - received ${receivedLogs} logs for invalid model ID`,
+				passed: false,
+			};
+		} catch (error: any) {
+			// Error during setup is also acceptable for invalid ID
+			return {
+				output: `QVAC-9206: Invalid model ID error (expected): ${error.message}`,
+				passed: expectError,
+			};
+		}
+	}
+
+	protected async addonLoggingDuringInference(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Test that logs are received during actual inference operations
+		if (!this.sdk.loggingStream) {
+			return { output: "loggingStream not available in this SDK version", passed: false };
+		}
+
+		if (!modelId) {
+			return { output: "No LLM model loaded for inference logging test", passed: false };
+		}
+
+		const { namespace = "llamacpp:llm", minLogs = 1, timeoutMs = 10000 } = expectation;
+		const logs: Array<{ level: string; namespace: string; message: string; timestamp: number }> = [];
+		let inferenceStarted = false;
+		let inferenceComplete = false;
+
+		try {
+			console.log(`   📡 Starting logging stream before inference...`);
+
+			// Start log collection
+			const logPromise = (async () => {
+				try {
+					for await (const log of this.sdk.loggingStream({ id: modelId })) {
+						logs.push({
+							level: log.level,
+							namespace: log.namespace,
+							message: log.message,
+							timestamp: log.timestamp,
+						});
+						console.log(`   📝 [${inferenceStarted ? "DURING" : "BEFORE"}] ${log.level}: ${log.message.substring(0, 40)}...`);
+						if (logs.length >= minLogs + 5) break; // Collect a few extra
+					}
+				} catch (error: any) {
+					console.log(`   ⚠️ Log stream ended: ${error.message?.substring(0, 50)}`);
+				}
+			})();
+
+			// Small delay to ensure stream is connected
+			await new Promise(resolve => setTimeout(resolve, 200));
+
+			// Run inference to generate activity
+			console.log(`   🔄 Running inference to generate logs...`);
+			inferenceStarted = true;
+			const logsBeforeInference = logs.length;
+
+			const result = this.sdk.completion({
+				modelId,
+				history: [{ role: "user", content: "Say hello in one word." }],
+				stream: true,
+				maxTokens: 20,
+			});
+
+			let tokens = "";
+			for await (const token of result.tokenStream) {
+				tokens += token;
+			}
+			inferenceComplete = true;
+			console.log(`   ✅ Inference complete: "${tokens.substring(0, 30)}..."`);
+
+			// Wait a bit more for any trailing logs
+			await Promise.race([
+				logPromise,
+				new Promise(resolve => setTimeout(resolve, 1000)),
+			]);
+
+			const logsAfterInference = logs.length;
+			const logsDuringInference = logsAfterInference - logsBeforeInference;
+
+			const hasLogs = logs.length >= minLogs;
+			const hasCorrectNamespace = logs.some(log => 
+				log.namespace === namespace || log.namespace.includes(namespace)
+			);
+
+			return {
+				output: `QVAC-9206: Total ${logs.length} logs (${logsDuringInference} during inference). Namespace: ${hasCorrectNamespace ? "✓" : "✗"}`,
+				passed: hasLogs && hasCorrectNamespace,
+			};
+		} catch (error: any) {
+			return { output: `Inference logging error: ${error.message}`, passed: false };
 		}
 	}
 

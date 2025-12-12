@@ -9,6 +9,7 @@ import {
 	ragSaveEmbeddings,
 	deleteCache,
 	getModelInfo,
+	loggingStream,
 	LLAMA_3_2_1B_INST_Q4_0,
 	GTE_LARGE_FP16,
 } from "@tetherto/sdk-dev";
@@ -29,6 +30,7 @@ export class TestExecutor extends TestExecutorBase {
 			ragSaveEmbeddings,
 			deleteCache,
 			getModelInfo,
+			loggingStream,
 			LLAMA_3_2_1B_INST_Q4_0,
 			GTE_LARGE_FP16,
 			SDK_CLIENT_ERROR_CODES: undefined, // Not available in this SDK version

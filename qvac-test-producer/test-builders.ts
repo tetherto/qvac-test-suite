@@ -1670,6 +1670,122 @@ export class TestBuilder {
 		};
 	}
 
+	// ========== ADDON LOGGING TESTS (QVAC-9206) ==========
+
+	buildAddonLoggingLlmTest(): TestDefinition {
+		return {
+			testId: "addon-logging-llm",
+			payload: JSON.stringify({
+				testId: "addon-logging-llm",
+				params: {},
+				expectation: {
+					modelType: "llm",
+					namespace: "llamacpp:llm",
+					minLogs: 1,
+					timeoutMs: 5000,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildAddonLoggingEmbedTest(): TestDefinition {
+		return {
+			testId: "addon-logging-embed",
+			payload: JSON.stringify({
+				testId: "addon-logging-embed",
+				params: {},
+				expectation: {
+					modelType: "embedding",
+					namespace: "llamacpp:embed",
+					minLogs: 1,
+					timeoutMs: 5000,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "embedding",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildAddonLoggingWhisperTest(): TestDefinition {
+		return {
+			testId: "addon-logging-whisper",
+			payload: JSON.stringify({
+				testId: "addon-logging-whisper",
+				params: {},
+				expectation: {
+					modelType: "whisper",
+					namespace: "whispercpp",
+					minLogs: 1,
+					timeoutMs: 5000,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "whisper",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	buildAddonLoggingTtsTest(): TestDefinition {
+		return {
+			testId: "addon-logging-tts",
+			payload: JSON.stringify({
+				testId: "addon-logging-tts",
+				params: {},
+				expectation: {
+					modelType: "tts",
+					namespace: "tts",
+					minLogs: 1,
+					timeoutMs: 5000,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	// Edge case tests
+	buildAddonLoggingInvalidModelIdTest(): TestDefinition {
+		return {
+			testId: "addon-logging-invalid-model-id",
+			payload: JSON.stringify({
+				testId: "addon-logging-invalid-model-id",
+				params: {
+					invalidModelId: "non-existent-model-xyz-12345",
+				},
+				expectation: {
+					expectError: true,
+					timeoutMs: 3000,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",  // Need SDK initialized
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	buildAddonLoggingDuringInferenceTest(): TestDefinition {
+		return {
+			testId: "addon-logging-during-inference",
+			payload: JSON.stringify({
+				testId: "addon-logging-during-inference",
+				params: {},
+				expectation: {
+					namespace: "llamacpp:llm",
+					minLogs: 1,
+					timeoutMs: 15000,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 20000,
+		};
+	}
+
 	// ========== ADDITIONAL LLM COMPLETION TESTS ==========
 
 	buildCompletionSystemMessageTest(): TestDefinition {
@@ -3145,11 +3261,11 @@ export class TestBuilder {
 
 	/**
 	 * Build tests filtered by section/category
-	 * @param section - "all", "transcription", "completion", "embedding", "rag", "model", "translation", "nmt", "tools", "cache", "tts", "error", or "config-reload"
+	 * @param section - "all", "transcription", "completion", "embedding", "rag", "model", "translation", "nmt", "tools", "cache", "tts", "error", "config-reload", or "addon-logging"
 	 */
 	buildTestsBySection(
 		tests: TestDefinition[],
-		section: "all" | "transcription" | "completion" | "embedding" | "rag" | "model" | "translation" | "nmt" | "tools" | "cache" | "tts" | "error" | "config-reload" = "all"
+		section: "all" | "transcription" | "completion" | "embedding" | "rag" | "model" | "translation" | "nmt" | "tools" | "cache" | "tts" | "error" | "config-reload" | "addon-logging" = "all"
 	): TestDefinition[] {
 		tests = [];
 
@@ -3518,6 +3634,20 @@ export class TestBuilder {
 		tests.push(this.buildConfigReloadWrongModelTypeTest());
 		tests.push(this.buildConfigReloadThenTranscribeTest());
 		console.log("   ✅ Added 6 config hot reload tests");
+	}
+
+	// Addon Logging tests (QVAC-9206)
+	if (section === "all" || section === "addon-logging") {
+		console.log("\n📡 Adding Addon Logging Tests (QVAC-9206)");
+		// Core addon type tests - verify buffered logs from model load
+		tests.push(this.buildAddonLoggingLlmTest());
+		tests.push(this.buildAddonLoggingEmbedTest());
+		tests.push(this.buildAddonLoggingWhisperTest());
+		tests.push(this.buildAddonLoggingTtsTest());
+		// Edge cases - error handling and real-time logging
+		tests.push(this.buildAddonLoggingInvalidModelIdTest());
+		tests.push(this.buildAddonLoggingDuringInferenceTest());
+		console.log("   ✅ Added 6 addon logging tests (4 core + 2 edge cases)");
 	}
 
 		// ========== PHASE 4: ROBUSTNESS & ADVANCED SCENARIOS ==========

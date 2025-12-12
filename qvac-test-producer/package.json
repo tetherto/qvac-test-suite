@@ -19,7 +19,8 @@
 		"batch:errors": "bun run batch-orchestrator.ts --section=error",
 		"batch:tts": "bun run batch-orchestrator.ts --section=tts",
 		"batch:nmt": "bun run batch-orchestrator.ts --section=nmt",
-		"batch:config-reload": "bun run batch-orchestrator.ts --section=config-reload"
+		"batch:config-reload": "bun run batch-orchestrator.ts --section=config-reload",
+		"batch:addon-logging": "bun run batch-orchestrator.ts --section=addon-logging"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",

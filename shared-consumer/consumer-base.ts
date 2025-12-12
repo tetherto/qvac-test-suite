@@ -126,6 +126,13 @@ export abstract class ConsumerBase {
 		if (testId.startsWith("transcription") || testId.startsWith("config-reload")) {
 			// Config reload tests (QVAC-9409) require Whisper model
 			return 'whisper';
+		} else if (testId.startsWith("addon-logging-")) {
+			// Addon logging tests (QVAC-9206) - model type based on suffix
+			if (testId === "addon-logging-llm") return 'llm';
+			if (testId === "addon-logging-embed") return 'embedding';
+			if (testId === "addon-logging-whisper") return 'whisper';
+			if (testId === "addon-logging-tts") return 'tts';
+			return 'llm'; // fallback
 		} else if (testId.startsWith("nmt-")) {
 			return 'nmt';
 		} else if (testId.startsWith("translation")) {
