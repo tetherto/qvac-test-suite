@@ -946,9 +946,7 @@ export class TestBuilder {
 	}
 
 	buildEmbedBatchTest(): TestDefinition {
-		// Known Issue: SDK hangs when processing parallel embedding requests via Promise.all
-		// Expected: Should process 3 embeddings concurrently or sequentially
-		// Debug Info: RPC client may not handle concurrent embed requests properly
+		// QVAC-8366: Batch embedding API - single call with text array
 		return {
 			testId: "embed-batch",
 			payload: JSON.stringify({
@@ -966,10 +964,9 @@ export class TestBuilder {
 					expectedCount: 3,
 				},
 				expectedOutcome: "pass",
-				debugInfo: "Batch of 3 texts. SDK RPC may need queue/semaphore for concurrent requests.",
 			}),
 			dependency: "embeddings",
-			estimatedDurationMs: 15000,
+			estimatedDurationMs: 10000,
 		};
 	}
 
