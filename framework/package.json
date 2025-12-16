@@ -41,6 +41,9 @@
   ],
   "author": "Tether",
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tetherto/qvac-test-suite.git",

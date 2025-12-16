@@ -36,10 +36,12 @@ program
 
 program
   .command('run:consumer:desktop')
-  .description('Start desktop test consumer')
+  .description('Build and run desktop consumer (auto-builds if needed)')
   .requiredOption('--runId <id>', 'Unique run identifier (must match producer)')
   .option('--mqtt-broker <url>', 'MQTT broker URL (overrides config)')
   .option('--config <path>', 'Path to config directory', process.cwd())
+  .option('--platform <platform>', 'Platform name', 'desktop')
+  .option('--rebuild', 'Force rebuild even if up to date')
   .action(runConsumerDesktop);
 
 program

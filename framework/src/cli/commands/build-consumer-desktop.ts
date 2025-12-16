@@ -93,7 +93,7 @@ async function installDependencies(
       return;
     }
 
-    const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
+    const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8') as string);
     const deps = { ...pkgJson.dependencies, ...pkgJson.devDependencies };
 
     const consumerPkgJson = {
@@ -141,7 +141,7 @@ function createConsumerWrapper(executorPath: string, configDir: string): string 
 
   return `
 import { config as loadDotenv } from 'dotenv';
-import * as os from 'os';
+import * as os from 'node:os';
 import { ConsumerBase } from '${consumerBasePath}';
 import { createMqttClient, buildMqttConnectionConfig } from '${mqttConnectionPath}';
 import { loadConfig } from '${configLoaderPath}';
