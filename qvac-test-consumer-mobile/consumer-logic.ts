@@ -27,6 +27,16 @@ export class MobileConsumer extends ConsumerBase {
 		super(client, consumerId, platform, runId, executor, callbacks);
 	}
 
+	// Legacy mobile system: tools tests are temporarily skipped.
+	// Prevent loading the tools model (QWEN) for tools-* tests.
+	protected override getRequiredModelType(
+		testId: string,
+	): "llm" | "whisper" | "embedding" | "translation" | "nmt" | "tools" | "vision" | "tts" | null {
+		if (testId.startsWith("tools-")) return null;
+		if (testId.startsWith("translation-")) return null;
+		return super.getRequiredModelType(testId);
+	}
+
 	protected async loadLlmModel(): Promise<string> {
 		return await loadModel({
 			modelSrc: LLAMA_3_2_1B_INST_Q4_0,

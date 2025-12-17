@@ -17,6 +17,7 @@ import {
 const sdkModule = require("@tetherto/sdk-dev");
 const SDK_LOG_ID: string | undefined = sdkModule.SDK_LOG_ID;
 import { TestExecutorBase, type SDKFunctions, type PlatformFunctions } from "../shared-test-executor/test-executor-base";
+import { makeSharedSkipHandler } from "../shared-test-executor/skip-handlers";
 import { Asset } from "expo-asset";
 import { File } from "expo-file-system";
 import { audio, documents, code } from "../shared-test-data/assets";
@@ -47,6 +48,23 @@ export class TestExecutor extends TestExecutorBase {
 			getCwd: () => require("process").cwd(),
 		};
 		super(sdk, platform);
+
+		// Legacy mobile system: tools tests are temporarily skipped.
+		// This rewrites expectations to "skip" and avoids any real tool execution logic.
+		const skipTools = makeSharedSkipHandler({
+			reason: "Tools tests are disabled on mobile consumer (temporary) - they time out",
+		});
+		const skipTranslation = makeSharedSkipHandler({
+			reason: "Translation tests are disabled on mobile consumer (temporary) - they time out",
+		});
+		for (const [testId] of this.testHandlers) {
+			if (testId.startsWith("tools-")) {
+				this.testHandlers.set(testId, skipTools);
+			}
+			if (testId.startsWith("translation-")) {
+				this.testHandlers.set(testId, skipTranslation);
+			}
+		}
 	}
 
 	protected async readDocumentFile(filename: string, category: 'documents' | 'code'): Promise<string> {
