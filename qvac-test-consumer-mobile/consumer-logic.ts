@@ -3,6 +3,7 @@ import type { MqttClient } from "mqtt";
 import {
 	loadModel,
 	unloadModel,
+	cancel,
 	LLAMA_3_2_1B_INST_Q4_0,
 	WHISPER_TINY,
 	VAD_SILERO_5_1_2,
@@ -131,7 +132,7 @@ export class MobileConsumer extends ConsumerBase {
 	}
 
 	protected async getSDKFunctions() {
-		return { unloadModel };
+		return { unloadModel, cancel };
 	}
 }
 

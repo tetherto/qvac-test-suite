@@ -571,27 +571,42 @@ export abstract class ConsumerBase {
 		this.log(`   ⚠️  SDK CRASH DETECTED - attempting recovery...`);
 		try {
 			// Import unloadModel - must be provided by subclass
-			const { unloadModel } = await this.getSDKFunctions();
+			const { unloadModel, cancel } = await this.getSDKFunctions();
 
-			if (this.llmModelId) {
-				await unloadModel({ modelId: this.llmModelId });
-				this.llmModelId = null;
-				this.log(`   🔄 Unloaded LLM model`);
-			}
-			if (this.whisperModelId) {
-				await unloadModel({ modelId: this.whisperModelId });
-				this.whisperModelId = null;
-				this.log(`   🔄 Unloaded Whisper model`);
-			}
-			if (this.embeddingModelId) {
-				await unloadModel({ modelId: this.embeddingModelId });
-				this.embeddingModelId = null;
-				this.log(`   🔄 Unloaded Embedding model`);
-			}
-			if (this.translationModelId) {
-				await unloadModel({ modelId: this.translationModelId });
-				this.translationModelId = null;
-				this.log(`   🔄 Unloaded Translation model`);
+			const models: Array<{
+				name: string;
+				getId: () => string | null;
+				clearId: () => void;
+			}> = [
+					{ name: "LLM", getId: () => this.llmModelId, clearId: () => { this.llmModelId = null; } },
+					{ name: "Whisper", getId: () => this.whisperModelId, clearId: () => { this.whisperModelId = null; } },
+					{ name: "Embedding", getId: () => this.embeddingModelId, clearId: () => { this.embeddingModelId = null; } },
+					{ name: "Translation", getId: () => this.translationModelId, clearId: () => { this.translationModelId = null; } },
+					{ name: "NMT", getId: () => this.nmtModelId, clearId: () => { this.nmtModelId = null; } },
+					{ name: "Tools", getId: () => this.toolsModelId, clearId: () => { this.toolsModelId = null; } },
+					{ name: "Vision", getId: () => this.visionModelId, clearId: () => { this.visionModelId = null; } },
+					{ name: "TTS", getId: () => this.ttsModelId, clearId: () => { this.ttsModelId = null; } },
+				];
+
+			for (const model of models) {
+				const modelId = model.getId();
+				if (!modelId) continue;
+
+				try {
+					await cancel({ modelId, operation: "inference" });
+				} catch (error: any) {
+					this.log(`   ⚠️  Error cancelling ${model.name} model: ${error?.message || String(error)}`);
+				}
+
+				try {
+					await unloadModel({ modelId });
+					this.log(`   🔄 Unloaded ${model.name} model`);
+				} catch (error: any) {
+					this.log(`   ⚠️  Error unloading ${model.name} model: ${error?.message || String(error)}`);
+				} finally {
+					// Clear local id so it reloads on next test even if unload errors.
+					model.clearId();
+				}
 			}
 			this.log(`   ✅ Recovery complete - models will reload on next test`);
 		} catch (recoveryError: any) {
@@ -601,7 +616,7 @@ export abstract class ConsumerBase {
 	}
 
 	// Abstract method to get SDK functions (platform-specific)
-	protected abstract getSDKFunctions(): Promise<{ unloadModel: any }>;
+	protected abstract getSDKFunctions(): Promise<{ unloadModel: any; cancel: any }>;
 
 	protected shutdown() {
 		this.log("\n👋 Consumer shutting down...");
@@ -610,7 +625,7 @@ export abstract class ConsumerBase {
 				this.callbacks.onShutdown();
 			}
 		});
-		if(process?.exit)
+		if (process?.exit)
 			process.exit(0);
 	}
 
