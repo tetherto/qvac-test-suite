@@ -413,13 +413,13 @@ export abstract class ConsumerBase {
 
 		try {
 			// Ensure required model is loaded for this test
-			const modelId = await this.ensureModelForTest(testId);
+			let modelId = await this.ensureModelForTest(testId);
 
 			// Calculate timeout based on test type
 			const timeoutMs = this.getTestTimeout(testId);
 
 			// Execute the test with timeout
-			const testPromise = this.executor.executeTest(testId, modelId, params, expectation);
+			let testPromise = this.executor.executeTest(testId, modelId, params, expectation);
 			const timeoutPromise = new Promise<never>((_, reject) => {
 				setTimeout(
 					() => reject(new Error(`Test timeout after ${timeoutMs / 1000}s`)),
@@ -427,7 +427,42 @@ export abstract class ConsumerBase {
 				);
 			});
 
-			const result = await Promise.race([testPromise, timeoutPromise]);
+			let result;
+			try {
+				result = await Promise.race([testPromise, timeoutPromise]);
+			} catch (error: any) {
+				result = { passed: false, output: `Error: ${error.message}` };
+			}
+			
+			const isIntentionalInvalidModel = params?.modelIdOverride !== undefined;
+			const outputStr = result?.output || '';
+			const isModelNotFound = !result.passed && 
+				outputStr.includes("not found") && 
+				outputStr.includes("Model with ID");
+			
+			if (isModelNotFound && !isIntentionalInvalidModel) {
+				this.log(`   ⚠️  Model not found in result, reloading and retrying...`);
+				// Clear cached model ID to force reload
+				const modelType = this.getRequiredModelType(testId);
+				if (modelType === 'llm') this.llmModelId = null;
+				else if (modelType === 'embedding') this.embeddingModelId = null;
+				else if (modelType === 'whisper') this.whisperModelId = null;
+				else if (modelType === 'tools') this.toolsModelId = null;
+				else if (modelType === 'nmt') this.nmtModelId = null;
+				else if (modelType === 'vision') this.visionModelId = null;
+				else if (modelType === 'tts') this.ttsModelId = null;
+				
+				// Reload model
+				modelId = await this.ensureModelForTest(testId);
+				this.log(`   🔄 Retrying with new model ID: ${modelId}`);
+				
+				try {
+					testPromise = this.executor.executeTest(testId, modelId, params, expectation);
+					result = await Promise.race([testPromise, timeoutPromise]);
+				} catch (retryError: any) {
+					result = { passed: false, output: `Error after retry: ${retryError.message}` };
+				}
+			}
 
 			const duration = Date.now() - startTime;
 			const outcome = result.passed ? "success" : "failure";
