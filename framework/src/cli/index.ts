@@ -1,9 +1,4 @@
 #!/usr/bin/env node
-import { config as loadDotenv } from 'dotenv';
-
-// Load .env file from current working directory if it exists
-loadDotenv();
-
 import { Command } from 'commander';
 import { runProducer } from './commands/run-producer.js';
 import { runConsumerDesktop } from './commands/run-consumer-desktop.js';

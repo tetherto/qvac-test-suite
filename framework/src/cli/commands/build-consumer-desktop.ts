@@ -38,35 +38,29 @@ export async function buildConsumerDesktop(options: BuildOptions) {
       await installDependencies(configDir, outputDir, desktopConfig.dependencies);
     }
 
-    // Create consumer wrapper entry point
-    const wrapperPath = path.join(outputDir, '_consumer-wrapper.js');
-    const wrapperCode = createConsumerWrapper(entryPath, configDir);
-    fs.writeFileSync(wrapperPath, wrapperCode);
-
-    console.log('🔧 Bundling with esbuild...');
+    console.log('🔧 Bundling executor with esbuild...');
     await build({
-      entryPoints: [wrapperPath],
+      entryPoints: [entryPath],
       bundle: true,
       platform: 'node',
       target: 'node22',
       format: 'esm',
-      outfile: path.join(outputDir, 'consumer.js'),
-      external: ['mqtt', 'dotenv', '@qvac/*', 'expo-*', 'react-native*'],
+      outfile: path.join(outputDir, 'executor.js'),
+      external: ['@qvac/*', 'expo-*', 'react-native*', '@tetherto/qvac-test-suite'],
       sourcemap: true,
-      banner: {
-        js: '#!/usr/bin/env node',
-      },
     });
 
-    // Clean up temp file
-    fs.unlinkSync(wrapperPath);
-
-    // Make executable
+    const consumerEntryContent = `#!/usr/bin/env node
+import('@tetherto/qvac-test-suite/dist/cli/consumer-entry.js');
+`;
+    fs.writeFileSync(path.join(outputDir, 'consumer.js'), consumerEntryContent);
     fs.chmodSync(path.join(outputDir, 'consumer.js'), 0o755);
 
-    console.log(`\n✅ Consumer built successfully: ${outputDir}/consumer.js`);
+    console.log(`\n✅ Consumer built successfully`);
     console.log(`\n📋 To run:`);
-    console.log(`   node ${outputDir}/consumer.js --runId=<id> --mqtt-broker=<url>`);
+    console.log(
+      `   node ${outputDir}/consumer.js --runId=<id> --executor=${outputDir}/executor.js --config=${configDir}`
+    );
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('❌ Build failed:', errorMessage);
@@ -96,12 +90,23 @@ async function installDependencies(
     const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8') as string);
     const deps = { ...pkgJson.dependencies, ...pkgJson.devDependencies };
 
+    // Adjust relative file: paths to be correct from consumer directory
+    const adjustedDeps = { ...deps };
+    for (const [name, version] of Object.entries(adjustedDeps)) {
+      if (typeof version === 'string' && (version.startsWith('file:') || version.startsWith('..'))) {
+        const relativePath = version.replace('file:', '');
+        const absolutePath = path.resolve(configDir, relativePath);
+        const relativeFromConsumer = path.relative(outputDir, absolutePath);
+        adjustedDeps[name] = `file:${relativeFromConsumer}`;
+      }
+    }
+
     const consumerPkgJson = {
       name: 'qvac-consumer',
       version: '1.0.0',
       type: 'module',
       dependencies: {
-        ...deps,
+        ...adjustedDeps,
         dotenv: '^16.4.5',
       },
     };
@@ -129,66 +134,4 @@ async function installDependencies(
   });
 
   console.log('✅ Dependencies installed\n');
-}
-
-function createConsumerWrapper(executorPath: string, configDir: string): string {
-  const absoluteExecutorPath = path.resolve(configDir, executorPath);
-  const currentFilePath = path.dirname(new URL(import.meta.url).pathname);
-  const frameworkDistPath = path.resolve(currentFilePath, '../..');
-  const consumerBasePath = path.join(frameworkDistPath, 'core/consumer-base.js');
-  const mqttConnectionPath = path.join(frameworkDistPath, 'utils/mqtt-connection.js');
-  const configLoaderPath = path.join(frameworkDistPath, 'utils/config-loader.js');
-
-  return `
-import { config as loadDotenv } from 'dotenv';
-import * as os from 'node:os';
-import { ConsumerBase } from '${consumerBasePath}';
-import { createMqttClient, buildMqttConnectionConfig } from '${mqttConnectionPath}';
-import { loadConfig } from '${configLoaderPath}';
-import { executor } from '${absoluteExecutorPath}';
-
-loadDotenv();
-
-const args = process.argv.slice(2);
-const getArg = (name) => {
-  const arg = args.find(a => a.startsWith('--' + name + '='));
-  return arg ? arg.split('=')[1] : null;
-};
-
-const runId = getArg('runId');
-const mqttBrokerOverride = getArg('mqtt-broker');
-
-if (!runId) {
-  console.error('❌ --runId is required');
-  process.exit(1);
-}
-
-const config = await loadConfig('${configDir}');
-const mqttConfig = buildMqttConnectionConfig(config);
-
-if (mqttBrokerOverride) {
-  mqttConfig.brokerUrl = mqttBrokerOverride;
-}
-
-const client = createMqttClient(mqttConfig);
-const consumerId = \`consumer-desktop-\${os.hostname()}-\${Date.now()}\`;
-
-const consumer = new ConsumerBase(
-  client,
-  consumerId,
-  'desktop',
-  runId,
-  executor,
-  {
-    log: (msg) => console.log(msg),
-    updateStats: () => {},
-    onShutdown: () => process.exit(0),
-  }
-);
-
-consumer.setupMqttHandlers();
-
-process.on('SIGINT', () => consumer.forceShutdown());
-process.on('SIGTERM', () => consumer.forceShutdown());
-`;
 }

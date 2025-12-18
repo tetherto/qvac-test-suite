@@ -1,8 +1,7 @@
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../../utils/config-loader.js';
-import { buildConsumerDesktop } from './build-consumer-desktop.js';
 
 interface ConsumerOptions {
   runId: string;
@@ -22,30 +21,32 @@ export async function runConsumerDesktop(options: ConsumerOptions) {
 
     const platform = options.platform || 'desktop';
     const configDir = path.resolve(options.config);
-    const outputDir = path.resolve(configDir, 'build/consumers', platform);
-    const consumerPath = path.join(outputDir, 'consumer.js');
+    const entryAbs = path.resolve(configDir, config.consumers.desktop.entry);
 
-    const needsBuild = options.rebuild || !fs.existsSync(consumerPath) || shouldRebuild(configDir, outputDir);
-
-    if (needsBuild) {
-      console.log('🔨 Building consumer...\n');
-      await buildConsumerDesktop({
-        platform,
-        config: options.config,
-      });
-      console.log('');
+    if (options.rebuild) {
+      console.log('ℹ️  --rebuild ignored (desktop consumer now runs in-place; no build step)');
     }
 
     console.log('🚀 Running consumer...\n');
 
-    const args = [`--runId=${options.runId}`];
-    if (options.mqttBroker) {
-      args.push(`--mqtt-broker=${options.mqttBroker}`);
-    }
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const runnerPath = path.resolve(__dirname, '../runners/run-consumer-desktop-inplace.js');
 
-    const child = spawn('node', [consumerPath, ...args], {
+    const args = [`--runId=${options.runId}`, `--config=${configDir}`, `--platform=${platform}`];
+    if (options.mqttBroker) args.push(`--mqtt-broker=${options.mqttBroker}`);
+
+    // Mocha-like behavior: run in-place using the project's environment.
+    // If the entry is TypeScript and Node can't import it in the user's setup,
+    // the runner will fail with a clear error; the fix is to point config to compiled JS.
+    const child = spawn('node', [runnerPath, ...args], {
       stdio: 'inherit',
-      cwd: process.cwd(),
+      cwd: configDir,
+    });
+
+    child.on('error', (err) => {
+      console.error(`❌ Failed to start consumer: ${err.message}`);
+      process.exit(1);
     });
 
     process.on('SIGINT', () => child.kill('SIGINT' as any));
@@ -59,40 +60,4 @@ export async function runConsumerDesktop(options: ConsumerOptions) {
     console.error('❌ Failed to run consumer:', errorMessage);
     process.exit(1);
   }
-}
-
-function shouldRebuild(configDir: string, outputDir: string): boolean {
-  const consumerPath = path.join(outputDir, 'consumer.js');
-
-  if (!fs.existsSync(consumerPath)) {
-    return true;
-  }
-
-  const consumerStat = fs.statSync(consumerPath);
-  const testDir = path.join(configDir, 'tests');
-
-  if (!fs.existsSync(testDir)) {
-    return false;
-  }
-
-  const checkDirectory = (dir: string): boolean => {
-    const entries = fs.readdirSync(dir, { withFileTypes: true }) as any[];
-
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-
-      if (entry.isDirectory()) {
-        if (checkDirectory(fullPath)) return true;
-      } else if (entry.isFile() && /\.(ts|tsx|js|jsx)$/.test(entry.name)) {
-        const fileStat = fs.statSync(fullPath);
-        if (fileStat.mtime > consumerStat.mtime) {
-          return true;
-        }
-      }
-    }
-
-    return false;
-  };
-
-  return checkDirectory(testDir);
 }
