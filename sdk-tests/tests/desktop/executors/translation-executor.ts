@@ -1,8 +1,8 @@
 // Translation executor
 import { translate } from '@qvac/sdk';
 import { ValidationHelpers, type TestResult, type Expectation } from '@tetherto/qvac-test-suite';
-import { translationTests } from '../../translation-tests.ts';
-import { ModelManager } from '../model-manager.ts';
+import { translationTests } from '../../translation-tests.js';
+import { ModelManager } from '../model-manager.js';
 
 export class TranslationExecutor {
   pattern = /^translation-/;

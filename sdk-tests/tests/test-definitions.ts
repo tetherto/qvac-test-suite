@@ -1,14 +1,14 @@
 // Real SDK tests
 import type { TestDefinition } from '@tetherto/qvac-test-suite';
-import { completionTests } from './completion-tests.ts';
-import { transcriptionTests } from './transcription-tests.ts';
-import { embeddingTests } from './embedding-tests.ts';
-import { ragTests } from './rag-tests.ts';
-import { translationTests } from './translation-tests.ts';
-import { cacheTests } from './cache-tests.ts';
-import { errorTests } from './error-tests.ts';
-import { toolsTests } from './tools-tests.ts';
-import { visionTests } from './vision-tests.ts';
+import { completionTests } from './completion-tests.js';
+import { transcriptionTests } from './transcription-tests.js';
+import { embeddingTests } from './embedding-tests.js';
+import { ragTests } from './rag-tests.js';
+import { translationTests } from './translation-tests.js';
+import { cacheTests } from './cache-tests.js';
+import { errorTests } from './error-tests.js';
+import { toolsTests } from './tools-tests.js';
+import { visionTests } from './vision-tests.js';
 
 // Model loading tests
 export const modelLoadLlm: TestDefinition = {
