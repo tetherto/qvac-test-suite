@@ -1,6 +1,7 @@
 node_modules/
 .npmrc
 .env
+.secrets
 bun.lock
 package-lock.json
 reports/
@@ -11,3 +12,6 @@ reports/
 # Build outputs
 dist/
 build/
+
+# act artifact server
+.artifacts/
