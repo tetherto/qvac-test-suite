@@ -433,14 +433,18 @@ export abstract class ConsumerBase {
 			} catch (error: any) {
 				result = { passed: false, output: `Error: ${error.message}` };
 			}
-			
-			const isIntentionalInvalidModel = params?.modelIdOverride !== undefined;
+
+			const shouldExpectFailure = expectation?.errorExpected === true ||
+																	expectation?.type === 'error' ||
+																	expectation?.validation === 'throws-error' ||
+																	expectation?.validation === 'throws-structured-error' ||
+																	expectation?.validation === 'handles-error';
 			const outputStr = result?.output || '';
 			const isModelNotFound = !result.passed && 
 				outputStr.includes("not found") && 
 				outputStr.includes("Model with ID");
 			
-			if (isModelNotFound && !isIntentionalInvalidModel) {
+			if (isModelNotFound && !shouldExpectFailure) {
 				this.log(`   ⚠️  Model not found in result, reloading and retrying...`);
 				// Clear cached model ID to force reload
 				const modelType = this.getRequiredModelType(testId);

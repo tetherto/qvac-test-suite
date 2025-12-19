@@ -8,7 +8,7 @@ export const errorCompletionNegativeTemperature: TestDefinition = {
     stream: false,
     temperature: -0.5,
   },
-  expectation: { validation: 'type', expectedType: 'string' }, // SDK should handle or error
+  expectation: { validation: 'type', expectedType: 'string', errorExpected: true }, // SDK should handle or error
   metadata: { category: 'error', dependency: 'llm', estimatedDurationMs: 3000 },
 };
 
@@ -19,7 +19,7 @@ export const errorCompletionExcessiveTemperature: TestDefinition = {
     stream: false,
     temperature: 3.0,
   },
-  expectation: { validation: 'type', expectedType: 'string' },
+  expectation: { validation: 'type', expectedType: 'string', errorExpected: true },
   metadata: { category: 'error', dependency: 'llm', estimatedDurationMs: 3000 },
 };
 
@@ -30,7 +30,7 @@ export const errorCompletionInvalidTopP: TestDefinition = {
     stream: false,
     topP: 1.5,
   },
-  expectation: { validation: 'type', expectedType: 'string' },
+  expectation: { validation: 'type', expectedType: 'string', errorExpected: true },
   metadata: { category: 'error', dependency: 'llm', estimatedDurationMs: 3000 },
 };
 
@@ -41,14 +41,14 @@ export const errorCompletionNegativeMaxTokens: TestDefinition = {
     stream: false,
     maxTokens: -10,
   },
-  expectation: { validation: 'type', expectedType: 'string' },
+  expectation: { validation: 'type', expectedType: 'string', errorExpected: true },
   metadata: { category: 'error', dependency: 'llm', estimatedDurationMs: 3000 },
 };
 
 export const errorEmbeddingEmptyInput: TestDefinition = {
   testId: 'error-embedding-empty-input',
   params: { text: ' ' }, // SDK rejects truly empty with Zod
-  expectation: { validation: 'type', expectedType: 'string' }, // Should handle or error gracefully
+  expectation: { validation: 'type', expectedType: 'string', errorExpected: true }, // Should handle or error gracefully
   metadata: { category: 'error', dependency: 'embedding', estimatedDurationMs: 3000 },
 };
 
@@ -59,7 +59,7 @@ export const errorUseUnloadedModel: TestDefinition = {
     history: [{ role: 'user', content: 'Test' }],
     stream: false,
   },
-  expectation: { validation: 'type', expectedType: 'string' },
+  expectation: { validation: 'type', expectedType: 'string', errorExpected: true },
   metadata: { category: 'error', dependency: 'llm', estimatedDurationMs: 3000 },
 };
 
@@ -71,7 +71,7 @@ export const errorRagUnloadedModel: TestDefinition = {
     chunkSize: 200,
     chunkOverlap: 50,
   },
-  expectation: { validation: 'type', expectedType: 'string' },
+  expectation: { validation: 'type', expectedType: 'string', errorExpected: true },
   metadata: { category: 'error', dependency: 'embedding', estimatedDurationMs: 3000 },
 };
 
