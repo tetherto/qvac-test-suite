@@ -8,7 +8,6 @@ interface ConsumerOptions {
   mqttBroker?: string;
   config: string;
   platform?: string;
-  rebuild?: boolean;
 }
 
 export async function runConsumerDesktop(options: ConsumerOptions) {
@@ -21,11 +20,6 @@ export async function runConsumerDesktop(options: ConsumerOptions) {
 
     const platform = options.platform || 'desktop';
     const configDir = path.resolve(options.config);
-    const entryAbs = path.resolve(configDir, config.consumers.desktop.entry);
-
-    if (options.rebuild) {
-      console.log('ℹ️  --rebuild ignored (desktop consumer now runs in-place; no build step)');
-    }
 
     console.log('🚀 Running consumer...\n');
 

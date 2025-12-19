@@ -2,7 +2,6 @@
 import { Command } from 'commander';
 import { runProducer } from './commands/run-producer.js';
 import { runConsumerDesktop } from './commands/run-consumer-desktop.js';
-import { buildConsumerDesktop } from './commands/build-consumer-desktop.js';
 import { reportCompare } from './commands/report-compare.js';
 import { reportFormat } from './commands/report-format.js';
 
@@ -11,18 +10,12 @@ const program = new Command();
 program.name('qvac-test').description('QVAC Test Suite - Distributed testing framework').version('0.1.0');
 
 program
-  .command('build:consumer:desktop')
-  .description('Build desktop consumer package (works on all desktop platforms)')
-  .option('--platform <platform>', 'Optional platform name for output directory', 'desktop')
-  .option('--config <path>', 'Path to config directory', process.cwd())
-  .action(buildConsumerDesktop);
-
-program
   .command('run:producer')
   .description('Start test producer/orchestrator')
   .option('--runId <id>', 'Unique run identifier')
   .option('--mqtt-broker <url>', 'MQTT broker URL (overrides config)')
   .option('--config <path>', 'Path to config directory', process.cwd())
+  .option('--consumer-timeout <seconds>', 'Timeout waiting for consumer connection (default: 30)', '30')
   .option(
     '--filter <categories>',
     'Filter tests by category or testId prefix (comma-separated, e.g., "model,completion")'
@@ -31,12 +24,11 @@ program
 
 program
   .command('run:consumer:desktop')
-  .description('Build and run desktop consumer (auto-builds if needed)')
+  .description('Run desktop consumer (imports entry from config in-place)')
   .requiredOption('--runId <id>', 'Unique run identifier (must match producer)')
   .option('--mqtt-broker <url>', 'MQTT broker URL (overrides config)')
   .option('--config <path>', 'Path to config directory', process.cwd())
   .option('--platform <platform>', 'Platform name', 'desktop')
-  .option('--rebuild', 'Force rebuild even if up to date')
   .action(runConsumerDesktop);
 
 program

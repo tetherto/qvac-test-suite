@@ -42,6 +42,7 @@ export class BatchOrchestrator {
   private client: MqttClient;
   private runId: string;
   private allowWildcardConsumers: boolean;
+  private consumerTimeoutSec: number;
   private testQueue: TestCase[] = [];
   private assignedTests = new Map<string, TestAssignment>(); // uniqueTestId -> assignment
   private completedTests = new Map<string, TestResult>(); // uniqueTestId -> result
@@ -49,11 +50,18 @@ export class BatchOrchestrator {
   private startTime = 0;
   private batchStarted = false;
   private shutdownTimer?: NodeJS.Timeout;
+  private consumerTimeoutTimer?: NodeJS.Timeout;
 
-  constructor(client: MqttClient, runId: string, allowWildcardConsumers: boolean = false) {
+  constructor(
+    client: MqttClient,
+    runId: string,
+    allowWildcardConsumers: boolean = false,
+    consumerTimeoutSec: number = 30
+  ) {
     this.client = client;
     this.runId = runId;
     this.allowWildcardConsumers = allowWildcardConsumers;
+    this.consumerTimeoutSec = consumerTimeoutSec;
     this.setupMqttHandlers();
   }
 
@@ -119,6 +127,12 @@ export class BatchOrchestrator {
     const message = consumerRegistrationSchema.parse(rawMessage);
     const { consumerId, platform } = message;
     const now = Date.now();
+
+    // Cancel consumer timeout on first registration
+    if (this.consumers.size === 0 && this.consumerTimeoutTimer) {
+      clearTimeout(this.consumerTimeoutTimer);
+      this.consumerTimeoutTimer = undefined;
+    }
 
     this.consumers.set(consumerId, {
       consumerId,
@@ -484,7 +498,16 @@ export class BatchOrchestrator {
 
     console.log('🚀 Batch orchestration started');
     console.log(`📋 Total tests: ${this.testQueue.length}`);
-    console.log('⏳ Waiting for consumers to register...\n');
+    console.log(`⏳ Waiting for consumers to register (timeout: ${this.consumerTimeoutSec}s)...\n`);
+
+    // Start consumer connection timeout
+    this.consumerTimeoutTimer = setTimeout(() => {
+      if (this.consumers.size === 0) {
+        console.error(`\n❌ No consumers connected within ${this.consumerTimeoutSec}s timeout`);
+        console.error('   Make sure the consumer is running with the same --runId');
+        this.client.end(false, {}, () => process.exit(1));
+      }
+    }, this.consumerTimeoutSec * 1000);
 
     // Start timeout checker (every 10 seconds)
     setInterval(() => this.checkTimeouts(), 10000);
