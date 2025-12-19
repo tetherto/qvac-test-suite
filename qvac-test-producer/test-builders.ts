@@ -1951,7 +1951,7 @@ export class TestBuilder {
 					],
 					stream: false,
 					seed: 10,
-					stop: ["Banana"], // Stop when model generates "banana"
+					stop_sequences: ["Banana"], // Stop when model generates "banana"
 				},
 				expectation: {
 				validation: "stops-before-or-at-sequence",

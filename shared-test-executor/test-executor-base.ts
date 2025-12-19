@@ -2379,7 +2379,7 @@ export abstract class TestExecutorBase {
 
 		let tempModelId: string | null = null;
 		try {
-			const { history, stream = false, stop, seed} = params;
+			const { history, stream = false, stop_sequences, seed} = params;
 			
 			// SDK v0.5.1: stop_sequences must be in model config
 			// Load temporary model with stop_sequences config
@@ -2391,7 +2391,7 @@ export abstract class TestExecutorBase {
 					...(seed !== undefined && { seed }),
 					gpu_layers: 99,
 					device: "gpu",
-					stop_sequences: Array.isArray(stop) ? stop : [stop], // SDK v0.5.1: stop_sequences in model config
+					stop_sequences: Array.isArray(stop_sequences) ? stop_sequences : [stop_sequences], // SDK v0.5.1: stop_sequences in model config
 				},
 			});
 
