@@ -1950,12 +1950,13 @@ export class TestBuilder {
 					{ role: "user", content: "List 10 fruits, one per line." },
 					],
 					stream: false,
-				stop: ["banana"], // Stop when model generates "banana"
+					seed: 10,
+					stop: ["Banana"], // Stop when model generates "banana"
 				},
 				expectation: {
 				validation: "stops-before-or-at-sequence",
-				stopSequence: "banana",
-				shouldNotContainAfter: ["grape", "orange", "mango"], // If it stopped, won't have these later fruits
+				stopsAt: "Banana",
+				notAfter: "Grapes", // If it stopped, won't have these later fruits
 				},
 				expectedOutcome: "pass",
 			debugInfo: "QVAC-8339: Stop sequences not working. SDK continues generation past stop sequence. 100% reproducible.",
