@@ -4,21 +4,21 @@
 # Carbon copy of test-desktop.yml for local testing with `act`.
 #
 # Run (single platform):
-#   act push --secret-file .secrets \
+#   act workflow_dispatch --secret-file .secrets \
 #     --artifact-server-path .artifacts \
 #     --matrix os:ubuntu-latest \
 #     -W .github/workflows/test-local-act.yml
 #
 # Run (all platforms, requires Docker with multi-arch):
-#   act push --secret-file .secrets \
+#   act workflow_dispatch --secret-file .secrets \
 #     --artifact-server-path .artifacts \
 #     -W .github/workflows/test-local-act.yml
 # =============================================================================
 
 name: QVAC Desktop Tests (Local Act Mirror)
 
-# Changed from workflow_call to push for local testing
-on: push
+# workflow_dispatch allows manual trigger; act can run it but GitHub won't auto-trigger
+on: workflow_dispatch
 
 # Hardcoded inputs (in real workflow these come from workflow_call inputs)
 env:
