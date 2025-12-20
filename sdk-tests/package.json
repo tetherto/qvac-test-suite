@@ -5,16 +5,15 @@
   "type": "module",
   "description": "SDK tests using QVAC test framework",
   "scripts": {
-    "build": "tsc",
-    "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "build": "rimraf dist && tsc",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@qvac/sdk": "^0.4.1",
-    "@tetherto/qvac-test-suite": "file:../framework",
-    "mqtt": "^5.14.1"
+    "@qvac/sdk": "file:../../qvac-sdk",
+    "@tetherto/qvac-test-suite": "file:../framework"
   },
   "devDependencies": {
-    "typescript": "^5.3.3"
+    "rimraf": "^6.0.1",
+    "typescript": "^5.9.3"
   }
 }
