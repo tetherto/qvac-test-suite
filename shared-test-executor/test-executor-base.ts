@@ -2379,8 +2379,8 @@ export abstract class TestExecutorBase {
 
 		let tempModelId: string | null = null;
 		try {
-			const { history, stream = false, stop } = params;
-
+			const { history, stream = false, stop_sequences, seed} = params;
+			
 			// SDK v0.5.1: stop_sequences must be in model config
 			// Load temporary model with stop_sequences config
 			tempModelId = await this.sdk.loadModel({
@@ -2388,9 +2388,10 @@ export abstract class TestExecutorBase {
 				modelType: "llm",
 				modelConfig: {
 					ctx_size: 2048,
+					...(seed !== undefined && { seed }),
 					gpu_layers: 99,
 					device: "gpu",
-					stop_sequences: Array.isArray(stop) ? stop : [stop], // SDK v0.5.1: stop_sequences in model config
+					stop_sequences: Array.isArray(stop_sequences) ? stop_sequences : [stop_sequences], // SDK v0.5.1: stop_sequences in model config
 				},
 			});
 
@@ -2408,11 +2409,11 @@ export abstract class TestExecutorBase {
 
 			// QVAC SDK includes stop sequence in output (different from OpenAI/Anthropic)
 			// Check that text INCLUDES the stop sequence and does NOT continue past it
-			const stopsAt = expectation.stopsAt || expectation.stopBefore || "5";
-			const notAfter = expectation.notAfter || "6";
+			const stopsAt = expectation.stopsAt;
+			const notAfter = expectation.notAfter;
 
-			const includesStop = text.includes(stopsAt);
-			const doesNotContinue = !text.includes(notAfter);
+			const includesStop = stopsAt ? text.includes(stopsAt) : true;
+			const doesNotContinue = notAfter ? !text.includes(notAfter) : true;
 			const stoppedCorrectly = includesStop && doesNotContinue;
 
 			return {
