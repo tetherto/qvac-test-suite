@@ -1,4 +1,6 @@
 import { BatchOrchestrator } from '../../core/batch-orchestrator.js';
+import { config as loadDotenv } from 'dotenv';
+import * as path from 'node:path';
 import { loadConfig } from '../../utils/config-loader.js';
 import { loadTests } from '../../utils/test-loader.js';
 import { buildMqttConnectionConfig, createMqttClient } from '../../utils/mqtt-connection.js';
@@ -7,6 +9,7 @@ interface ProducerOptions {
   runId?: string;
   mqttBroker?: string;
   config: string;
+  consumerTimeout?: string;
   filter?: string;
 }
 
@@ -15,9 +18,13 @@ export async function runProducer(options: ProducerOptions) {
     console.log('🚀 Starting QVAC Test Producer\n');
 
     const runId = options.runId || `run-${Date.now()}`;
+    const configDir = path.resolve(options.config);
 
-    console.log(`📂 Loading config from: ${options.config}`);
-    const config = await loadConfig(options.config);
+    // Load .env from config directory (match consumer behavior)
+    loadDotenv({ path: path.join(configDir, '.env') });
+
+    console.log(`📂 Loading config from: ${configDir}`);
+    const config = await loadConfig(configDir);
     console.log(`✅ Config loaded\n`);
 
     const mqttConfig = buildMqttConnectionConfig(config);
@@ -27,7 +34,7 @@ export async function runProducer(options: ProducerOptions) {
     }
 
     console.log(`📋 Loading tests from: ${config.testDir}`);
-    let tests = await loadTests(config, options.config);
+    let tests = await loadTests(config, configDir);
 
     if (options.filter) {
       const filters = options.filter.split(',').map((f) => f.trim());
@@ -43,8 +50,10 @@ export async function runProducer(options: ProducerOptions) {
       console.log(`✅ Loaded ${tests.length} tests\n`);
     }
 
+    const consumerTimeoutSec = parseInt(options.consumerTimeout || '30', 10);
+
     const client = createMqttClient(mqttConfig);
-    const orchestrator = new BatchOrchestrator(client, runId, false);
+    const orchestrator = new BatchOrchestrator(client, runId, false, consumerTimeoutSec);
 
     orchestrator.buildTestQueue(tests);
 

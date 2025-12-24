@@ -9,7 +9,7 @@ interface FormatOptions {
 export async function reportFormat(options: FormatOptions) {
   try {
     // Load comparison JSON
-    const comparisonData = fs.readFileSync(options.input, 'utf-8');
+    const comparisonData = fs.readFileSync(options.input, 'utf-8') as string;
     const comparison = JSON.parse(comparisonData);
 
     if (options.format === 'markdown') {

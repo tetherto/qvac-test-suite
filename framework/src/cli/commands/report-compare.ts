@@ -31,12 +31,12 @@ export async function reportCompare(options: CompareOptions) {
     console.log('📊 Comparing test results...\n');
 
     // Load baseline
-    const baselineData = fs.readFileSync(options.baseline, 'utf-8');
+    const baselineData = fs.readFileSync(options.baseline, 'utf-8') as string;
     const baseline: Report = JSON.parse(baselineData);
     console.log(`📋 Baseline: ${baseline.runId} (${baseline.summary.passed}/${baseline.summary.total} passed)`);
 
     // Load current
-    const currentData = fs.readFileSync(options.current, 'utf-8');
+    const currentData = fs.readFileSync(options.current, 'utf-8') as string;
     const current: Report = JSON.parse(currentData);
     console.log(`📋 Current:  ${current.runId} (${current.summary.passed}/${current.summary.total} passed)\n`);
 

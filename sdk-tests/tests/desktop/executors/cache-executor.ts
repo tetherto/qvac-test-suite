@@ -1,7 +1,7 @@
 // Cache management executor
-import { getModelInfo, deleteCache, setConfig } from '@qvac/sdk';
+import { getModelInfo, deleteCache } from '@qvac/sdk';
 import { ValidationHelpers, type TestResult, type Expectation } from '@tetherto/qvac-test-suite';
-import { cacheTests } from '../../cache-tests.ts';
+import { cacheTests } from '../../cache-tests.js';
 
 export class CacheExecutor {
   pattern = /^cache-/;
@@ -27,9 +27,7 @@ export class CacheExecutor {
     try {
       let result: unknown;
 
-      if (p.cacheDirectory) {
-        result = await setConfig({ cacheDirectory: p.cacheDirectory as string });
-      } else if (p.deleteAll) {
+      if (p.deleteAll) {
         result = await deleteCache({ all: true });
       } else if (p.kvCacheKey) {
         result = await deleteCache({ kvCacheKey: p.kvCacheKey as string });

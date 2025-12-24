@@ -1,8 +1,8 @@
 // Completion executor
 import { completion } from '@qvac/sdk';
 import { ValidationHelpers, type TestResult, type Expectation } from '@tetherto/qvac-test-suite';
-import { completionTests } from '../../completion-tests.ts';
-import { ModelManager } from '../model-manager.ts';
+import { completionTests } from '../../completion-tests.js';
+import { ModelManager } from '../model-manager.js';
 
 export class CompletionExecutor {
   pattern = /^completion-/;

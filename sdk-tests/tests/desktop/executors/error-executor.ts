@@ -1,6 +1,6 @@
 // Error handling executor - tests SDK error handling
 import { ValidationHelpers, type TestResult, type Expectation } from '@tetherto/qvac-test-suite';
-import { errorTests } from '../../error-tests.ts';
+import { errorTests } from '../../error-tests.js';
 
 export class ErrorExecutor {
   pattern = /^error-/;

@@ -2,8 +2,8 @@
 import { transcribe } from '@qvac/sdk';
 import * as path from 'node:path';
 import { ValidationHelpers, type TestResult, type Expectation } from '@tetherto/qvac-test-suite';
-import { transcriptionTests } from '../../transcription-tests.ts';
-import { ModelManager } from '../model-manager.ts';
+import { transcriptionTests } from '../../transcription-tests.js';
+import { ModelManager } from '../model-manager.js';
 
 export class TranscriptionExecutor {
   pattern = /^transcription-/;

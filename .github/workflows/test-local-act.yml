@@ -1,0 +1,352 @@
+# =============================================================================
+# LOCAL ACT TEST WORKFLOW
+# =============================================================================
+# Carbon copy of test-desktop.yml for local testing with `act`.
+#
+# Run (single platform):
+#   act workflow_dispatch --secret-file .secrets \
+#     --artifact-server-path .artifacts \
+#     --matrix os:ubuntu-latest \
+#     -W .github/workflows/test-local-act.yml
+#
+# Run (all platforms, requires Docker with multi-arch):
+#   act workflow_dispatch --secret-file .secrets \
+#     --artifact-server-path .artifacts \
+#     -W .github/workflows/test-local-act.yml
+# =============================================================================
+
+name: QVAC Desktop Tests (Local Act Mirror)
+
+# workflow_dispatch allows manual trigger; act can run it but GitHub won't auto-trigger
+on: workflow_dispatch
+
+# Hardcoded inputs (in real workflow these come from workflow_call inputs)
+env:
+  WORKING_DIRECTORY: 'sdk-tests'
+  CONSUMER_TIMEOUT: '30'
+  # Simulated inputs.platforms - act supports matrix, use --matrix to filter
+  PLATFORMS: '["ubuntu-latest"]'
+
+jobs:
+  test-desktop:
+    strategy:
+      matrix:
+        # In real workflow: ${{ fromJSON(inputs.platforms) }}
+        # act supports matrix - use --matrix os:ubuntu-latest to run single platform
+        os: [ubuntu-latest, macos-latest, windows-latest]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    env:
+      MQTT_PROTOCOL: ${{ secrets.MQTT_PROTOCOL }}
+      MQTT_HOST: ${{ secrets.MQTT_HOST }}
+      MQTT_PORT: ${{ secrets.MQTT_PORT }}
+      MQTT_USERNAME: ${{ secrets.MQTT_USERNAME }}
+      MQTT_PASSWORD: ${{ secrets.MQTT_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Configure npm for @qvac (npmjs) and @tetherto (GPR) scopes
+      - name: Configure npm registries
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+        shell: bash
+        run: |
+          cat > .npmrc <<NPMRC
+          always-auth=true
+          registry=https://registry.npmjs.org/
+          @qvac:registry=https://registry.npmjs.org/
+          @tetherto:registry=https://npm.pkg.github.com/
+          //registry.npmjs.org/:_authToken=${NPM_TOKEN}
+          //npm.pkg.github.com/:_authToken=${PAT_TOKEN}
+          NPMRC
+
+      - name: Setup MQTT certificates
+        shell: bash
+        env:
+          CA_CERT: ${{ secrets.MQTT_CA_CERT }}
+          CLIENT_CERT: ${{ secrets.MQTT_CLIENT_CERT }}
+          CLIENT_KEY: ${{ secrets.MQTT_CLIENT_KEY }}
+        run: |
+          mkdir -p /tmp/mqtt-certs
+
+          if [ -n "$CA_CERT" ]; then
+            echo "$CA_CERT" > /tmp/mqtt-certs/ca.crt
+            echo "MQTT_CA_PATH=/tmp/mqtt-certs/ca.crt" >> $GITHUB_ENV
+          fi
+
+          if [ -n "$CLIENT_CERT" ]; then
+            echo "$CLIENT_CERT" > /tmp/mqtt-certs/client.crt
+            echo "MQTT_CERT_PATH=/tmp/mqtt-certs/client.crt" >> $GITHUB_ENV
+          fi
+
+          if [ -n "$CLIENT_KEY" ]; then
+            echo "$CLIENT_KEY" > /tmp/mqtt-certs/client.key
+            echo "MQTT_KEY_PATH=/tmp/mqtt-certs/client.key" >> $GITHUB_ENV
+          fi
+
+      - name: Install dependencies
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: npm install
+
+      - name: Build project
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: npm run build
+
+      - name: Generate runId
+        id: runid
+        shell: bash
+        run: |
+          PLATFORM="${{ matrix.os }}"
+          PLATFORM_SHORT=$(echo "$PLATFORM" | sed -E 's/.*(mac).*/macos/; t; s/.*(win).*/windows/; t; s/.*(linux|ubuntu).*/linux/')
+          RUN_ID="${GITHUB_REPOSITORY##*/}-${GITHUB_REF_NAME//\//-}-${GITHUB_SHA:0:7}-$(date +%s)-${PLATFORM_SHORT}"
+          echo "runId=$RUN_ID" >> $GITHUB_OUTPUT
+          echo "platform=$PLATFORM_SHORT" >> $GITHUB_OUTPUT
+
+      - name: Run tests (consumer + producer)
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
+        run: |
+          # Start consumer in background
+          npx qvac-test run:consumer:desktop \
+            --runId=${{ steps.runid.outputs.runId }} \
+            --config=. \
+            > consumer.log 2>&1 &
+          CONSUMER_PID=$!
+          echo $CONSUMER_PID > consumer.pid
+
+          # Brief pause to let consumer initialize
+          sleep 2
+
+          # Check if consumer is running
+          if ps -p $CONSUMER_PID > /dev/null 2>&1; then
+            echo "✅ Consumer running (PID: $CONSUMER_PID)"
+          else
+            echo "❌ Consumer died immediately"
+            cat consumer.log || true
+            exit 1
+          fi
+
+          # Run producer in foreground
+          npx qvac-test run:producer \
+            --runId=${{ steps.runid.outputs.runId }} \
+            --consumer-timeout=${{ env.CONSUMER_TIMEOUT }} \
+            --config=.
+
+          PRODUCER_EXIT=$?
+
+          # Clean up consumer
+          kill $CONSUMER_PID 2>/dev/null || true
+
+          exit $PRODUCER_EXIT
+
+      - name: Stop consumer (safety)
+        if: always()
+        shell: bash
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          if [ -f consumer.pid ]; then
+            kill $(cat consumer.pid) 2>/dev/null || true
+          fi
+
+      - name: Upload consumer logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consumer-log-${{ steps.runid.outputs.platform }}
+          path: ${{ env.WORKING_DIRECTORY }}/consumer.log
+          retention-days: 7
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ steps.runid.outputs.platform }}-${{ github.run_number }}
+          path: ${{ env.WORKING_DIRECTORY }}/reports/results-*.json
+          retention-days: 30
+
+      # NOTE: Branch condition won't match locally (refs/heads/main)
+      - name: Upload baseline (main/develop only)
+        if: always() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-${{ steps.runid.outputs.platform }}
+          path: ${{ env.WORKING_DIRECTORY }}/reports/results-*.json
+          retention-days: 90
+          overwrite: true
+
+      - name: Show consumer log on failure
+        if: failure()
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: cat consumer.log || true
+
+  compare-results:
+    needs: test-desktop
+    # In real workflow: github.event_name == 'pull_request'
+    # For local testing, always run (skip PR check)
+    if: always()
+    runs-on: ubuntu-latest
+    # NOTE: permissions ignored by act, but kept for parity
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Configure npm registries
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+        shell: bash
+        run: |
+          cat > .npmrc <<NPMRC
+          always-auth=true
+          registry=https://registry.npmjs.org/
+          @qvac:registry=https://registry.npmjs.org/
+          @tetherto:registry=https://npm.pkg.github.com/
+          //registry.npmjs.org/:_authToken=${NPM_TOKEN}
+          //npm.pkg.github.com/:_authToken=${PAT_TOKEN}
+          NPMRC
+
+      # Only install for qvac-test CLI (skip scripts for speed)
+      - name: Install dependencies
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: npm install --ignore-scripts
+
+      - name: Download current results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: results-*
+          path: ${{ env.WORKING_DIRECTORY }}/current-results/
+          merge-multiple: true
+
+      # =========================================================================
+      # UNSUPPORTED BY ACT: dawidd6/action-download-artifact@v6
+      # This action downloads artifacts from PREVIOUS workflow runs.
+      # act has no concept of previous runs - it only knows about current run.
+      # =========================================================================
+      # - name: Download baseline results
+      #   id: download-baseline
+      #   uses: dawidd6/action-download-artifact@v6
+      #   continue-on-error: true
+      #   with:
+      #     workflow: test-desktop.yml
+      #     branch: ${{ github.event.pull_request.base.ref }}
+      #     name: baseline-*
+      #     path: ${{ env.WORKING_DIRECTORY }}/baseline-results/
+      #     if_no_artifact_found: warn
+
+      # For local testing: manually provide baseline files in baseline-results/
+      # mkdir -p sdk-tests/baseline-results && cp <baseline.json> sdk-tests/baseline-results/
+      - name: Check baseline availability
+        id: check-baseline
+        shell: bash
+        run: |
+          if [ -d "${{ env.WORKING_DIRECTORY }}/baseline-results" ] && [ "$(ls -A ${{ env.WORKING_DIRECTORY }}/baseline-results/*.json 2>/dev/null | wc -l)" -gt 0 ]; then
+            echo "has_baseline=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_baseline=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No baseline found. To test comparison locally:"
+            echo "   mkdir -p ${{ env.WORKING_DIRECTORY }}/baseline-results"
+            echo "   cp <previous-results.json> ${{ env.WORKING_DIRECTORY }}/baseline-results/"
+          fi
+
+      - name: Compare results
+        if: steps.check-baseline.outputs.has_baseline == 'true'
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
+        run: |
+          for platform in linux macos windows; do
+            current=$(ls current-results/*${platform}*.json 2>/dev/null | head -n1)
+            baseline=$(ls baseline-results/*${platform}*.json 2>/dev/null | head -n1)
+            
+            if [ -n "$current" ] && [ -n "$baseline" ]; then
+              npx qvac-test report:compare \
+                --baseline "$baseline" \
+                --current "$current" \
+                --output "comparison-${platform}.json"
+            fi
+          done
+
+      - name: Format comparison
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
+        run: |
+          echo "# 🧪 QVAC Test Results" > comment.md
+          echo "" >> comment.md
+          # NOTE: github.head_ref and github.event.pull_request.base.ref are empty locally
+          echo "**Commit**: \`${GITHUB_SHA:0:7}\`" >> comment.md
+          echo "" >> comment.md
+
+          if [ "${{ steps.check-baseline.outputs.has_baseline }}" = "false" ]; then
+            echo "⚠️ **No baseline found** - showing current results only" >> comment.md
+            echo "" >> comment.md
+            echo "| Platform | Passed | Failed | Total | Rate | Duration |" >> comment.md
+            echo "|----------|--------|--------|-------|------|----------|" >> comment.md
+            
+            for platform in linux macos windows; do
+              result=$(ls current-results/*${platform}*.json 2>/dev/null | head -n1)
+              if [ -n "$result" ]; then
+                passed=$(jq -r '.summary.passed' "$result")
+                failed=$(jq -r '.summary.failed' "$result")
+                total=$(jq -r '.summary.total' "$result")
+                rate=$(jq -r '.summary.successRate' "$result")
+                duration=$(jq -r '.summary.duration' "$result")
+                echo "| $platform | $passed | $failed | $total | ${rate}% | ${duration}s |" >> comment.md
+              fi
+            done
+          else
+            for platform in linux macos windows; do
+              if [ -f "comparison-${platform}.json" ]; then
+                npx qvac-test report:format \
+                  --input "comparison-${platform}.json" \
+                  --format markdown \
+                  --output "platform-${platform}.md"
+                
+                echo "## ${platform}" >> comment.md
+                cat "platform-${platform}.md" >> comment.md
+                echo "" >> comment.md
+              fi
+            done
+          fi
+
+          echo "" >> comment.md
+          echo "---" >> comment.md
+          echo "_Generated locally with act_" >> comment.md
+
+      - name: Display results
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          echo "=========================================="
+          echo "TEST RESULTS (would be PR comment on GitHub)"
+          echo "=========================================="
+          cat comment.md
+
+      # =========================================================================
+      # UNSUPPORTED BY ACT: actions/github-script for PR comments
+      # Requires GitHub API access and PR context. Replaced with stdout above.
+      # =========================================================================
+      # - name: Comment on PR
+      #   uses: actions/github-script@v7
+      #   with:
+      #     script: |
+      #       const fs = require('fs');
+      #       const commentPath = '${{ env.WORKING_DIRECTORY }}/comment.md';
+      #       if (!fs.existsSync(commentPath)) {
+      #         console.log('No comment file generated');
+      #         return;
+      #       }
+      #       const body = fs.readFileSync(commentPath, 'utf8');
+      #       await github.rest.issues.createComment({
+      #         issue_number: context.issue.number,
+      #         owner: context.repo.owner,
+      #         repo: context.repo.repo,
+      #         body: body
+      #       });

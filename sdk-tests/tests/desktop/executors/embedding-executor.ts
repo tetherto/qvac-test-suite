@@ -3,8 +3,8 @@ import { embed } from '@qvac/sdk';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ValidationHelpers, type TestResult, type Expectation } from '@tetherto/qvac-test-suite';
-import { embeddingTests } from '../../embedding-tests.ts';
-import { ModelManager } from '../model-manager.ts';
+import { embeddingTests } from '../../embedding-tests.js';
+import { ModelManager } from '../model-manager.js';
 
 export class EmbeddingExecutor {
   pattern = /^embed-/;

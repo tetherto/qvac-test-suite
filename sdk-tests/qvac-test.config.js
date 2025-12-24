@@ -22,12 +22,12 @@ export default {
     // keyPath: { env: 'MQTT_KEY_PATH' },
   },
 
-  testDir: './tests',
+  testDir: './dist/tests',
 
   consumers: {
     desktop: {
       platforms: ['macos'],
-      entry: './tests/desktop/consumer.ts',
+      entry: './dist/tests/desktop/consumer.js',
       include: ['./tests/**'],
       dependencies: 'auto',
     },

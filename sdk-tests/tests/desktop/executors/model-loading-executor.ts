@@ -1,7 +1,7 @@
 // Model loading executor
 import { loadModel, unloadModel, LLAMA_3_2_1B_INST_Q4_0, GTE_LARGE_FP16 } from '@qvac/sdk';
 import { ValidationHelpers, type TestResult } from '@tetherto/qvac-test-suite';
-import { ModelManager } from '../model-manager.ts';
+import { ModelManager } from '../model-manager.js';
 import {
   modelLoadLlm,
   modelLoadEmbedding,
@@ -11,7 +11,7 @@ import {
   modelReloadLlm,
   modelSwitchLlm,
   modelReloadAfterError,
-} from '../../test-definitions.ts';
+} from '../../test-definitions.js';
 
 export class ModelLoadingExecutor {
   pattern = /^model-/;
@@ -43,25 +43,27 @@ export class ModelLoadingExecutor {
   }
 
   async loadLlm(params: typeof modelLoadLlm.params, expectation: typeof modelLoadLlm.expectation): Promise<TestResult> {
-    this.llmModelId = await loadModel({
+    const modelId = await loadModel({
       modelSrc: LLAMA_3_2_1B_INST_Q4_0,
       modelType: 'llm',
       modelConfig: { verbosity: 0, ctx_size: 2048, n_discarded: 256 },
     });
+    this.llmModelId = modelId;
     // Register with ModelManager so other executors can reuse it
-    ModelManager.setLlmModel(this.llmModelId);
-    return ValidationHelpers.validate(this.llmModelId, expectation);
+    ModelManager.setLlmModel(modelId);
+    return ValidationHelpers.validate(modelId, expectation);
   }
 
   async loadEmbedding(
     params: typeof modelLoadEmbedding.params,
     expectation: typeof modelLoadEmbedding.expectation
   ): Promise<TestResult> {
-    this.embeddingModelId = await loadModel({
+    const modelId = await loadModel({
       modelSrc: GTE_LARGE_FP16,
       modelType: 'embeddings',
     });
-    return ValidationHelpers.validate(this.embeddingModelId, expectation);
+    this.embeddingModelId = modelId;
+    return ValidationHelpers.validate(modelId, expectation);
   }
 
   async loadInvalid(

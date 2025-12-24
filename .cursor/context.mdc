@@ -34,18 +34,19 @@ qvac-test-suite/
 
 ### Runtime Compatibility
 
-**Build tooling** (Node.js only):
+**Build tooling** (Node.js):
 - CLI commands (build, run:producer)
 - Bundlers (esbuild, Metro)
-- Dependency installation
-- Can use node:fs, node:path, node:child_process
+- Uses node:fs, node:path, node:child_process
 
-**Runtime code** (Must support Bare/React Native):
-- ConsumerBase
-- Test executors
-- ValidationHelpers
-- Cannot use Node.js-specific APIs
-- Use MQTT client (works in both runtimes)
+**Desktop consumers** (Node.js):
+- Built by framework, run on Node.js
+- Uses standard Node.js APIs
+
+**Mobile consumers** (Hermes/React Native):
+- Built with Expo, run in React Native
+- Framework wraps with React Native components
+- Bare packages are SDK dependencies (not framework concern)
 
 ### Consumer Packaging
 - Bundle CURRENT source code (./src) + tests together

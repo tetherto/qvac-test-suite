@@ -1,8 +1,8 @@
 // Tools/Function calling executor
 import { completion } from '@qvac/sdk';
 import { ValidationHelpers, type TestResult, type Expectation } from '@tetherto/qvac-test-suite';
-import { toolsTests } from '../../tools-tests.ts';
-import { ModelManager } from '../model-manager.ts';
+import { toolsTests } from '../../tools-tests.js';
+import { ModelManager } from '../model-manager.js';
 
 export class ToolsExecutor {
   pattern = /^tools-/;

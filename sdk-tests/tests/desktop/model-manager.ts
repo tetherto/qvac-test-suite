@@ -28,14 +28,18 @@ export class ModelManager {
   static async getLlmModel(): Promise<string> {
     if (!this.llmModelId) {
       console.log('    [ModelManager] Loading LLM model (LLAMA 1B) - will be shared...');
-      this.llmModelId = await loadModel({
+      const modelId = await loadModel({
         modelSrc: LLAMA_3_2_1B_INST_Q4_0,
         modelType: 'llm',
         modelConfig: { verbosity: 0, ctx_size: 2048, n_discarded: 256 },
       });
-      console.log(`    [ModelManager] LLM loaded: ${this.llmModelId}`);
+      this.llmModelId = modelId;
+      console.log(`    [ModelManager] LLM loaded: ${modelId}`);
     } else {
       console.log(`    [ModelManager] Reusing LLM model: ${this.llmModelId}`);
+    }
+    if (!this.llmModelId) {
+      throw new Error('LLM model was not loaded');
     }
     return this.llmModelId;
   }
@@ -43,10 +47,14 @@ export class ModelManager {
   static async getEmbeddingModel(): Promise<string> {
     if (!this.embeddingModelId) {
       console.log('    Loading Embedding model (shared)...');
-      this.embeddingModelId = await loadModel({
+      const modelId = await loadModel({
         modelSrc: GTE_LARGE_FP16,
         modelType: 'embeddings',
       });
+      this.embeddingModelId = modelId;
+    }
+    if (!this.embeddingModelId) {
+      throw new Error('Embedding model was not loaded');
     }
     return this.embeddingModelId;
   }
@@ -54,7 +62,7 @@ export class ModelManager {
   static async getWhisperModel(): Promise<string> {
     if (!this.whisperModelId) {
       console.log('    Loading Whisper model (shared)...');
-      this.whisperModelId = await loadModel({
+      const modelId = await loadModel({
         modelSrc: WHISPER_TINY,
         modelType: 'whisper',
         vadModelSrc: VAD_SILERO_5_1_2,
@@ -78,6 +86,10 @@ export class ModelManager {
           },
         },
       });
+      this.whisperModelId = modelId;
+    }
+    if (!this.whisperModelId) {
+      throw new Error('Whisper model was not loaded');
     }
     return this.whisperModelId;
   }
@@ -85,7 +97,7 @@ export class ModelManager {
   static async getToolsModel(): Promise<string> {
     if (!this.toolsModelId) {
       console.log('    [ModelManager] Loading Tools model (Qwen 7B)...');
-      this.toolsModelId = await loadModel({
+      const modelId = await loadModel({
         modelSrc: QWEN_3_1_7B_INST_Q4,
         modelType: 'llm',
         modelConfig: {
@@ -93,9 +105,13 @@ export class ModelManager {
           tools: true, // Enable function calling
         },
       });
-      console.log(`    [ModelManager] Qwen loaded: ${this.toolsModelId}`);
+      this.toolsModelId = modelId;
+      console.log(`    [ModelManager] Qwen loaded: ${modelId}`);
     } else {
       console.log(`    [ModelManager] Reusing Qwen model: ${this.toolsModelId}`);
+    }
+    if (!this.toolsModelId) {
+      throw new Error('Tools model was not loaded');
     }
     return this.toolsModelId;
   }
