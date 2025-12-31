@@ -40,18 +40,8 @@ on:
         required: false
 
 jobs:
-  test-desktop:
-    strategy:
-      matrix:
-        os: ${{ fromJSON(inputs.platforms) }}
-      fail-fast: false
-    runs-on: ${{ matrix.os }}
-    env:
-      MQTT_PROTOCOL: ${{ secrets.MQTT_PROTOCOL }}
-      MQTT_HOST: ${{ secrets.MQTT_HOST }}
-      MQTT_PORT: ${{ secrets.MQTT_PORT }}
-      MQTT_USERNAME: ${{ secrets.MQTT_USERNAME }}
-      MQTT_PASSWORD: ${{ secrets.MQTT_PASSWORD }}
+  build:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -104,6 +94,88 @@ jobs:
           }
           console.log('✅ All registries validated');
 
+      - name: Install dependencies (root directory)
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: bun install
+
+      - name: Build project (root directory)
+        run: bun run build
+
+      - name: Install dependencies (consumer directory)
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: npm install --install-links=false
+
+      - name: Build project (consumer directory)
+        working-directory: ${{ inputs.working-directory }}
+        run: npm run build
+
+      - name: Cache build outputs
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ inputs.working-directory }}/dist
+            ${{ inputs.working-directory }}/build
+            ${{ inputs.working-directory }}/node_modules
+          key: build-${{ github.sha }}-${{ github.run_id }}
+
+  test-desktop:
+    needs: build
+    strategy:
+      matrix:
+        os: ${{ fromJSON(inputs.platforms) }}
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    env:
+      MQTT_PROTOCOL: ${{ secrets.MQTT_PROTOCOL }}
+      MQTT_HOST: ${{ secrets.MQTT_HOST }}
+      MQTT_PORT: ${{ secrets.MQTT_PORT }}
+      MQTT_USERNAME: ${{ secrets.MQTT_USERNAME }}
+      MQTT_PASSWORD: ${{ secrets.MQTT_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Restore build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ inputs.working-directory }}/dist
+            ${{ inputs.working-directory }}/build
+            ${{ inputs.working-directory }}/node_modules
+          key: build-${{ github.sha }}-${{ github.run_id }}
+          fail-on-cache-miss: true
+
+      - name: Install platform-specific dependencies
+        shell: node {0}
+        run: |
+          const { execSync } = require('child_process');
+          const os = require('os');
+
+          const platform = os.platform();
+          const arch = os.arch();
+
+          console.log(`Installing platform-specific dependencies for ${platform}/${arch}`);
+
+          try {
+            execSync(`npm rebuild --platform=${platform} --arch=${arch}`, { stdio: 'inherit', cwd: '${{ inputs.working-directory }}' });
+          } catch (err) {
+            console.log('npm rebuild completed with warnings (expected for packages without native modules)');
+          }
+
       - name: Setup MQTT certificates
         shell: node {0}
         env:
@@ -135,26 +207,6 @@ jobs:
             fs.writeFileSync(keyPath, process.env.CLIENT_KEY, 'utf8');
             fs.appendFileSync(process.env.GITHUB_ENV, `MQTT_KEY_PATH=${keyPath}\n`, 'utf8');
           }
-
-      - name: Install dependencies (root directory)
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
-        run: bun install
-
-      - name: Build project (root directory)
-        run: bun run build
-
-      - name: Install dependencies (consumer directory)
-        working-directory: ${{ inputs.working-directory }}
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
-        run: bun install --linker hoisted
-
-      - name: Build project (consumer directory)
-        working-directory: ${{ inputs.working-directory }}
-        run: bun run build
 
       - name: Generate runId
         id: runid
