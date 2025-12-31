@@ -69,72 +69,72 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
-        shell: bash
+        shell: node {0}
         run: |
-          # Validate tokens are present
-          if [ -z "$NPM_TOKEN" ]; then
-            echo "❌ NPM_TOKEN is empty"
-            exit 1
-          fi
-          if [ -z "$PAT_TOKEN" ]; then
-            echo "❌ PAT_TOKEN is empty"
-            exit 1
-          fi
+          const { execSync } = require('child_process');
 
-          # Configure npm (cross-platform)
-          npm config set registry https://registry.npmjs.org/
-          npm config set @qvac:registry https://registry.npmjs.org/
-          npm config set @tetherto:registry https://npm.pkg.github.com/
-          npm config set //registry.npmjs.org/:_authToken "${NPM_TOKEN}"
-          npm config set //npm.pkg.github.com/:_authToken "${PAT_TOKEN}"
+          if (!process.env.NPM_TOKEN) { console.log('❌ NPM_TOKEN is empty'); process.exit(1); }
+          if (!process.env.PAT_TOKEN) { console.log('❌ PAT_TOKEN is empty'); process.exit(1); }
 
-          echo "✅ npm configured"
+          execSync('npm config set registry https://registry.npmjs.org/', { stdio: 'inherit' });
+          execSync('npm config set @qvac:registry https://registry.npmjs.org/', { stdio: 'inherit' });
+          execSync('npm config set @tetherto:registry https://npm.pkg.github.com/', { stdio: 'inherit' });
+          execSync(`npm config set //registry.npmjs.org/:_authToken ${process.env.NPM_TOKEN}`, { stdio: 'inherit' });
+          execSync(`npm config set //npm.pkg.github.com/:_authToken ${process.env.PAT_TOKEN}`, { stdio: 'inherit' });
+          console.log('✅ npm configured');
 
-          # Validate access to @qvac/sdk
-          echo "Testing @qvac/sdk access..."
-          if npm info @qvac/sdk > /dev/null 2>&1; then
-            echo "✅ @qvac/sdk accessible"
-          else
-            echo "❌ Cannot access @qvac/sdk - retrying with verbose output..."
-            npm info @qvac/sdk --loglevel=verbose
-            exit 1
-          fi
+          console.log('Testing @qvac/sdk access...');
+          try {
+            execSync('npm info @qvac/sdk', { stdio: 'pipe' });
+            console.log('✅ @qvac/sdk accessible');
+          } catch (err) {
+            console.log('❌ Cannot access @qvac/sdk - retrying with verbose output...');
+            execSync('npm info @qvac/sdk --loglevel=verbose', { stdio: 'inherit' });
+            process.exit(1);
+          }
 
-          # Validate access to @tetherto/qvac-test-suite
-          echo "Testing @tetherto/qvac-test-suite access..."
-          if npm info @tetherto/qvac-test-suite > /dev/null 2>&1; then
-            echo "✅ @tetherto/qvac-test-suite accessible"
-          else
-            echo "❌ Cannot access @tetherto/qvac-test-suite - retrying with verbose output..."
-            npm info @tetherto/qvac-test-suite --loglevel=verbose
-            exit 1
-          fi
-
-          echo "✅ All registries validated"
+          console.log('Testing @tetherto/qvac-test-suite access...');
+          try {
+            execSync('npm info @tetherto/qvac-test-suite', { stdio: 'pipe' });
+            console.log('✅ @tetherto/qvac-test-suite accessible');
+          } catch (err) {
+            console.log('❌ Cannot access @tetherto/qvac-test-suite - retrying with verbose output...');
+            execSync('npm info @tetherto/qvac-test-suite --loglevel=verbose', { stdio: 'inherit' });
+            process.exit(1);
+          }
+          console.log('✅ All registries validated');
 
       - name: Setup MQTT certificates
-        shell: bash
+        shell: node {0}
         env:
           CA_CERT: ${{ secrets.MQTT_CA_CERT }}
           CLIENT_CERT: ${{ secrets.MQTT_CLIENT_CERT }}
           CLIENT_KEY: ${{ secrets.MQTT_CLIENT_KEY }}
         run: |
-          mkdir -p /tmp/mqtt-certs
+          const fs = require('fs');
+          const path = require('path');
+          const os = require('os');
 
-          if [ -n "$CA_CERT" ]; then
-            echo "$CA_CERT" > /tmp/mqtt-certs/ca.crt
-            echo "MQTT_CA_PATH=/tmp/mqtt-certs/ca.crt" >> $GITHUB_ENV
-          fi
+          const certsDir = path.join(os.tmpdir(), 'mqtt-certs');
+          fs.mkdirSync(certsDir, { recursive: true });
 
-          if [ -n "$CLIENT_CERT" ]; then
-            echo "$CLIENT_CERT" > /tmp/mqtt-certs/client.crt
-            echo "MQTT_CERT_PATH=/tmp/mqtt-certs/client.crt" >> $GITHUB_ENV
-          fi
+          if (process.env.CA_CERT) {
+            const caPath = path.join(certsDir, 'ca.crt');
+            fs.writeFileSync(caPath, process.env.CA_CERT, 'utf8');
+            fs.appendFileSync(process.env.GITHUB_ENV, `MQTT_CA_PATH=${caPath}\n`, 'utf8');
+          }
 
-          if [ -n "$CLIENT_KEY" ]; then
-            echo "$CLIENT_KEY" > /tmp/mqtt-certs/client.key
-            echo "MQTT_KEY_PATH=/tmp/mqtt-certs/client.key" >> $GITHUB_ENV
-          fi
+          if (process.env.CLIENT_CERT) {
+            const certPath = path.join(certsDir, 'client.crt');
+            fs.writeFileSync(certPath, process.env.CLIENT_CERT, 'utf8');
+            fs.appendFileSync(process.env.GITHUB_ENV, `MQTT_CERT_PATH=${certPath}\n`, 'utf8');
+          }
+
+          if (process.env.CLIENT_KEY) {
+            const keyPath = path.join(certsDir, 'client.key');
+            fs.writeFileSync(keyPath, process.env.CLIENT_KEY, 'utf8');
+            fs.appendFileSync(process.env.GITHUB_ENV, `MQTT_KEY_PATH=${keyPath}\n`, 'utf8');
+          }
 
       - name: Install dependencies (root directory)
         env:
@@ -158,59 +158,83 @@ jobs:
 
       - name: Generate runId
         id: runid
-        shell: bash
+        shell: node {0}
         run: |
-          PLATFORM="${{ matrix.os }}"
-          PLATFORM_SHORT=$(echo "$PLATFORM" | sed -E 's/.*(mac).*/macos/; t; s/.*(win).*/windows/; t; s/.*(linux|ubuntu).*/linux/')
-          RUN_ID="${GITHUB_REPOSITORY##*/}-${GITHUB_REF_NAME//\//-}-${GITHUB_SHA:0:7}-$(date +%s)-${PLATFORM_SHORT}"
-          echo "runId=$RUN_ID" >> $GITHUB_OUTPUT
-          echo "platform=$PLATFORM_SHORT" >> $GITHUB_OUTPUT
+          const fs = require('fs');
+          const platform = "${{ matrix.os }}";
+          let platformShort = 'unknown';
+          if (/mac/i.test(platform)) platformShort = 'macos';
+          else if (/win/i.test(platform)) platformShort = 'windows';
+          else if (/linux|ubuntu/i.test(platform)) platformShort = 'linux';
+
+          const repoName = process.env.GITHUB_REPOSITORY.split('/').pop();
+          const refName = process.env.GITHUB_REF_NAME.replace(/\//g, '-');
+          const sha = process.env.GITHUB_SHA.substring(0, 7);
+          const timestamp = Math.floor(Date.now() / 1000);
+          const runId = `${repoName}-${refName}-${sha}-${timestamp}-${platformShort}`;
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `runId=${runId}\n`, 'utf8');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `platform=${platformShort}\n`, 'utf8');
 
       - name: Run tests (consumer + producer)
         working-directory: ${{ inputs.working-directory }}
-        shell: bash
+        shell: node {0}
         run: |
-          # Start consumer in background
-          npx qvac-test run:consumer:desktop \
-            --runId=${{ steps.runid.outputs.runId }} \
-            --config=. \
-            > consumer.log 2>&1 &
-          CONSUMER_PID=$!
-          echo $CONSUMER_PID > consumer.pid
+          const { spawn, spawnSync } = require('child_process');
+          const fs = require('fs');
+          const path = require('path');
 
-          # Brief pause to let consumer initialize
-          sleep 2
+          const logStream = fs.createWriteStream('consumer.log', { flags: 'w' });
+          const consumer = spawn('npx', [
+            'qvac-test', 'run:consumer:desktop',
+            '--runId=${{ steps.runid.outputs.runId }}',
+            '--config=.'
+          ], { detached: false });
 
-          # Check if consumer is running
-          if ps -p $CONSUMER_PID > /dev/null 2>&1; then
-            echo "✅ Consumer running (PID: $CONSUMER_PID)"
-          else
-            echo "❌ Consumer died immediately"
-            cat consumer.log || true
-            exit 1
-          fi
+          consumer.stdout.pipe(logStream);
+          consumer.stderr.pipe(logStream);
+          fs.writeFileSync('consumer.pid', consumer.pid.toString(), 'utf8');
 
-          # Run producer in foreground
-          npx qvac-test run:producer \
-            --runId=${{ steps.runid.outputs.runId }} \
-            --consumer-timeout=${{ inputs.consumer-timeout }} \
-            --config=.
+          // Brief pause to let consumer initialize
+          await new Promise(resolve => setTimeout(resolve, 2000));
 
-          PRODUCER_EXIT=$?
+          // Check if consumer is running
+          let consumerAlive = !consumer.killed;
+          try { process.kill(consumer.pid, 0); } catch (e) { consumerAlive = false; }
 
-          # Clean up consumer
-          kill $CONSUMER_PID 2>/dev/null || true
+          if (consumerAlive) {
+            console.log(`✅ Consumer running (PID: ${consumer.pid})`);
+          } else {
+            console.log('❌ Consumer died immediately');
+            if (fs.existsSync('consumer.log')) console.log(fs.readFileSync('consumer.log', 'utf8'));
+            process.exit(1);
+          }
 
-          exit $PRODUCER_EXIT
+          // Run producer in foreground
+          const producer = spawnSync('npx', [
+            'qvac-test', 'run:producer',
+            '--runId=${{ steps.runid.outputs.runId }}',
+            '--consumer-timeout=${{ inputs.consumer-timeout }}',
+            '--config=.'
+          ], { stdio: 'inherit' });
+
+          const producerExit = producer.status || 0;
+
+          // Clean up consumer
+          try { process.kill(consumer.pid, 'SIGTERM'); } catch (e) {}
+
+          process.exit(producerExit);
 
       - name: Stop consumer (safety)
         if: always()
-        shell: bash
+        shell: node {0}
         working-directory: ${{ inputs.working-directory }}
         run: |
-          if [ -f consumer.pid ]; then
-            kill $(cat consumer.pid) 2>/dev/null || true
-          fi
+          const fs = require('fs');
+          if (fs.existsSync('consumer.pid')) {
+            const pid = parseInt(fs.readFileSync('consumer.pid', 'utf8').trim());
+            try { process.kill(pid, 'SIGTERM'); } catch (e) {}
+          }
 
       - name: Upload consumer logs
         if: always()
@@ -239,8 +263,13 @@ jobs:
 
       - name: Show consumer log on failure
         if: failure()
+        shell: node {0}
         working-directory: ${{ inputs.working-directory }}
-        run: cat consumer.log || true
+        run: |
+          const fs = require('fs');
+          if (fs.existsSync('consumer.log')) {
+            console.log(fs.readFileSync('consumer.log', 'utf8'));
+          }
 
   compare-results:
     needs: test-desktop
@@ -265,48 +294,40 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
-        shell: bash
+        shell: node {0}
         run: |
-          # Validate tokens are present
-          if [ -z "$NPM_TOKEN" ]; then
-            echo "❌ NPM_TOKEN is empty"
-            exit 1
-          fi
-          if [ -z "$PAT_TOKEN" ]; then
-            echo "❌ PAT_TOKEN is empty"
-            exit 1
-          fi
+          const { execSync } = require('child_process');
 
-          # Configure npm (cross-platform)
-          npm config set registry https://registry.npmjs.org/
-          npm config set @qvac:registry https://registry.npmjs.org/
-          npm config set @tetherto:registry https://npm.pkg.github.com/
-          npm config set //registry.npmjs.org/:_authToken "${NPM_TOKEN}"
-          npm config set //npm.pkg.github.com/:_authToken "${PAT_TOKEN}"
+          if (!process.env.NPM_TOKEN) { console.log('❌ NPM_TOKEN is empty'); process.exit(1); }
+          if (!process.env.PAT_TOKEN) { console.log('❌ PAT_TOKEN is empty'); process.exit(1); }
 
-          echo "✅ npm configured"
+          execSync('npm config set registry https://registry.npmjs.org/', { stdio: 'inherit' });
+          execSync('npm config set @qvac:registry https://registry.npmjs.org/', { stdio: 'inherit' });
+          execSync('npm config set @tetherto:registry https://npm.pkg.github.com/', { stdio: 'inherit' });
+          execSync(`npm config set //registry.npmjs.org/:_authToken ${process.env.NPM_TOKEN}`, { stdio: 'inherit' });
+          execSync(`npm config set //npm.pkg.github.com/:_authToken ${process.env.PAT_TOKEN}`, { stdio: 'inherit' });
+          console.log('✅ npm configured');
 
-          # Validate access to @qvac/sdk
-          echo "Testing @qvac/sdk access..."
-          if npm info @qvac/sdk > /dev/null 2>&1; then
-            echo "✅ @qvac/sdk accessible"
-          else
-            echo "❌ Cannot access @qvac/sdk - retrying with verbose output..."
-            npm info @qvac/sdk --loglevel=verbose
-            exit 1
-          fi
+          console.log('Testing @qvac/sdk access...');
+          try {
+            execSync('npm info @qvac/sdk', { stdio: 'pipe' });
+            console.log('✅ @qvac/sdk accessible');
+          } catch (err) {
+            console.log('❌ Cannot access @qvac/sdk - retrying with verbose output...');
+            execSync('npm info @qvac/sdk --loglevel=verbose', { stdio: 'inherit' });
+            process.exit(1);
+          }
 
-          # Validate access to @tetherto/qvac-test-suite
-          echo "Testing @tetherto/qvac-test-suite access..."
-          if npm info @tetherto/qvac-test-suite > /dev/null 2>&1; then
-            echo "✅ @tetherto/qvac-test-suite accessible"
-          else
-            echo "❌ Cannot access @tetherto/qvac-test-suite - retrying with verbose output..."
-            npm info @tetherto/qvac-test-suite --loglevel=verbose
-            exit 1
-          fi
-
-          echo "✅ All registries validated"
+          console.log('Testing @tetherto/qvac-test-suite access...');
+          try {
+            execSync('npm info @tetherto/qvac-test-suite', { stdio: 'pipe' });
+            console.log('✅ @tetherto/qvac-test-suite accessible');
+          } catch (err) {
+            console.log('❌ Cannot access @tetherto/qvac-test-suite - retrying with verbose output...');
+            execSync('npm info @tetherto/qvac-test-suite --loglevel=verbose', { stdio: 'inherit' });
+            process.exit(1);
+          }
+          console.log('✅ All registries validated');
 
       - name: Install dependencies
         working-directory: ${{ inputs.working-directory }}
@@ -335,81 +356,77 @@ jobs:
 
       - name: Check baseline availability
         id: check-baseline
-        shell: bash
+        shell: node {0}
         run: |
-          if [ -d "${{ inputs.working-directory }}/baseline-results" ] && [ "$(ls -A ${{ inputs.working-directory }}/baseline-results/*.json 2>/dev/null | wc -l)" -gt 0 ]; then
-            echo "has_baseline=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_baseline=false" >> $GITHUB_OUTPUT
-          fi
+          const fs = require('fs');
+          const path = require('path');
+          const baselineDir = path.join('${{ inputs.working-directory }}', 'baseline-results');
+          const hasBaseline = fs.existsSync(baselineDir) && fs.readdirSync(baselineDir).filter(f => f.endsWith('.json')).length > 0;
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `has_baseline=${hasBaseline}\n`, 'utf8');
 
       - name: Compare results
         if: steps.check-baseline.outputs.has_baseline == 'true'
         working-directory: ${{ inputs.working-directory }}
-        shell: bash
+        shell: node {0}
         run: |
-          for platform in linux macos windows; do
-            current=$(ls current-results/*${platform}*.json 2>/dev/null | head -n1)
-            baseline=$(ls baseline-results/*${platform}*.json 2>/dev/null | head -n1)
+          const { execSync } = require('child_process');
+          const fs = require('fs');
+          const platforms = ['linux', 'macos', 'windows'];
+
+          for (const platform of platforms) {
+            const currentFiles = fs.existsSync('current-results') ? fs.readdirSync('current-results').filter(f => f.includes(platform) && f.endsWith('.json')) : [];
+            const baselineFiles = fs.existsSync('baseline-results') ? fs.readdirSync('baseline-results').filter(f => f.includes(platform) && f.endsWith('.json')) : [];
             
-            if [ -n "$current" ] && [ -n "$baseline" ]; then
-              npx qvac-test report:compare \
-                --baseline "$baseline" \
-                --current "$current" \
-                --output "comparison-${platform}.json"
-            fi
-          done
+            if (currentFiles.length > 0 && baselineFiles.length > 0) {
+              const current = `current-results/${currentFiles[0]}`;
+              const baseline = `baseline-results/${baselineFiles[0]}`;
+              execSync(`npx qvac-test report:compare --baseline "${baseline}" --current "${current}" --output "comparison-${platform}.json"`, { stdio: 'inherit' });
+            }
+          }
 
       - name: Format comparison
         working-directory: ${{ inputs.working-directory }}
-        shell: bash
+        shell: node {0}
         run: |
-          echo "# 🧪 QVAC Test Results" > comment.md
-          echo "" >> comment.md
-          echo "**Branch**: \`${{ github.head_ref }}\` | **Commit**: \`${GITHUB_SHA:0:7}\` | **Base**: \`${{ github.event.pull_request.base.ref }}\`" >> comment.md
-          echo "" >> comment.md
+          const { execSync } = require('child_process');
+          const fs = require('fs');
+          const path = require('path');
 
-          if [ "${{ steps.check-baseline.outputs.has_baseline }}" = "false" ]; then
-            echo "⚠️ **No baseline found** - showing current results only" >> comment.md
-            echo "" >> comment.md
-            echo "| Platform | Passed | Failed | Total | Rate | Duration |" >> comment.md
-            echo "|----------|--------|--------|-------|------|----------|" >> comment.md
+          let comment = '# 🧪 QVAC Test Results\n\n';
+          const sha = process.env.GITHUB_SHA.substring(0, 7);
+          comment += `**Branch**: \`${{ github.head_ref }}\` | **Commit**: \`${sha}\` | **Base**: \`${{ github.event.pull_request.base.ref }}\`\n\n`;
+
+          if ("${{ steps.check-baseline.outputs.has_baseline }}" === "false") {
+            comment += '⚠️ **No baseline found** - showing current results only\n\n';
+            comment += '| Platform | Passed | Failed | Total | Rate | Duration |\n';
+            comment += '|----------|--------|--------|-------|------|----------|\n';
+
+            if (fs.existsSync('current-results')) {
+              const results = fs.readdirSync('current-results').filter(f => f.endsWith('.json'));
+              for (const result of results) {
+                const json = JSON.parse(fs.readFileSync(path.join('current-results', result), 'utf8'));
+                const platform = result.replace('results-', '').replace(/-.*/, '');
+                comment += `| ${platform} | ${json.summary.passed} | ${json.summary.failed} | ${json.summary.total} | ${json.summary.successRate}% | ${json.summary.duration}s |\n`;
+              }
+            }
             
-            for result in current-results/*.json; do
-              if [ -f "$result" ]; then
-                platform=$(basename "$result" | sed 's/results-//' | sed 's/-.*//')
-                passed=$(jq -r '.summary.passed' "$result")
-                failed=$(jq -r '.summary.failed' "$result")
-                total=$(jq -r '.summary.total' "$result")
-                rate=$(jq -r '.summary.successRate' "$result")
-                duration=$(jq -r '.summary.duration' "$result")
-                echo "| $platform | $passed | $failed | $total | ${rate}% | ${duration}s |" >> comment.md
-              fi
-            done
+            comment += '\n### 📦 Artifacts\n\n';
+            comment += `[View all artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts)\n`;
+          } else {
+            const comparisons = fs.readdirSync('.').filter(f => f.startsWith('comparison-') && f.endsWith('.json'));
+            for (const comparison of comparisons) {
+              const platform = path.basename(comparison, '.json').replace('comparison-', '');
+              execSync(`npx qvac-test report:format --input "${comparison}" --format markdown --output "platform-${platform}.md"`, { stdio: 'inherit' });
+              
+              comment += `## ${platform}\n`;
+              comment += fs.readFileSync(`platform-${platform}.md`, 'utf8') + '\n';
+            }
             
-            echo "" >> comment.md
-            echo "### 📦 Artifacts" >> comment.md
-            echo "" >> comment.md
-            echo "[View all artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts)" >> comment.md
-          else
-            for comparison in comparison-*.json; do
-              if [ -f "$comparison" ]; then
-                platform=$(basename "$comparison" | sed 's/comparison-//' | sed 's/.json//')
-                npx qvac-test report:format \
-                  --input "$comparison" \
-                  --format markdown \
-                  --output "platform-${platform}.md"
-                
-                echo "## ${platform}" >> comment.md
-                cat "platform-${platform}.md" >> comment.md
-                echo "" >> comment.md
-              fi
-            done
-            
-            echo "### 📦 Artifacts" >> comment.md
-            echo "" >> comment.md
-            echo "[View all artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts)" >> comment.md
-          fi
+            comment += '### 📦 Artifacts\n\n';
+            comment += `[View all artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts)\n`;
+          }
+
+          fs.writeFileSync('comment.md', comment, 'utf8');
 
       - name: Comment on PR
         uses: actions/github-script@v7
