@@ -180,50 +180,52 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         shell: node {0}
         run: |
-          const { spawn, spawnSync } = require('child_process');
-          const fs = require('fs');
-          const path = require('path');
+          (async () => {
+            const { spawn, spawnSync } = require('child_process');
+            const fs = require('fs');
+            const path = require('path');
 
-          const logStream = fs.createWriteStream('consumer.log', { flags: 'w' });
-          const consumer = spawn('npx', [
-            'qvac-test', 'run:consumer:desktop',
-            '--runId=${{ steps.runid.outputs.runId }}',
-            '--config=.'
-          ], { detached: false });
+            const logStream = fs.createWriteStream('consumer.log', { flags: 'w' });
+            const consumer = spawn('npx', [
+              'qvac-test', 'run:consumer:desktop',
+              '--runId=${{ steps.runid.outputs.runId }}',
+              '--config=.'
+            ], { detached: false });
 
-          consumer.stdout.pipe(logStream);
-          consumer.stderr.pipe(logStream);
-          fs.writeFileSync('consumer.pid', consumer.pid.toString(), 'utf8');
+            consumer.stdout.pipe(logStream);
+            consumer.stderr.pipe(logStream);
+            fs.writeFileSync('consumer.pid', consumer.pid.toString(), 'utf8');
 
-          // Brief pause to let consumer initialize
-          await new Promise(resolve => setTimeout(resolve, 2000));
+            // Brief pause to let consumer initialize
+            await new Promise(resolve => setTimeout(resolve, 2000));
 
-          // Check if consumer is running
-          let consumerAlive = !consumer.killed;
-          try { process.kill(consumer.pid, 0); } catch (e) { consumerAlive = false; }
+            // Check if consumer is running
+            let consumerAlive = !consumer.killed;
+            try { process.kill(consumer.pid, 0); } catch (e) { consumerAlive = false; }
 
-          if (consumerAlive) {
-            console.log(`✅ Consumer running (PID: ${consumer.pid})`);
-          } else {
-            console.log('❌ Consumer died immediately');
-            if (fs.existsSync('consumer.log')) console.log(fs.readFileSync('consumer.log', 'utf8'));
-            process.exit(1);
-          }
+            if (consumerAlive) {
+              console.log(`✅ Consumer running (PID: ${consumer.pid})`);
+            } else {
+              console.log('❌ Consumer died immediately');
+              if (fs.existsSync('consumer.log')) console.log(fs.readFileSync('consumer.log', 'utf8'));
+              process.exit(1);
+            }
 
-          // Run producer in foreground
-          const producer = spawnSync('npx', [
-            'qvac-test', 'run:producer',
-            '--runId=${{ steps.runid.outputs.runId }}',
-            '--consumer-timeout=${{ inputs.consumer-timeout }}',
-            '--config=.'
-          ], { stdio: 'inherit' });
+            // Run producer in foreground
+            const producer = spawnSync('npx', [
+              'qvac-test', 'run:producer',
+              '--runId=${{ steps.runid.outputs.runId }}',
+              '--consumer-timeout=${{ inputs.consumer-timeout }}',
+              '--config=.'
+            ], { stdio: 'inherit' });
 
-          const producerExit = producer.status || 0;
+            const producerExit = producer.status || 0;
 
-          // Clean up consumer
-          try { process.kill(consumer.pid, 'SIGTERM'); } catch (e) {}
+            // Clean up consumer
+            try { process.kill(consumer.pid, 'SIGTERM'); } catch (e) {}
 
-          process.exit(producerExit);
+            process.exit(producerExit);
+          })();
 
       - name: Stop consumer (safety)
         if: always()
