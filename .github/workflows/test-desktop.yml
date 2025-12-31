@@ -98,7 +98,7 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
-        run: bun install
+        run: bun install --os=darwin --cpu=arm64 --os=win32 --cpu=x64 --os=linux --cpu=x64
 
       - name: Build project (root directory)
         run: bun run build
@@ -108,11 +108,11 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
-        run: npm install --install-links=false
+        run: bun install --os=darwin --cpu=arm64 --os=win32 --cpu=x64 --os=linux --cpu=x64
 
       - name: Build project (consumer directory)
         working-directory: ${{ inputs.working-directory }}
-        run: npm run build
+        run: bun run build
 
       - name: Cache build outputs
         uses: actions/cache/save@v4
@@ -158,23 +158,6 @@ jobs:
             ${{ inputs.working-directory }}/node_modules
           key: build-${{ github.sha }}-${{ github.run_id }}
           fail-on-cache-miss: true
-
-      - name: Install platform-specific dependencies
-        shell: node {0}
-        run: |
-          const { execSync } = require('child_process');
-          const os = require('os');
-
-          const platform = os.platform();
-          const arch = os.arch();
-
-          console.log(`Installing platform-specific dependencies for ${platform}/${arch}`);
-
-          try {
-            execSync(`npm rebuild --platform=${platform} --arch=${arch}`, { stdio: 'inherit', cwd: '${{ inputs.working-directory }}' });
-          } catch (err) {
-            console.log('npm rebuild completed with warnings (expected for packages without native modules)');
-          }
 
       - name: Setup MQTT certificates
         shell: node {0}
@@ -375,16 +358,21 @@ jobs:
         shell: node {0}
         run: |
           const { execSync } = require('child_process');
+          const fs = require('fs');
 
           if (!process.env.NPM_TOKEN) { console.log('❌ NPM_TOKEN is empty'); process.exit(1); }
           if (!process.env.PAT_TOKEN) { console.log('❌ PAT_TOKEN is empty'); process.exit(1); }
 
-          execSync('npm config set registry https://registry.npmjs.org/', { stdio: 'inherit' });
-          execSync('npm config set @qvac:registry https://registry.npmjs.org/', { stdio: 'inherit' });
-          execSync('npm config set @tetherto:registry https://npm.pkg.github.com/', { stdio: 'inherit' });
-          execSync(`npm config set //registry.npmjs.org/:_authToken ${process.env.NPM_TOKEN}`, { stdio: 'inherit' });
-          execSync(`npm config set //npm.pkg.github.com/:_authToken ${process.env.PAT_TOKEN}`, { stdio: 'inherit' });
-          console.log('✅ npm configured');
+          // Create .npmrc file in repository root for both npm and bun
+          const lines = [
+            'registry=https://registry.npmjs.org/',
+            '@qvac:registry=https://registry.npmjs.org/',
+            '@tetherto:registry=https://npm.pkg.github.com/',
+            `//registry.npmjs.org/:_authToken=${process.env.NPM_TOKEN}`,
+            `//npm.pkg.github.com/:_authToken=${process.env.PAT_TOKEN}`
+          ];
+          fs.writeFileSync('.npmrc', lines.join('\n'), 'utf8');
+          console.log('✅ .npmrc configured');
 
           console.log('Testing @qvac/sdk access...');
           try {
