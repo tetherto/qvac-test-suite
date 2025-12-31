@@ -150,11 +150,11 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
-        run: npm install
+        run: bun install --linker hoisted
 
       - name: Build project (consumer directory)
         working-directory: ${{ inputs.working-directory }}
-        run: npm run build
+        run: bun run build
 
       - name: Generate runId
         id: runid
@@ -178,6 +178,7 @@ jobs:
 
       - name: Run tests (consumer + producer)
         working-directory: ${{ inputs.working-directory }}
+        timeout-minutes: 15
         shell: node {0}
         run: |
           (async () => {
@@ -211,6 +212,17 @@ jobs:
               process.exit(1);
             }
 
+            // Monitor consumer health during producer execution
+            let consumerExitedDuringTest = false;
+            consumer.on('exit', (code, signal) => {
+              consumerExitedDuringTest = true;
+              console.log(`❌ Consumer crashed during test execution (code: ${code}, signal: ${signal})`);
+              if (fs.existsSync('consumer.log')) {
+                console.log('\n--- Consumer log ---');
+                console.log(fs.readFileSync('consumer.log', 'utf8'));
+              }
+            });
+
             // Run producer in foreground
             const producer = spawnSync('npx', [
               'qvac-test', 'run:producer',
@@ -219,10 +231,22 @@ jobs:
               '--config=.'
             ], { stdio: 'inherit' });
 
-            const producerExit = producer.status || 0;
+            let producerExit = producer.status || 0;
+
+            // Check if consumer crashed during execution
+            if (consumerExitedDuringTest) {
+              console.log('❌ Test failed due to consumer crash');
+              producerExit = 1;
+            }
 
             // Clean up consumer
-            try { process.kill(consumer.pid, 'SIGTERM'); } catch (e) {}
+            try {
+              process.kill(consumer.pid, 'SIGTERM');
+              // Give it 5 seconds to terminate gracefully
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              // Force kill if still alive
+              try { process.kill(consumer.pid, 'SIGKILL'); } catch (e) {}
+            } catch (e) {}
 
             process.exit(producerExit);
           })();
