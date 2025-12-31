@@ -83,7 +83,6 @@ jobs:
           npm config set @tetherto:registry https://npm.pkg.github.com/
           npm config set //registry.npmjs.org/:_authToken "${NPM_TOKEN}"
           npm config set //npm.pkg.github.com/:_authToken "${PAT_TOKEN}"
-          npm config set always-auth true
 
           echo "✅ npm configured"
 
@@ -267,7 +266,6 @@ jobs:
           npm config set @tetherto:registry https://npm.pkg.github.com/
           npm config set //registry.npmjs.org/:_authToken "${NPM_TOKEN}"
           npm config set //npm.pkg.github.com/:_authToken "${PAT_TOKEN}"
-          npm config set always-auth true
 
           echo "✅ npm configured"
 
