@@ -150,11 +150,11 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
-        run: bun install
+        run: npm install
 
       - name: Build project (consumer directory)
         working-directory: ${{ inputs.working-directory }}
-        run: bun run build
+        run: npm run build
 
       - name: Generate runId
         id: runid
