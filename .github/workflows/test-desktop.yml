@@ -117,7 +117,7 @@ jobs:
 
       - name: Install dependencies (consumer directory)
         working-directory: ${{ inputs.working-directory }}
-        run: bun install --os=darwin --cpu=arm64 --os=win32 --cpu=x64 --os=linux --cpu=x64
+        run: bun install --os=darwin --cpu=arm64 --os=win32 --cpu=x64 --os=linux --cpu=x64 --install-links=false
 
       - name: Build project (consumer directory)
         working-directory: ${{ inputs.working-directory }}
@@ -130,7 +130,8 @@ jobs:
             ${{ inputs.working-directory }}/dist
             ${{ inputs.working-directory }}/build
             ${{ inputs.working-directory }}/node_modules
-          key: build-${{ github.sha }}-${{ github.run_id }}
+          key: build-${{ hashFiles(format('{0}/bun.lockb', inputs.working-directory)) }}-${{ github.sha }}
+          enableCrossOsArchive: true
 
   test-desktop:
     needs: build
@@ -167,7 +168,8 @@ jobs:
             ${{ inputs.working-directory }}/dist
             ${{ inputs.working-directory }}/build
             ${{ inputs.working-directory }}/node_modules
-          key: build-${{ github.sha }}-${{ github.run_id }}
+          key: build-${{ hashFiles(format('{0}/bun.lockb', inputs.working-directory)) }}-${{ github.sha }}
+          enableCrossOsArchive: true
           fail-on-cache-miss: true
 
       - name: Setup MQTT certificates
@@ -368,7 +370,8 @@ jobs:
             ${{ inputs.working-directory }}/dist
             ${{ inputs.working-directory }}/build
             ${{ inputs.working-directory }}/node_modules
-          key: build-${{ github.sha }}-${{ github.run_id }}
+          key: build-${{ hashFiles(format('{0}/bun.lockb', inputs.working-directory)) }}-${{ github.sha }}
+          enableCrossOsArchive: true
           fail-on-cache-miss: true
 
       - name: Download current results
