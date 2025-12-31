@@ -42,6 +42,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,22 +59,24 @@ jobs:
           bun-version: latest
 
       - name: Configure npm registries
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         shell: node {0}
         run: |
           const { execSync } = require('child_process');
+          const fs = require('fs');
 
           if (!process.env.NPM_TOKEN) { console.log('❌ NPM_TOKEN is empty'); process.exit(1); }
           if (!process.env.PAT_TOKEN) { console.log('❌ PAT_TOKEN is empty'); process.exit(1); }
 
-          execSync('npm config set registry https://registry.npmjs.org/', { stdio: 'inherit' });
-          execSync('npm config set @qvac:registry https://registry.npmjs.org/', { stdio: 'inherit' });
-          execSync('npm config set @tetherto:registry https://npm.pkg.github.com/', { stdio: 'inherit' });
-          execSync(`npm config set //registry.npmjs.org/:_authToken ${process.env.NPM_TOKEN}`, { stdio: 'inherit' });
-          execSync(`npm config set //npm.pkg.github.com/:_authToken ${process.env.PAT_TOKEN}`, { stdio: 'inherit' });
-          console.log('✅ npm configured');
+          // Create .npmrc file in repository root for both npm and bun
+          const lines = [
+            'registry=https://registry.npmjs.org/',
+            '@qvac:registry=https://registry.npmjs.org/',
+            '@tetherto:registry=https://npm.pkg.github.com/',
+            `//registry.npmjs.org/:_authToken=${process.env.NPM_TOKEN}`,
+            `//npm.pkg.github.com/:_authToken=${process.env.PAT_TOKEN}`
+          ];
+          fs.writeFileSync('.npmrc', lines.join('\n'), 'utf8');
+          console.log('✅ .npmrc configured');
 
           console.log('Testing @qvac/sdk access...');
           try {
@@ -95,9 +100,6 @@ jobs:
           console.log('✅ All registries validated');
 
       - name: Install dependencies (root directory)
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: bun install --os=darwin --cpu=arm64 --os=win32 --cpu=x64 --os=linux --cpu=x64
 
       - name: Build project (root directory)
@@ -105,9 +107,6 @@ jobs:
 
       - name: Install dependencies (consumer directory)
         working-directory: ${{ inputs.working-directory }}
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: bun install --os=darwin --cpu=arm64 --os=win32 --cpu=x64 --os=linux --cpu=x64
 
       - name: Build project (consumer directory)
@@ -131,6 +130,8 @@ jobs:
       fail-fast: false
     runs-on: ${{ matrix.os }}
     env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
       MQTT_PROTOCOL: ${{ secrets.MQTT_PROTOCOL }}
       MQTT_HOST: ${{ secrets.MQTT_HOST }}
       MQTT_PORT: ${{ secrets.MQTT_PORT }}
@@ -336,6 +337,9 @@ jobs:
     needs: test-desktop
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
     permissions:
       pull-requests: write
     steps:
@@ -352,9 +356,6 @@ jobs:
           bun-version: latest
 
       - name: Configure npm registries
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         shell: node {0}
         run: |
           const { execSync } = require('child_process');
@@ -397,9 +398,6 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ inputs.working-directory }}
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: npm install --ignore-scripts
 
       - name: Download current results
