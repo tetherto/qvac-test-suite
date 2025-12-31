@@ -102,6 +102,9 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ inputs.working-directory }}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: npm install
 
       - name: Build project
@@ -226,6 +229,9 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ inputs.working-directory }}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: npm install --ignore-scripts
 
       - name: Download current results
