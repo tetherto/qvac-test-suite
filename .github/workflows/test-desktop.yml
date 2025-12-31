@@ -18,6 +18,10 @@ on:
         type: number
         default: 30
     secrets:
+      PAT_TOKEN:
+        required: true
+      NPM_TOKEN:
+        required: true
       MQTT_PROTOCOL:
         required: true
       MQTT_HOST:
@@ -50,10 +54,27 @@ jobs:
       MQTT_PASSWORD: ${{ secrets.MQTT_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Configure npm registries
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+        shell: bash
+        run: |
+          cat > .npmrc <<NPMRC
+          always-auth=true
+          registry=https://registry.npmjs.org/
+          @qvac:registry=https://registry.npmjs.org/
+          @tetherto:registry=https://npm.pkg.github.com/
+          //registry.npmjs.org/:_authToken=${NPM_TOKEN}
+          //npm.pkg.github.com/:_authToken=${PAT_TOKEN}
+          NPMRC
 
       - name: Setup MQTT certificates
         shell: bash
@@ -181,10 +202,27 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Configure npm registries
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+        shell: bash
+        run: |
+          cat > .npmrc <<NPMRC
+          always-auth=true
+          registry=https://registry.npmjs.org/
+          @qvac:registry=https://registry.npmjs.org/
+          @tetherto:registry=https://npm.pkg.github.com/
+          //registry.npmjs.org/:_authToken=${NPM_TOKEN}
+          //npm.pkg.github.com/:_authToken=${PAT_TOKEN}
+          NPMRC
 
       - name: Install dependencies
         working-directory: ${{ inputs.working-directory }}
