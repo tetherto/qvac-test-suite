@@ -132,14 +132,23 @@ jobs:
             echo "MQTT_KEY_PATH=/tmp/mqtt-certs/client.key" >> $GITHUB_ENV
           fi
 
-      - name: Install dependencies
+      - name: Install dependencies (root directory)
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: npm install
+
+      - name: Build project (root directory)
+        run: npm run build
+
+      - name: Install dependencies (consumer directory)
         working-directory: ${{ inputs.working-directory }}
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: npm install
 
-      - name: Build project
+      - name: Build project (consumer directory)
         working-directory: ${{ inputs.working-directory }}
         run: npm run build
 
