@@ -105,6 +105,16 @@ jobs:
       - name: Build project (root directory)
         run: bun run build
 
+      - name: Copy .npmrc to consumer directory
+        shell: node {0}
+        run: |
+          const fs = require('fs');
+          const path = require('path');
+          const npmrcContent = fs.readFileSync('.npmrc', 'utf8');
+          const consumerDir = '${{ inputs.working-directory }}';
+          fs.writeFileSync(path.join(consumerDir, '.npmrc'), npmrcContent, 'utf8');
+          console.log('✅ .npmrc copied to consumer directory');
+
       - name: Install dependencies (consumer directory)
         working-directory: ${{ inputs.working-directory }}
         run: bun install --os=darwin --cpu=arm64 --os=win32 --cpu=x64 --os=linux --cpu=x64
@@ -351,54 +361,15 @@ jobs:
         with:
           node-version: '22'
 
-      - uses: oven-sh/setup-bun@v2
+      - name: Restore build cache
+        uses: actions/cache/restore@v4
         with:
-          bun-version: latest
-
-      - name: Configure npm registries
-        shell: node {0}
-        run: |
-          const { execSync } = require('child_process');
-          const fs = require('fs');
-
-          if (!process.env.NPM_TOKEN) { console.log('❌ NPM_TOKEN is empty'); process.exit(1); }
-          if (!process.env.PAT_TOKEN) { console.log('❌ PAT_TOKEN is empty'); process.exit(1); }
-
-          // Create .npmrc file in repository root for both npm and bun
-          const lines = [
-            'registry=https://registry.npmjs.org/',
-            '@qvac:registry=https://registry.npmjs.org/',
-            '@tetherto:registry=https://npm.pkg.github.com/',
-            `//registry.npmjs.org/:_authToken=${process.env.NPM_TOKEN}`,
-            `//npm.pkg.github.com/:_authToken=${process.env.PAT_TOKEN}`
-          ];
-          fs.writeFileSync('.npmrc', lines.join('\n'), 'utf8');
-          console.log('✅ .npmrc configured');
-
-          console.log('Testing @qvac/sdk access...');
-          try {
-            execSync('npm info @qvac/sdk', { stdio: 'pipe' });
-            console.log('✅ @qvac/sdk accessible');
-          } catch (err) {
-            console.log('❌ Cannot access @qvac/sdk - retrying with verbose output...');
-            execSync('npm info @qvac/sdk --loglevel=verbose', { stdio: 'inherit' });
-            process.exit(1);
-          }
-
-          console.log('Testing @tetherto/qvac-test-suite access...');
-          try {
-            execSync('npm info @tetherto/qvac-test-suite', { stdio: 'pipe' });
-            console.log('✅ @tetherto/qvac-test-suite accessible');
-          } catch (err) {
-            console.log('❌ Cannot access @tetherto/qvac-test-suite - retrying with verbose output...');
-            execSync('npm info @tetherto/qvac-test-suite --loglevel=verbose', { stdio: 'inherit' });
-            process.exit(1);
-          }
-          console.log('✅ All registries validated');
-
-      - name: Install dependencies
-        working-directory: ${{ inputs.working-directory }}
-        run: npm install --ignore-scripts
+          path: |
+            ${{ inputs.working-directory }}/dist
+            ${{ inputs.working-directory }}/build
+            ${{ inputs.working-directory }}/node_modules
+          key: build-${{ github.sha }}-${{ github.run_id }}
+          fail-on-cache-miss: true
 
       - name: Download current results
         uses: actions/download-artifact@v4
