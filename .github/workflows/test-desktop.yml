@@ -67,14 +67,47 @@ jobs:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         shell: bash
         run: |
-          cat > .npmrc <<NPMRC
-          always-auth=true
-          registry=https://registry.npmjs.org/
-          @qvac:registry=https://registry.npmjs.org/
-          @tetherto:registry=https://npm.pkg.github.com/
-          //registry.npmjs.org/:_authToken=${NPM_TOKEN}
-          //npm.pkg.github.com/:_authToken=${PAT_TOKEN}
-          NPMRC
+          # Validate tokens are present
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "❌ NPM_TOKEN is empty"
+            exit 1
+          fi
+          if [ -z "$PAT_TOKEN" ]; then
+            echo "❌ PAT_TOKEN is empty"
+            exit 1
+          fi
+
+          # Configure npm (cross-platform)
+          npm config set registry https://registry.npmjs.org/
+          npm config set @qvac:registry https://registry.npmjs.org/
+          npm config set @tetherto:registry https://npm.pkg.github.com/
+          npm config set //registry.npmjs.org/:_authToken "${NPM_TOKEN}"
+          npm config set //npm.pkg.github.com/:_authToken "${PAT_TOKEN}"
+          npm config set always-auth true
+
+          echo "✅ npm configured"
+
+          # Validate access to @qvac/sdk
+          echo "Testing @qvac/sdk access..."
+          if npm info @qvac/sdk > /dev/null 2>&1; then
+            echo "✅ @qvac/sdk accessible"
+          else
+            echo "❌ Cannot access @qvac/sdk - retrying with verbose output..."
+            npm info @qvac/sdk --loglevel=verbose
+            exit 1
+          fi
+
+          # Validate access to @tetherto/qvac-test-suite
+          echo "Testing @tetherto/qvac-test-suite access..."
+          if npm info @tetherto/qvac-test-suite > /dev/null 2>&1; then
+            echo "✅ @tetherto/qvac-test-suite accessible"
+          else
+            echo "❌ Cannot access @tetherto/qvac-test-suite - retrying with verbose output..."
+            npm info @tetherto/qvac-test-suite --loglevel=verbose
+            exit 1
+          fi
+
+          echo "✅ All registries validated"
 
       - name: Setup MQTT certificates
         shell: bash
@@ -218,14 +251,47 @@ jobs:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         shell: bash
         run: |
-          cat > .npmrc <<NPMRC
-          always-auth=true
-          registry=https://registry.npmjs.org/
-          @qvac:registry=https://registry.npmjs.org/
-          @tetherto:registry=https://npm.pkg.github.com/
-          //registry.npmjs.org/:_authToken=${NPM_TOKEN}
-          //npm.pkg.github.com/:_authToken=${PAT_TOKEN}
-          NPMRC
+          # Validate tokens are present
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "❌ NPM_TOKEN is empty"
+            exit 1
+          fi
+          if [ -z "$PAT_TOKEN" ]; then
+            echo "❌ PAT_TOKEN is empty"
+            exit 1
+          fi
+
+          # Configure npm (cross-platform)
+          npm config set registry https://registry.npmjs.org/
+          npm config set @qvac:registry https://registry.npmjs.org/
+          npm config set @tetherto:registry https://npm.pkg.github.com/
+          npm config set //registry.npmjs.org/:_authToken "${NPM_TOKEN}"
+          npm config set //npm.pkg.github.com/:_authToken "${PAT_TOKEN}"
+          npm config set always-auth true
+
+          echo "✅ npm configured"
+
+          # Validate access to @qvac/sdk
+          echo "Testing @qvac/sdk access..."
+          if npm info @qvac/sdk > /dev/null 2>&1; then
+            echo "✅ @qvac/sdk accessible"
+          else
+            echo "❌ Cannot access @qvac/sdk - retrying with verbose output..."
+            npm info @qvac/sdk --loglevel=verbose
+            exit 1
+          fi
+
+          # Validate access to @tetherto/qvac-test-suite
+          echo "Testing @tetherto/qvac-test-suite access..."
+          if npm info @tetherto/qvac-test-suite > /dev/null 2>&1; then
+            echo "✅ @tetherto/qvac-test-suite accessible"
+          else
+            echo "❌ Cannot access @tetherto/qvac-test-suite - retrying with verbose output..."
+            npm info @tetherto/qvac-test-suite --loglevel=verbose
+            exit 1
+          fi
+
+          echo "✅ All registries validated"
 
       - name: Install dependencies
         working-directory: ${{ inputs.working-directory }}
