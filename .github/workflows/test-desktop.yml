@@ -126,8 +126,11 @@ jobs:
       - name: Cache build outputs
         uses: actions/cache/save@v4
         with:
-          path: ${{ inputs.working-directory }}
-          key: build-${{ hashFiles(format('{0}/bun.lockb', inputs.working-directory)) }}-${{ github.sha }}
+          path: |
+            ${{ inputs.working-directory }}/dist
+            ${{ inputs.working-directory }}/build
+            ${{ inputs.working-directory }}/node_modules
+          key: build-${{ hashFiles(format('{0}/package-lock.json', inputs.working-directory), format('{0}/package.json', inputs.working-directory)) }}-${{ github.sha }}
           enableCrossOsArchive: true
 
   test-desktop:
@@ -165,7 +168,7 @@ jobs:
             ${{ inputs.working-directory }}/dist
             ${{ inputs.working-directory }}/build
             ${{ inputs.working-directory }}/node_modules
-          key: build-${{ hashFiles(format('{0}/bun.lockb', inputs.working-directory)) }}-${{ github.sha }}
+          key: build-${{ hashFiles(format('{0}/package-lock.json', inputs.working-directory), format('{0}/package.json', inputs.working-directory)) }}-${{ github.sha }}
           enableCrossOsArchive: true
           fail-on-cache-miss: true
 
@@ -367,7 +370,7 @@ jobs:
             ${{ inputs.working-directory }}/dist
             ${{ inputs.working-directory }}/build
             ${{ inputs.working-directory }}/node_modules
-          key: build-${{ hashFiles(format('{0}/bun.lockb', inputs.working-directory)) }}-${{ github.sha }}
+          key: build-${{ hashFiles(format('{0}/package-lock.json', inputs.working-directory), format('{0}/package.json', inputs.working-directory)) }}-${{ github.sha }}
           enableCrossOsArchive: true
           fail-on-cache-miss: true
 
