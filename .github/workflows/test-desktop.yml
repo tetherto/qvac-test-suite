@@ -126,9 +126,7 @@ jobs:
       - name: Cache build outputs
         uses: actions/cache/save@v4
         with:
-          path: |
-            ~/.bun
-            ${{ inputs.working-directory }}
+          path: ${{ inputs.working-directory }}
           key: build-${{ hashFiles(format('{0}/bun.lockb', inputs.working-directory)) }}-${{ github.sha }}
           enableCrossOsArchive: true
 
