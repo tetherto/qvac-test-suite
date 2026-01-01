@@ -117,7 +117,7 @@ jobs:
 
       - name: Install dependencies (consumer directory)
         working-directory: ${{ inputs.working-directory }}
-        run: bun install --os=darwin --cpu=arm64 --os=win32 --cpu=x64 --os=linux --cpu=x64 --linker=isolated
+        run: bun install --os=darwin --cpu=arm64 --os=win32 --cpu=x64 --os=linux --cpu=x64 --backend=copyfile
 
       - name: Build project (consumer directory)
         working-directory: ${{ inputs.working-directory }}
@@ -130,7 +130,7 @@ jobs:
             ${{ inputs.working-directory }}/dist
             ${{ inputs.working-directory }}/build
             ${{ inputs.working-directory }}/node_modules
-          key: build-${{ hashFiles(format('{0}/package-lock.json', inputs.working-directory), format('{0}/package.json', inputs.working-directory)) }}-${{ github.sha }}
+          key: build-${{ github.sha }}
           enableCrossOsArchive: true
 
   test-desktop:
@@ -168,7 +168,7 @@ jobs:
             ${{ inputs.working-directory }}/dist
             ${{ inputs.working-directory }}/build
             ${{ inputs.working-directory }}/node_modules
-          key: build-${{ hashFiles(format('{0}/package-lock.json', inputs.working-directory), format('{0}/package.json', inputs.working-directory)) }}-${{ github.sha }}
+          key: build-${{ github.sha }}
           enableCrossOsArchive: true
           fail-on-cache-miss: true
 
@@ -370,7 +370,7 @@ jobs:
             ${{ inputs.working-directory }}/dist
             ${{ inputs.working-directory }}/build
             ${{ inputs.working-directory }}/node_modules
-          key: build-${{ hashFiles(format('{0}/package-lock.json', inputs.working-directory), format('{0}/package.json', inputs.working-directory)) }}-${{ github.sha }}
+          key: build-${{ github.sha }}
           enableCrossOsArchive: true
           fail-on-cache-miss: true
 
