@@ -100,7 +100,7 @@ jobs:
           console.log('✅ All registries validated');
 
       - name: Install dependencies (root directory)
-        run: bun install --os=darwin --cpu=arm64 --os=win32 --cpu=x64 --os=linux --cpu=x64
+        run: bun install --os=darwin --cpu=arm64 --os=win32 --cpu=x64 --os=linux --cpu=x64 --linker=isolated
 
       - name: Build project (root directory)
         run: bun run build
@@ -117,7 +117,7 @@ jobs:
 
       - name: Install dependencies (consumer directory)
         working-directory: ${{ inputs.working-directory }}
-        run: bun install --os=darwin --cpu=arm64 --os=win32 --cpu=x64 --os=linux --cpu=x64 --install-links=false
+        run: bun install --os=darwin --cpu=arm64 --os=win32 --cpu=x64 --os=linux --cpu=x64 --linker=isolated
 
       - name: Build project (consumer directory)
         working-directory: ${{ inputs.working-directory }}
