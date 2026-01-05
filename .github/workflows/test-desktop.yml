@@ -41,7 +41,19 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+          - os: windows-latest
+            platform: win32
+            arch: x64
+    runs-on: ${{ matrix.os }}
     env:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
       PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
@@ -100,7 +112,7 @@ jobs:
           console.log('✅ All registries validated');
 
       - name: Install dependencies (root directory)
-        run: bun install --os=darwin --cpu=arm64 --os=win32 --cpu=x64 --os=linux --cpu=x64
+        run: bun install
 
       - name: Build project (root directory)
         run: bun run build
@@ -117,7 +129,7 @@ jobs:
 
       - name: Install dependencies (consumer directory)
         working-directory: ${{ inputs.working-directory }}
-        run: bun install --os=darwin --cpu=arm64 --os=win32 --cpu=x64 --os=linux --cpu=x64 --backend=copyfile
+        run: npm install --install-links
 
       - name: Build project (consumer directory)
         working-directory: ${{ inputs.working-directory }}
@@ -130,7 +142,7 @@ jobs:
             ${{ inputs.working-directory }}/dist
             ${{ inputs.working-directory }}/build
             ${{ inputs.working-directory }}/node_modules
-          key: build-${{ github.sha }}
+          key: build-${{ matrix.platform }}-${{ matrix.arch }}-${{ github.sha }}
           enableCrossOsArchive: true
 
   test-desktop:
@@ -161,6 +173,20 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Determine platform and arch
+        id: platform
+        shell: node {0}
+        run: |
+          const fs = require('fs');
+          const os = require('os');
+
+          const platform = os.platform();
+          const arch = os.arch();
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `platform=${platform}\n`, 'utf8');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `arch=${arch}\n`, 'utf8');
+          console.log(`Platform: ${platform}, Arch: ${arch}`);
+
       - name: Restore build cache
         uses: actions/cache/restore@v4
         with:
@@ -168,7 +194,7 @@ jobs:
             ${{ inputs.working-directory }}/dist
             ${{ inputs.working-directory }}/build
             ${{ inputs.working-directory }}/node_modules
-          key: build-${{ github.sha }}
+          key: build-${{ steps.platform.outputs.platform }}-${{ steps.platform.outputs.arch }}-${{ github.sha }}
           enableCrossOsArchive: true
           fail-on-cache-miss: true
 
@@ -370,7 +396,7 @@ jobs:
             ${{ inputs.working-directory }}/dist
             ${{ inputs.working-directory }}/build
             ${{ inputs.working-directory }}/node_modules
-          key: build-${{ github.sha }}
+          key: build-linux-x64-${{ github.sha }}
           enableCrossOsArchive: true
           fail-on-cache-miss: true
 
