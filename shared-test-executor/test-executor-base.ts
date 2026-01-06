@@ -394,6 +394,14 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("ocr-small-image", this.ocrBasic.bind(this));
 		this.testHandlers.set("ocr-low-quality", this.ocrBasic.bind(this));
 		this.testHandlers.set("ocr-mixed-language", this.ocrBasic.bind(this));
+		this.testHandlers.set("ocr-single-language", this.ocrBasic.bind(this));
+		// Edge case OCR tests
+		this.testHandlers.set("ocr-misaligned-text", this.ocrBasic.bind(this));
+		this.testHandlers.set("ocr-blurry-text", this.ocrBasic.bind(this));
+		this.testHandlers.set("ocr-vertically-inverted", this.ocrBasic.bind(this));
+		this.testHandlers.set("ocr-horizontally-inverted", this.ocrBasic.bind(this));
+		this.testHandlers.set("ocr-multi-sized-text", this.ocrBasic.bind(this));
+		this.testHandlers.set("ocr-multiple-fonts", this.ocrBasic.bind(this));
 
 		// Translation tests
 		this.testHandlers.set("translation-en-to-es", this.translation.bind(this));

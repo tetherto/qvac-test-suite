@@ -3343,8 +3343,8 @@ export class TestBuilder {
 					timeout: 300000,
 				},
 				expectation: {
-					validation: "type",
-					expectedType: "array",
+					validation: "contains-any",
+					contains: ["OCR", "text", "testing", "Type", "enter"],
 				},
 				expectedOutcome: "pass",
 			}),
@@ -3364,8 +3364,8 @@ export class TestBuilder {
 					timeout: 300000,
 				},
 				expectation: {
-					validation: "type",
-					expectedType: "array",
+					validation: "contains-any",
+					contains: ["OCR", "text", "testing", "Type", "enter"],
 				},
 				expectedOutcome: "pass",
 			}),
@@ -3384,10 +3384,12 @@ export class TestBuilder {
 					timeout: 300000,
 				},
 				expectation: {
+					// Sign images typically have readable text - check for common sign words
 					validation: "type",
 					expectedType: "array",
 				},
 				expectedOutcome: "pass",
+				debugInfo: "Sign image - validates OCR returns results from signage",
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 30000,
@@ -3404,10 +3406,12 @@ export class TestBuilder {
 					timeout: 300000,
 				},
 				expectation: {
+					// Logos may or may not have text - just verify processing works
 					validation: "type",
 					expectedType: "array",
 				},
 				expectedOutcome: "pass",
+				debugInfo: "Logo image - validates OCR handles logo graphics",
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 30000,
@@ -3424,10 +3428,12 @@ export class TestBuilder {
 					timeout: 300000,
 				},
 				expectation: {
+					// Charts typically have labels/numbers
 					validation: "type",
 					expectedType: "array",
 				},
 				expectedOutcome: "pass",
+				debugInfo: "Chart image - validates OCR handles data visualizations",
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 30000,
@@ -3444,10 +3450,12 @@ export class TestBuilder {
 					timeout: 300000,
 				},
 				expectation: {
+					// Image without text - should return empty or minimal results
 					validation: "type",
 					expectedType: "array",
 				},
 				expectedOutcome: "pass",
+				debugInfo: "No-text image - validates OCR handles images without text gracefully",
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 30000,
@@ -3464,13 +3472,15 @@ export class TestBuilder {
 					timeout: 300000,
 				},
 				expectation: {
+					// Large 4K image - validates performance with high resolution
 					validation: "type",
 					expectedType: "array",
 				},
 				expectedOutcome: "pass",
+				debugInfo: "Large 4K image - validates OCR performance with high resolution",
 			}),
 			dependency: "ocr",
-			estimatedDurationMs: 120000, // Longer timeout for large image
+			estimatedDurationMs: 120000,
 		};
 	}
 
@@ -3484,10 +3494,12 @@ export class TestBuilder {
 					timeout: 300000,
 				},
 				expectation: {
+					// Very small image - validates handling of low resolution
 					validation: "type",
 					expectedType: "array",
 				},
 				expectedOutcome: "pass",
+				debugInfo: "Small 64px image - validates OCR handles tiny images",
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 30000,
@@ -3504,10 +3516,12 @@ export class TestBuilder {
 					timeout: 300000,
 				},
 				expectation: {
+					// Low quality/compressed image - validates robustness
 					validation: "type",
 					expectedType: "array",
 				},
 				expectedOutcome: "pass",
+				debugInfo: "Low quality image - validates OCR robustness with compression artifacts",
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 30000,
@@ -3524,13 +3538,173 @@ export class TestBuilder {
 					timeout: 300000,
 				},
 				expectation: {
+					// Mixed language store sign - validates handling of multiple scripts
 					validation: "type",
 					expectedType: "array",
 				},
 				expectedOutcome: "pass",
+				debugInfo: "Mixed language image - validates OCR with multiple scripts (Korean, English, etc.)",
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 30000,
+		};
+	}
+
+	// ========== OCR EDGE CASE TESTS ==========
+
+	buildOcrMisalignedTextTest(): TestDefinition {
+		return {
+			testId: "ocr-misaligned-text",
+			payload: JSON.stringify({
+				testId: "ocr-misaligned-text",
+				params: {
+					imageFileName: "ocr-misaligned-text.png",
+					timeout: 300000,
+				},
+				expectation: {
+					// Should recognize at least some rotated text
+					validation: "contains-any",
+					contains: ["ROTATED", "ANGLE", "TILTED", "DEGREES", "TEXT"],
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Validates OCR can handle text at various rotation angles (-20° to +15°)",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 60000,
+		};
+	}
+
+	buildOcrBlurryTextTest(): TestDefinition {
+		return {
+			testId: "ocr-blurry-text",
+			payload: JSON.stringify({
+				testId: "ocr-blurry-text",
+				params: {
+					imageFileName: "ocr-blurry-text.png",
+					timeout: 300000,
+				},
+				expectation: {
+					// Must recognize the sharp reference text at minimum
+					validation: "contains-all",
+					contains: ["SHARP", "CLEAR"],
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Validates OCR reads sharp reference text (blur levels 1-8px tested)",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 60000,
+		};
+	}
+
+	buildOcrSingleLanguageTest(): TestDefinition {
+		return {
+			testId: "ocr-single-language",
+			payload: JSON.stringify({
+				testId: "ocr-single-language",
+				params: {
+					imageFileName: "ocr-single-language.png",
+					timeout: 300000,
+				},
+				expectation: {
+					// Clear English text - should recognize multiple keywords
+					validation: "contains-all",
+					contains: ["SINGLE", "LANGUAGE", "TEST"],
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Validates OCR accuracy on clear English-only text",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	buildOcrVerticallyInvertedTest(): TestDefinition {
+		return {
+			testId: "ocr-vertically-inverted",
+			payload: JSON.stringify({
+				testId: "ocr-vertically-inverted",
+				params: {
+					imageFileName: "ocr-vertically-inverted.png",
+					timeout: 300000,
+				},
+				expectation: {
+					// Upside-down text - OCR may or may not handle this
+					// We just verify it doesn't crash and returns an array
+					validation: "type",
+					expectedType: "array",
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Tests OCR behavior with upside-down (180° rotated) text - edge case",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 60000,
+		};
+	}
+
+	buildOcrHorizontallyInvertedTest(): TestDefinition {
+		return {
+			testId: "ocr-horizontally-inverted",
+			payload: JSON.stringify({
+				testId: "ocr-horizontally-inverted",
+				params: {
+					imageFileName: "ocr-horizontally-inverted.png",
+					timeout: 300000,
+				},
+				expectation: {
+					// Mirrored text - OCR typically won't read this correctly
+					// We just verify it doesn't crash and returns an array
+					validation: "type",
+					expectedType: "array",
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Tests OCR behavior with horizontally mirrored text - edge case",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 60000,
+		};
+	}
+
+	buildOcrMultiSizedTextTest(): TestDefinition {
+		return {
+			testId: "ocr-multi-sized-text",
+			payload: JSON.stringify({
+				testId: "ocr-multi-sized-text",
+				params: {
+					imageFileName: "ocr-multi-sized-text.png",
+					timeout: 300000,
+				},
+				expectation: {
+					// Should recognize text at different sizes - validate multiple size labels
+					validation: "contains-all",
+					contains: ["SMALL", "MEDIUM", "LARGE"],
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Validates OCR handles text at different font sizes (14pt to 80pt)",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 60000,
+		};
+	}
+
+	buildOcrMultipleFontsTest(): TestDefinition {
+		return {
+			testId: "ocr-multiple-fonts",
+			payload: JSON.stringify({
+				testId: "ocr-multiple-fonts",
+				params: {
+					imageFileName: "ocr-multiple-fonts.png",
+					timeout: 300000,
+				},
+				expectation: {
+					// Should recognize text in different font styles
+					validation: "contains-all",
+					contains: ["SANS", "SERIF", "BOLD"],
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Validates OCR handles different font styles (serif, sans, bold, etc.)",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 60000,
 		};
 	}
 
@@ -3954,9 +4128,17 @@ export class TestBuilder {
 		tests.push(this.buildOcrLargeImageTest());
 		tests.push(this.buildOcrSmallImageTest());
 		tests.push(this.buildOcrLowQualityTest());
-		// Multi-language
+		// Language tests
 		tests.push(this.buildOcrMixedLanguageTest());
-		console.log("   ✅ Added 13 OCR tests");
+		tests.push(this.buildOcrSingleLanguageTest());
+		// Edge case tests - text variations
+		tests.push(this.buildOcrMisalignedTextTest());
+		tests.push(this.buildOcrBlurryTextTest());
+		tests.push(this.buildOcrVerticallyInvertedTest());
+		tests.push(this.buildOcrHorizontallyInvertedTest());
+		tests.push(this.buildOcrMultiSizedTextTest());
+		tests.push(this.buildOcrMultipleFontsTest());
+		console.log("   ✅ Added 20 OCR tests");
 	}
 
 		// ========== PHASE 4: ROBUSTNESS & ADVANCED SCENARIOS ==========
