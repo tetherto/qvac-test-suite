@@ -16,7 +16,7 @@ export interface SDKFunctions {
 	textToSpeech: any;  // TTS function (QVAC-9403)
 	loadModel: any;
 	unloadModel: any;
-	ragSaveEmbeddings: any;
+	ragIngest: any;
 	deleteCache: any;
 	getModelInfo: any;
 	loggingStream?: any;  // Addon logging stream (QVAC-9206)
@@ -1280,10 +1280,10 @@ export abstract class TestExecutorBase {
 		try {
 			const invalidModelId = params.modelId || "nonexistent-model";
 			
-			// Try RAG search with invalid model ID
-			await this.sdk.ragSaveEmbeddings({
+			// Try RAG ingest with invalid model ID
+			await this.sdk.ragIngest({
 				modelId: invalidModelId,
-				documents: [{ id: "test", content: "test content" }],
+				documents: ["test content"],
 			});
 
 			return {
@@ -1377,11 +1377,11 @@ export abstract class TestExecutorBase {
 					await this.sdk.deleteCache(params.invalidParams || {} as any);
 					break;
 					
-				case 'ragSaveEmbeddings':
-					await this.sdk.ragSaveEmbeddings({
+				case 'ragIngest':
+					await this.sdk.ragIngest({
 						modelId: params.invalidModelId || 'nonexistent-model-xyz',
-						chunks: params.chunks || ['test'],
-						namespace: params.namespace || 'test',
+						documents: params.documents || ['test'],
+						workspace: params.workspace || 'test',
 					});
 					break;
 					
@@ -4680,7 +4680,7 @@ export abstract class TestExecutorBase {
 
 			console.log(`   📚 Testing RAG embeddings with chunk size ${chunkSize}, overlap ${chunkOverlap}`);
 
-			const result = await this.sdk.ragSaveEmbeddings({
+			const result = await this.sdk.ragIngest({
 				modelId,
 				workspace,
 				documents: [content],
@@ -4836,7 +4836,7 @@ export abstract class TestExecutorBase {
 		try {
 			const content = await this.readDocumentFile(params.documentFile, "documents");
 
-			const result = await this.sdk.ragSaveEmbeddings({
+			const result = await this.sdk.ragIngest({
 				modelId: fakeModelId,
 				workspace,
 				documents: [content],
