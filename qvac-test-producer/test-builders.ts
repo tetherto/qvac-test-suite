@@ -3270,6 +3270,270 @@ export class TestBuilder {
 		};
 	}
 
+	// ========== OCR TESTS ==========
+
+	buildModelLoadOcrTest(): TestDefinition {
+		return {
+			testId: "model-load-ocr",
+			payload: JSON.stringify({
+				testId: "model-load-ocr",
+				params: {
+					modelType: "ocr",
+					modelConstant: "OCR_CRAFT_ENGLISH_DETECTOR",
+				},
+				expectation: {
+					type: "model-loaded",
+					validation: "returns-model-id",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 90000, // 1.5 minutes for OCR model loading
+		};
+	}
+
+	buildOcrBasicPngTest(): TestDefinition {
+		return {
+			testId: "ocr-basic-png",
+			payload: JSON.stringify({
+				testId: "ocr-basic-png",
+				params: {
+					imageFileName: "ocr-simple-test.png",
+					timeout: 300000,
+				},
+				expectation: {
+					validation: "contains-any",
+					contains: ["OCR", "text", "testing", "implementation", "recognize", "Type", "enter"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 60000,
+		};
+	}
+
+	buildOcrBasicJpgTest(): TestDefinition {
+		return {
+			testId: "ocr-basic-jpg",
+			payload: JSON.stringify({
+				testId: "ocr-basic-jpg",
+				params: {
+					imageFileName: "ocr-simple-test.jpg",
+					timeout: 300000,
+				},
+				expectation: {
+					validation: "contains-any",
+					contains: ["OCR", "text", "testing", "implementation", "recognize", "Type", "enter"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 60000,
+		};
+	}
+
+	buildOcrStreamingTest(): TestDefinition {
+		return {
+			testId: "ocr-streaming",
+			payload: JSON.stringify({
+				testId: "ocr-streaming",
+				params: {
+					imageFileName: "ocr-simple-test.png",
+					streaming: true,
+					timeout: 300000,
+				},
+				expectation: {
+					validation: "type",
+					expectedType: "array",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 60000,
+		};
+	}
+
+	buildOcrParagraphModeTest(): TestDefinition {
+		return {
+			testId: "ocr-paragraph-mode",
+			payload: JSON.stringify({
+				testId: "ocr-paragraph-mode",
+				params: {
+					imageFileName: "ocr-simple-test.png",
+					paragraph: true,
+					timeout: 300000,
+				},
+				expectation: {
+					validation: "type",
+					expectedType: "array",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 60000,
+		};
+	}
+
+	buildOcrSignImageTest(): TestDefinition {
+		return {
+			testId: "ocr-sign-image",
+			payload: JSON.stringify({
+				testId: "ocr-sign-image",
+				params: {
+					imageFileName: "sign.jpg",
+					timeout: 300000,
+				},
+				expectation: {
+					validation: "type",
+					expectedType: "array",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	buildOcrLogoImageTest(): TestDefinition {
+		return {
+			testId: "ocr-logo-image",
+			payload: JSON.stringify({
+				testId: "ocr-logo-image",
+				params: {
+					imageFileName: "logo.png",
+					timeout: 300000,
+				},
+				expectation: {
+					validation: "type",
+					expectedType: "array",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	buildOcrChartImageTest(): TestDefinition {
+		return {
+			testId: "ocr-chart-image",
+			payload: JSON.stringify({
+				testId: "ocr-chart-image",
+				params: {
+					imageFileName: "chart.jpg",
+					timeout: 300000,
+				},
+				expectation: {
+					validation: "type",
+					expectedType: "array",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	buildOcrNoTextImageTest(): TestDefinition {
+		return {
+			testId: "ocr-no-text-image",
+			payload: JSON.stringify({
+				testId: "ocr-no-text-image",
+				params: {
+					imageFileName: "cat.jpg",
+					timeout: 300000,
+				},
+				expectation: {
+					validation: "type",
+					expectedType: "array",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	buildOcrLargeImageTest(): TestDefinition {
+		return {
+			testId: "ocr-large-image",
+			payload: JSON.stringify({
+				testId: "ocr-large-image",
+				params: {
+					imageFileName: "large-4k.jpg",
+					timeout: 300000,
+				},
+				expectation: {
+					validation: "type",
+					expectedType: "array",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 120000, // Longer timeout for large image
+		};
+	}
+
+	buildOcrSmallImageTest(): TestDefinition {
+		return {
+			testId: "ocr-small-image",
+			payload: JSON.stringify({
+				testId: "ocr-small-image",
+				params: {
+					imageFileName: "small-64.jpg",
+					timeout: 300000,
+				},
+				expectation: {
+					validation: "type",
+					expectedType: "array",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	buildOcrLowQualityTest(): TestDefinition {
+		return {
+			testId: "ocr-low-quality",
+			payload: JSON.stringify({
+				testId: "ocr-low-quality",
+				params: {
+					imageFileName: "low-quality.jpg",
+					timeout: 300000,
+				},
+				expectation: {
+					validation: "type",
+					expectedType: "array",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	buildOcrMixedLanguageTest(): TestDefinition {
+		return {
+			testId: "ocr-mixed-language",
+			payload: JSON.stringify({
+				testId: "ocr-mixed-language",
+				params: {
+					imageFileName: "mixed-language-store.jpg",
+					timeout: 300000,
+				},
+				expectation: {
+					validation: "type",
+					expectedType: "array",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "ocr",
+			estimatedDurationMs: 30000,
+		};
+	}
+
 	// ========== BUILD ALL TESTS ==========
 
 	buildAllTests(): TestDefinition[] {
@@ -3279,11 +3543,11 @@ export class TestBuilder {
 
 	/**
 	 * Build tests filtered by section/category
-	 * @param section - "all", "transcription", "completion", "embedding", "rag", "model", "translation", "nmt", "tools", "cache", "tts", "error", "config-reload", or "addon-logging"
+	 * @param section - "all", "transcription", "completion", "embedding", "rag", "model", "translation", "nmt", "tools", "cache", "tts", "error", "config-reload", "addon-logging", or "ocr"
 	 */
 	buildTestsBySection(
 		tests: TestDefinition[],
-		section: "all" | "transcription" | "completion" | "embedding" | "rag" | "model" | "translation" | "nmt" | "tools" | "cache" | "tts" | "error" | "config-reload" | "addon-logging" = "all"
+		section: "all" | "transcription" | "completion" | "embedding" | "rag" | "model" | "translation" | "nmt" | "tools" | "cache" | "tts" | "error" | "config-reload" | "addon-logging" | "ocr" = "all"
 	): TestDefinition[] {
 		tests = [];
 
@@ -3668,6 +3932,31 @@ export class TestBuilder {
 		tests.push(this.buildAddonLoggingInvalidModelIdTest());
 		tests.push(this.buildAddonLoggingDuringInferenceTest());
 		console.log("   ✅ Added 7 logging tests (4 addon + 1 SDK server + 2 edge cases)");
+	}
+
+	// OCR tests
+	if (section === "all" || section === "ocr") {
+		console.log("\n📝 Adding OCR Tests");
+		// Model loading
+		tests.push(this.buildModelLoadOcrTest());
+		// Basic OCR tests
+		tests.push(this.buildOcrBasicPngTest());
+		tests.push(this.buildOcrBasicJpgTest());
+		// Mode tests
+		tests.push(this.buildOcrStreamingTest());
+		tests.push(this.buildOcrParagraphModeTest());
+		// Various image types
+		tests.push(this.buildOcrSignImageTest());
+		tests.push(this.buildOcrLogoImageTest());
+		tests.push(this.buildOcrChartImageTest());
+		tests.push(this.buildOcrNoTextImageTest());
+		// Size and quality tests
+		tests.push(this.buildOcrLargeImageTest());
+		tests.push(this.buildOcrSmallImageTest());
+		tests.push(this.buildOcrLowQualityTest());
+		// Multi-language
+		tests.push(this.buildOcrMixedLanguageTest());
+		console.log("   ✅ Added 13 OCR tests");
 	}
 
 		// ========== PHASE 4: ROBUSTNESS & ADVANCED SCENARIOS ==========
