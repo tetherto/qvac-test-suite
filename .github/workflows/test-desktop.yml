@@ -265,7 +265,7 @@ jobs:
               'qvac-test', 'run:consumer:desktop',
               '--runId=${{ steps.runid.outputs.runId }}',
               '--config=.'
-            ], { detached: false });
+            ], { detached: false, shell: true });
 
             consumer.stdout.pipe(logStream);
             consumer.stderr.pipe(logStream);
@@ -303,7 +303,7 @@ jobs:
               '--runId=${{ steps.runid.outputs.runId }}',
               '--consumer-timeout=${{ inputs.consumer-timeout }}',
               '--config=.'
-            ], { stdio: 'inherit' });
+            ], { stdio: 'inherit', shell: true });
 
             let producerExit = producer.status || 0;
 
