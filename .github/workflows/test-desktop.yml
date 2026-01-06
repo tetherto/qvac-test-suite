@@ -115,7 +115,18 @@ jobs:
         run: bun install
 
       - name: Build project (root directory)
-        run: bun run build
+        shell: node {0}
+        run: |
+          const { execSync } = require('child_process');
+          const fs = require('fs');
+
+          const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          if (packageJson.scripts && packageJson.scripts.build) {
+            console.log('Building root project...');
+            execSync('bun run build', { stdio: 'inherit' });
+          } else {
+            console.log('⚠️  No build script found in root package.json - skipping');
+          }
 
       - name: Copy .npmrc to consumer directory
         shell: node {0}
@@ -258,7 +269,6 @@ jobs:
           (async () => {
             const { spawn, spawnSync } = require('child_process');
             const fs = require('fs');
-            const path = require('path');
 
             const logStream = fs.createWriteStream('consumer.log', { flags: 'w' });
             const consumer = spawn('npx', [
@@ -267,8 +277,32 @@ jobs:
               '--config=.'
             ], { detached: false, shell: true });
 
-            consumer.stdout.pipe(logStream);
-            consumer.stderr.pipe(logStream);
+            let consumerClosed = false;
+            let consumerExitCode = 0;
+
+            // Pipe streams but don't auto-close logStream when child ends
+            consumer.stdout.pipe(logStream, { end: false });
+            consumer.stderr.pipe(logStream, { end: false });
+
+            // Detect crash during test execution
+            consumer.on('exit', (code, signal) => {
+              if (code !== 0 || signal) {
+                console.log(`❌ Consumer crashed (code: ${code}, signal: ${signal})`);
+                console.log(`   Consumer PID: ${consumer.pid}`);
+                console.log(`   Time: ${new Date().toISOString()}`);
+              }
+            });
+
+            // 'close' fires after exit AND after all stdio streams are closed
+            const consumerDone = new Promise(resolve => {
+              consumer.on('close', (code, signal) => {
+                consumerClosed = true;
+                consumerExitCode = code ?? 0;
+                console.log(`Consumer closed (code: ${code}, signal: ${signal})`);
+                resolve();
+              });
+            });
+
             fs.writeFileSync('consumer.pid', consumer.pid.toString(), 'utf8');
 
             // Brief pause to let consumer initialize
@@ -282,22 +316,19 @@ jobs:
               console.log(`✅ Consumer running (PID: ${consumer.pid})`);
             } else {
               console.log('❌ Consumer died immediately');
-              if (fs.existsSync('consumer.log')) console.log(fs.readFileSync('consumer.log', 'utf8'));
-              process.exit(1);
-            }
-
-            // Monitor consumer health during producer execution
-            let consumerExitedDuringTest = false;
-            consumer.on('exit', (code, signal) => {
-              consumerExitedDuringTest = true;
-              console.log(`❌ Consumer crashed during test execution (code: ${code}, signal: ${signal})`);
+              logStream.end();
+              await new Promise(resolve => logStream.on('finish', resolve));
               if (fs.existsSync('consumer.log')) {
                 console.log('\n--- Consumer log ---');
                 console.log(fs.readFileSync('consumer.log', 'utf8'));
+              } else {
+                console.log('⚠️  No consumer.log file found');
               }
-            });
+              process.exit(1);
+            }
 
             // Run producer in foreground
+            console.log('Starting producer...');
             const producer = spawnSync('npx', [
               'qvac-test', 'run:producer',
               '--runId=${{ steps.runid.outputs.runId }}',
@@ -305,24 +336,49 @@ jobs:
               '--config=.'
             ], { stdio: 'inherit', shell: true });
 
+            console.log(`Producer exited with status: ${producer.status}`);
             let producerExit = producer.status || 0;
 
-            // Check if consumer crashed during execution
-            if (consumerExitedDuringTest) {
-              console.log('❌ Test failed due to consumer crash');
-              producerExit = 1;
+            // Wait for consumer with timeout
+            console.log('Waiting for consumer to close...');
+            const timeout = new Promise(resolve => setTimeout(() => {
+              if (!consumerClosed) {
+                console.log('⚠️  Consumer did not close within 30s timeout, killing...');
+                try {
+                  process.kill(consumer.pid, 'SIGTERM');
+                  console.log('Sent SIGTERM to consumer');
+                } catch (e) {
+                  console.log(`Failed to kill consumer: ${e.message}`);
+                }
+              }
+              resolve();
+            }, 30000));
+
+            await Promise.race([consumerDone, timeout]);
+
+            // If timeout won, wait a bit more for close after kill
+            if (!consumerClosed) {
+              console.log('Waiting 5s for consumer to terminate...');
+              await Promise.race([
+                consumerDone,
+                new Promise(resolve => setTimeout(resolve, 5000))
+              ]);
             }
 
-            // Clean up consumer
-            try {
-              process.kill(consumer.pid, 'SIGTERM');
-              // Give it 5 seconds to terminate gracefully
-              await new Promise(resolve => setTimeout(resolve, 5000));
-              // Force kill if still alive
-              try { process.kill(consumer.pid, 'SIGKILL'); } catch (e) {}
-            } catch (e) {}
+            // Close and flush log stream
+            console.log('Closing consumer log stream...');
+            logStream.end();
+            await new Promise(resolve => logStream.on('finish', resolve));
+            console.log('📄 Consumer log written to consumer.log');
 
-            process.exit(producerExit);
+            // Exit with producer code OR consumer code if consumer failed
+            const exitCode = producerExit || consumerExitCode;
+            if (exitCode !== 0) {
+              console.log(`❌ Tests failed with exit code: ${exitCode}`);
+              if (producerExit !== 0) console.log('   Producer failed');
+              if (consumerExitCode !== 0) console.log('   Consumer failed');
+            }
+            process.exit(exitCode);
           })();
 
       - name: Stop consumer (safety)
@@ -331,9 +387,38 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         run: |
           const fs = require('fs');
-          if (fs.existsSync('consumer.pid')) {
-            const pid = parseInt(fs.readFileSync('consumer.pid', 'utf8').trim());
-            try { process.kill(pid, 'SIGTERM'); } catch (e) {}
+          console.log('Checking for running consumer...');
+
+          if (!fs.existsSync('consumer.pid')) {
+            console.log('⚠️  No consumer.pid file found');
+            return;
+          }
+
+          const pid = parseInt(fs.readFileSync('consumer.pid', 'utf8').trim());
+          console.log(`Found consumer PID: ${pid}`);
+
+          // Check if process is alive
+          let isAlive = false;
+          try {
+            process.kill(pid, 0); // Signal 0 checks if process exists
+            isAlive = true;
+            console.log('✅ Consumer process is still running');
+          } catch (e) {
+            console.log('ℹ️  Consumer process already terminated');
+            return;
+          }
+
+          // Try to kill it
+          if (isAlive) {
+            console.log('Attempting to terminate consumer...');
+            try {
+              process.kill(pid, 'SIGTERM');
+              console.log('✅ Sent SIGTERM to consumer');
+            } catch (e) {
+              console.error(`❌ Failed to kill consumer process: ${e.message}`);
+              console.error(`   Error code: ${e.code}`);
+              console.error(`   PID: ${pid}`);
+            }
           }
 
       - name: Upload consumer logs
