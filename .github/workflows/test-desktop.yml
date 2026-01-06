@@ -209,6 +209,17 @@ jobs:
           enableCrossOsArchive: true
           fail-on-cache-miss: true
 
+      - name: Debug - Upload cached files (Windows only)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-cached-files-windows-${{ github.run_number }}
+          path: |
+            ${{ inputs.working-directory }}/dist
+            ${{ inputs.working-directory }}/build
+            ${{ inputs.working-directory }}/node_modules
+          retention-days: 3
+
       - name: Setup MQTT certificates
         shell: node {0}
         env:
