@@ -1553,6 +1553,121 @@ export class TestBuilder {
 		};
 	}
 
+	// ========== QVAC-10524: BERGAMOT TRANSLATION ENGINE TESTS ==========
+
+	buildBergamotTranslationBasicTest(): TestDefinition {
+		// Basic Bergamot translation test (EN→FR)
+		return {
+			testId: "bergamot-translation-basic",
+			payload: JSON.stringify({
+				testId: "bergamot-translation-basic",
+				params: {
+					text: "Hello, how are you today?",
+				},
+				expectation: {
+					validation: "non-empty",
+					minLength: 10,
+					keywords: ["bonjour", "comment", "vous", "aujourd"],
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "bergamot",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildBergamotTranslationLongTextTest(): TestDefinition {
+		// Bergamot with longer text input
+		return {
+			testId: "bergamot-translation-long-text",
+			payload: JSON.stringify({
+				testId: "bergamot-translation-long-text",
+				params: {
+					text: "The weather is beautiful today. I decided to go for a walk in the park. " +
+						"The birds are singing and the flowers are blooming. " +
+						"It's a perfect day to enjoy nature and relax.",
+				},
+				expectation: {
+					validation: "non-empty",
+					minLength: 80,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "bergamot",
+			estimatedDurationMs: 20000,
+		};
+	}
+
+	buildBergamotTranslationSpecialCharsTest(): TestDefinition {
+		// Bergamot with special characters and punctuation
+		return {
+			testId: "bergamot-translation-special-chars",
+			payload: JSON.stringify({
+				testId: "bergamot-translation-special-chars",
+				params: {
+					text: "What's your name? I'm John! Nice to meet you...",
+				},
+				expectation: {
+					validation: "non-empty",
+					minLength: 15,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "bergamot",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	// ========== QVAC-10524: BATCH TRANSLATION TESTS ==========
+
+	buildNmtBatchTranslationBasicTest(): TestDefinition {
+		// Basic batch translation with 2 texts
+		return {
+			testId: "nmt-batch-translation-basic",
+			payload: JSON.stringify({
+				testId: "nmt-batch-translation-basic",
+				params: {
+					texts: ["Guten Morgen", "Gute Nacht"],
+				},
+				expectation: {
+					validation: "batch-count",
+					expectedCount: 2,
+					minLength: 5,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildNmtBatchTranslationMultipleTest(): TestDefinition {
+		// Batch translation with multiple texts (5)
+		return {
+			testId: "nmt-batch-translation-multiple",
+			payload: JSON.stringify({
+				testId: "nmt-batch-translation-multiple",
+				params: {
+					texts: [
+						"Wie geht es dir?",
+						"Das Wetter ist schön.",
+						"Ich habe Hunger.",
+						"Auf Wiedersehen.",
+						"Vielen Dank.",
+					],
+				},
+				expectation: {
+					validation: "batch-count",
+					expectedCount: 5,
+					minLength: 3,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "nmt",
+			estimatedDurationMs: 25000,
+		};
+	}
+
 	// ========== CONFIG HOT RELOAD TESTS (QVAC-9409) ==========
 
 	buildConfigReloadWhisperLanguageTest(): TestDefinition {
@@ -3640,6 +3755,19 @@ export class TestBuilder {
 		tests.push(this.buildNmtTranslationQuestionTest());
 		tests.push(this.buildNmtTranslationMaxLengthTest());
 		console.log("   ✅ Added 12 NMT translation tests");
+
+		// QVAC-10524: Bergamot translation engine tests
+		console.log("\n🌍 Adding Bergamot Translation Tests (QVAC-10524)");
+		tests.push(this.buildBergamotTranslationBasicTest());
+		tests.push(this.buildBergamotTranslationLongTextTest());
+		tests.push(this.buildBergamotTranslationSpecialCharsTest());
+		console.log("   ✅ Added 3 Bergamot translation tests");
+
+		// QVAC-10524: Batch translation tests
+		console.log("\n📦 Adding Batch Translation Tests (QVAC-10524)");
+		tests.push(this.buildNmtBatchTranslationBasicTest());
+		tests.push(this.buildNmtBatchTranslationMultipleTest());
+		console.log("   ✅ Added 2 batch translation tests");
 	}
 
 	// Config Hot Reload tests (QVAC-9409)

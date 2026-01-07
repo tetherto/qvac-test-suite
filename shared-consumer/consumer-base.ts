@@ -39,6 +39,7 @@ export abstract class ConsumerBase {
 	protected embeddingModelId: string | null = null;
 	protected translationModelId: string | null = null;
 	protected nmtModelId: string | null = null;
+	protected bergamotModelId: string | null = null; // QVAC-10524: Bergamot engine
 	protected toolsModelId: string | null = null;
 	protected visionModelId: string | null = null;
 	protected ttsModelId: string | null = null;
@@ -120,9 +121,10 @@ export abstract class ConsumerBase {
 	protected abstract loadVisionModel(): Promise<string>;
 	protected abstract loadTtsModel(): Promise<string>;
 	protected abstract loadNmtModel(): Promise<string>;
+	protected abstract loadBergamotModel(): Promise<string>; // QVAC-10524
 
 	// Determine which model type a test needs
-	protected getRequiredModelType(testId: string): 'llm' | 'whisper' | 'embedding' | 'translation' | 'nmt' | 'tools' | 'vision' | 'tts' | null {
+	protected getRequiredModelType(testId: string): 'llm' | 'whisper' | 'embedding' | 'translation' | 'nmt' | 'bergamot' | 'tools' | 'vision' | 'tts' | null {
 		if (testId.startsWith("transcription") || testId.startsWith("config-reload")) {
 			// Config reload tests (QVAC-9409) require Whisper model
 			return 'whisper';
@@ -134,6 +136,9 @@ export abstract class ConsumerBase {
 			if (testId === "addon-logging-tts") return 'tts';
 			if (testId === "addon-logging-sdk-server") return 'llm'; // SDK logs need worker running
 			return 'llm'; // fallback
+		} else if (testId.startsWith("bergamot-")) {
+			// QVAC-10524: Bergamot translation tests
+			return 'bergamot';
 		} else if (testId.startsWith("nmt-")) {
 			return 'nmt';
 		} else if (testId.startsWith("translation")) {
@@ -224,6 +229,19 @@ export abstract class ConsumerBase {
 				}
 			}
 			return this.nmtModelId;
+		}
+
+		if (requiredModelType === 'bergamot') {
+			// QVAC-10524: Bergamot translation engine
+			if (!this.bergamotModelId) {
+				this.log(`   📦 Loading Bergamot model (EN→FR)...`);
+				this.bergamotModelId = await this.loadBergamotModel();
+				// Set the Bergamot model ID in the executor
+				if (this.executor.setBergamotModelId) {
+					this.executor.setBergamotModelId(this.bergamotModelId);
+				}
+			}
+			return this.bergamotModelId;
 		}
 
 		if (requiredModelType === 'tools') {
@@ -453,6 +471,7 @@ export abstract class ConsumerBase {
 				else if (modelType === 'whisper') this.whisperModelId = null;
 				else if (modelType === 'tools') this.toolsModelId = null;
 				else if (modelType === 'nmt') this.nmtModelId = null;
+				else if (modelType === 'bergamot') this.bergamotModelId = null;
 				else if (modelType === 'vision') this.visionModelId = null;
 				else if (modelType === 'tts') this.ttsModelId = null;
 				
