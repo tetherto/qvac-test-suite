@@ -41,6 +41,7 @@ export abstract class TestExecutorBase {
 	protected toolsModelId: string | null = null;
 	protected ttsModelId: string | null = null;
 	protected nmtModelId: string | null = null;
+	protected bergamotModelId: string | null = null; // QVAC-10524
 	protected sdk: SDKFunctions;
 	protected platform: PlatformFunctions;
 
@@ -66,6 +67,10 @@ export abstract class TestExecutorBase {
 
 	setNmtModelId(modelId: string) {
 		this.nmtModelId = modelId;
+	}
+
+	setBergamotModelId(modelId: string) {
+		this.bergamotModelId = modelId;
 	}
 
 	setTtsModelId(modelId: string) {
@@ -407,6 +412,15 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("nmt-translation-formal", this.nmtTranslation.bind(this));
 		this.testHandlers.set("nmt-translation-question", this.nmtTranslation.bind(this));
 		this.testHandlers.set("nmt-translation-maxlength", this.nmtTranslation.bind(this));
+
+		// QVAC-10524: Bergamot translation engine tests
+		this.testHandlers.set("bergamot-translation-basic", this.bergamotTranslation.bind(this));
+		this.testHandlers.set("bergamot-translation-long-text", this.bergamotTranslation.bind(this));
+		this.testHandlers.set("bergamot-translation-special-chars", this.bergamotTranslation.bind(this));
+
+		// QVAC-10524: Batch translation tests (NMT only)
+		this.testHandlers.set("nmt-batch-translation-basic", this.nmtBatchTranslation.bind(this));
+		this.testHandlers.set("nmt-batch-translation-multiple", this.nmtBatchTranslation.bind(this));
 
 		// Config Hot Reload tests (QVAC-9409: Config HotReload)
 		// Both use same handler - params.newConfig differentiates single vs multi-param reload
@@ -3781,6 +3795,94 @@ export abstract class TestExecutorBase {
 				output: `Empty text correctly rejected: ${error.message.substring(0, 100)}`,
 				passed: true,
 			};
+		}
+	}
+
+	// ========== QVAC-10524: BERGAMOT TRANSLATION ENGINE TESTS ==========
+
+	protected async bergamotTranslation(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Use Bergamot model ID if available, otherwise fall back to passed modelId
+		const bergamotId = this.bergamotModelId || modelId;
+		if (!bergamotId) {
+			return { output: "No Bergamot model loaded", passed: false };
+		}
+
+		try {
+			const { text } = params;
+
+			const result = this.sdk.translate({
+				modelId: bergamotId,
+				text,
+				modelType: "nmt",
+				stream: false,
+			});
+
+			const translatedText = await (result as any).text;
+
+			// Validate translation output
+			const isNonEmpty = translatedText && translatedText.trim().length > 0;
+			const minLength = expectation.minLength || 1;
+			const meetsMinLength = translatedText.length >= minLength;
+
+			// Check for expected keywords if provided
+			const keywords = expectation.keywords || [];
+			const translatedLower = translatedText.toLowerCase();
+			const hasKeywords = keywords.length === 0 || keywords.some((kw: string) => translatedLower.includes(kw.toLowerCase()));
+
+			const passed = isNonEmpty && meetsMinLength && hasKeywords;
+
+			return {
+				output: `Bergamot translation (${translatedText.length} chars): "${translatedText.substring(0, 100)}..."`,
+				passed,
+			};
+		} catch (error: any) {
+			return { output: `Bergamot Error: ${error.message}`, passed: false };
+		}
+	}
+
+	// ========== QVAC-10524: BATCH TRANSLATION TESTS ==========
+
+	protected async nmtBatchTranslation(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		// Use NMT model ID if available
+		const nmtId = this.nmtModelId || modelId;
+		if (!nmtId) {
+			return { output: "No NMT model loaded", passed: false };
+		}
+
+		try {
+			const { texts } = params;
+
+			if (!Array.isArray(texts)) {
+				return { output: "Batch translation requires texts array", passed: false };
+			}
+
+			// Batch translation: pass array of strings
+			const result = this.sdk.translate({
+				modelId: nmtId,
+				text: texts, // Array input for batch
+				modelType: "nmt",
+				stream: false,
+			});
+
+			const translatedText = await (result as any).text;
+
+			// Batch result is newline-separated translations
+			const translations = translatedText.split('\n');
+			const expectedCount = expectation.expectedCount || texts.length;
+			const hasCorrectCount = translations.length >= expectedCount;
+
+			// Check minimum length for each translation
+			const minLength = expectation.minLength || 1;
+			const allMeetMinLength = translations.every((t: string) => t.trim().length >= minLength);
+
+			const passed = hasCorrectCount && allMeetMinLength;
+
+			return {
+				output: `Batch translation: ${translations.length} results, input: ${texts.length} texts`,
+				passed,
+			};
+		} catch (error: any) {
+			return { output: `Batch Translation Error: ${error.message}`, passed: false };
 		}
 	}
 
