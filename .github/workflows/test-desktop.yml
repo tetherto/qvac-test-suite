@@ -41,6 +41,8 @@ on:
 
 jobs:
   build:
+    # TEMP: Disabled for Windows debugging
+    if: false
     # Windows builds directly on test runner (skip cache due to native addon issues)
     strategy:
       matrix:
@@ -155,10 +157,13 @@ jobs:
           enableCrossOsArchive: true
 
   test-desktop:
-    needs: build
+    # TEMP: Removed build dependency, only Windows for debugging
+    # needs: build
     strategy:
       matrix:
-        os: ${{ fromJSON(inputs.platforms) }}
+        # TEMP: Hardcoded to Windows GPU runner for debugging
+        os: [ai-run-windows-gpu]
+        # os: ${{ fromJSON(inputs.platforms) }}
       fail-fast: false
     runs-on: ${{ matrix.os }}
     env:
@@ -734,8 +739,10 @@ jobs:
           }
 
   compare-results:
+    # TEMP: Disabled for Windows debugging
+    if: false
     needs: test-desktop
-    if: github.event_name == 'pull_request'
+    # if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     env:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
