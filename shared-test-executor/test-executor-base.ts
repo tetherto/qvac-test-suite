@@ -96,6 +96,14 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("sharded-model-batch-inference", this.shardedModelBatchInference.bind(this));
 		this.testHandlers.set("sharded-model-long-text-inference", this.shardedModelLongTextInference.bind(this));
 
+		// HTTP Pattern-based/Archive sharded embedding tests
+		this.testHandlers.set("http-sharded-embed-load", this.httpEmbedLoad.bind(this));
+		this.testHandlers.set("http-sharded-embed-progress", this.httpEmbedProgress.bind(this));
+		this.testHandlers.set("http-sharded-embed-inference", this.httpEmbedInference.bind(this));
+		this.testHandlers.set("http-archive-embed-load", this.httpEmbedLoad.bind(this));
+		this.testHandlers.set("http-archive-embed-progress", this.httpEmbedProgress.bind(this));
+		this.testHandlers.set("http-archive-embed-inference", this.httpEmbedInference.bind(this));
+
 		// Structured error tests (PR #243) - Comprehensive Coverage
 		// Client Errors - Response Validation
 		this.testHandlers.set("error-invalid-response-type", this.errorInvalidResponseType.bind(this));
@@ -950,19 +958,20 @@ export abstract class TestExecutorBase {
 
 			// Generate embeddings using sharded model
 			const text = params.text || "Test sentence for sharded model inference.";
-			const result = await this.sdk.embed({
+			const embeddings = await this.sdk.embed({
 				modelId: loadedModelId,
 				text: text,
 			});
 
 			// Validate embeddings
-			const hasEmbeddings = Array.isArray(result.embeddings) && result.embeddings.length > 0;
+			const embeddingLength = Array.isArray(embeddings) ? embeddings.length : 0;
 			const minDimensions = expectation.minDimensions || 1024;
-			const hasCorrectDimensions = result.embeddings.length >= minDimensions;
+			const hasEmbeddings = embeddingLength > 0;
+			const hasCorrectDimensions = embeddingLength >= minDimensions;
 
 			const passed = hasEmbeddings && hasCorrectDimensions;
 			return {
-				output: `Sharded model inference: Generated ${result.embeddings.length}-dimensional embeddings for text (${text.substring(0, 50)}...)`,
+				output: `Sharded model inference: Generated ${embeddingLength}-dimensional embeddings for text (${text.substring(0, 50)}...)`,
 				passed,
 				modelId: loadedModelId,
 			};
@@ -1000,25 +1009,26 @@ export abstract class TestExecutorBase {
 				"Third test sentence.",
 			];
 
-			const results = [];
+			const embeddings: number[][] = [];
 			for (const text of texts) {
-				const result = await this.sdk.embed({
+				const embedding = await this.sdk.embed({
 					modelId: loadedModelId,
 					text: text,
 				});
-				results.push(result);
+				embeddings.push(embedding);
 			}
 
 			// Validate all embeddings
 			const expectedCount = expectation.expectedCount || texts.length;
 			const minDimensions = expectation.minDimensions || 1024;
 			
-			const allHaveEmbeddings = results.every(r => Array.isArray(r.embeddings) && r.embeddings.length >= minDimensions);
-			const correctCount = results.length === expectedCount;
+			const allHaveEmbeddings = embeddings.every(emb => Array.isArray(emb) && emb.length >= minDimensions);
+			const correctCount = embeddings.length === expectedCount;
+			const firstEmbeddingLength = embeddings[0]?.length || 0;
 
 			const passed = allHaveEmbeddings && correctCount;
 			return {
-				output: `Sharded model batch inference: Generated ${results.length} embeddings (${results[0]?.embeddings.length} dimensions each)`,
+				output: `Sharded model batch inference: Generated ${embeddings.length} embeddings (${firstEmbeddingLength} dimensions each)`,
 				passed,
 				modelId: loadedModelId,
 			};
@@ -1051,25 +1061,157 @@ export abstract class TestExecutorBase {
 
 			// Generate embeddings for long text
 			const text = params.text || "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(20);
-			const result = await this.sdk.embed({
+			// SDK embed() returns the embeddings array directly
+			const embeddings = await this.sdk.embed({
 				modelId: loadedModelId,
 				text: text,
 			});
 
 			// Validate embeddings
-			const hasEmbeddings = Array.isArray(result.embeddings) && result.embeddings.length > 0;
+			const embeddingLength = Array.isArray(embeddings) ? embeddings.length : 0;
 			const minDimensions = expectation.minDimensions || 1024;
-			const hasCorrectDimensions = result.embeddings.length >= minDimensions;
+			const hasEmbeddings = embeddingLength > 0;
+			const hasCorrectDimensions = embeddingLength >= minDimensions;
 
 			const passed = hasEmbeddings && hasCorrectDimensions;
 			return {
-				output: `Sharded model long text inference: Generated ${result.embeddings.length}-dimensional embeddings for ${text.length} chars`,
+				output: `Sharded model long text inference: Generated ${embeddingLength}-dimensional embeddings for ${text.length} chars`,
 				passed,
 				modelId: loadedModelId,
 			};
 		} catch (error: any) {
 			return {
 				output: `Sharded model long text inference failed: ${error.message}`,
+				passed: false,
+			};
+		}
+	}
+
+	// ========== HTTP PATTERN-BASED/ARCHIVE SHARDED EMBEDDING TESTS ==========
+	// Generic handlers that serve both pattern-based sharded and archive tests with URL-based detection
+
+	protected httpEmbedModelCache: Map<string, string> = new Map();
+
+	/** Utility to determine test type from model URL */
+	protected getHttpTestType(modelUrl?: string): { isArchive: boolean; testType: string } {
+		const isArchive = modelUrl?.endsWith('.tar.gz') || modelUrl?.endsWith('.tgz') || false;
+		return { isArchive, testType: isArchive ? 'archive' : 'pattern-based' };
+	}
+
+	protected async httpEmbedLoad(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const modelUrl = params.modelUrl;
+		const modelType = params.modelType || "embeddings";
+		const { testType } = this.getHttpTestType(modelUrl);
+
+		try {
+			if (!modelUrl) {
+				return {
+					output: `HTTP ${testType} embed test requires modelUrl parameter`,
+					passed: false,
+				};
+			}
+
+			const loadedModelId = await this.sdk.loadModel({
+				modelSrc: modelUrl,
+				modelType: modelType,
+			});
+
+			this.httpEmbedModelCache.set(modelUrl, loadedModelId);
+
+			const passed = typeof loadedModelId === "string" && loadedModelId.length > 0;
+			return {
+				output: `HTTP ${testType} embed model loaded with ID: ${loadedModelId}`,
+				passed,
+				modelId: loadedModelId,
+			};
+		} catch (error: any) {
+			return {
+				output: `Error loading HTTP ${testType} embed model: ${error.message}`,
+				passed: false,
+			};
+		}
+	}
+
+	protected async httpEmbedProgress(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const modelUrl = params.modelUrl;
+		const modelType = params.modelType || "embeddings";
+		const { isArchive, testType } = this.getHttpTestType(modelUrl);
+
+		try {
+			if (!modelUrl) {
+				return {
+					output: `HTTP ${testType} embed progress test requires modelUrl parameter`,
+					passed: false,
+				};
+			}
+
+			const progressEvents: any[] = [];
+			let hasShardInfo = false;
+			let shardCount = 0;
+
+			const loadedModelId = await this.sdk.loadModel({
+				modelSrc: modelUrl,
+				modelType: modelType,
+				onProgress: (progress: any) => {
+					progressEvents.push(progress);
+					if (progress.shardInfo) {
+						hasShardInfo = true;
+						shardCount = progress.shardInfo.totalShards || 0;
+					}
+				},
+			});
+
+			this.httpEmbedModelCache.set(modelUrl, loadedModelId);
+
+			// For pattern-based sharded models, require shardInfo; for archives, just progress events
+			const passed = isArchive ? progressEvents.length > 0 : hasShardInfo && progressEvents.length > 0;
+			const shardDetail = isArchive ? '' : `, shardInfo present: ${hasShardInfo}, shards: ${shardCount}`;
+			return {
+				output: `HTTP ${testType} embed progress: ${progressEvents.length} events${shardDetail}`,
+				passed,
+				modelId: loadedModelId,
+			};
+		} catch (error: any) {
+			return {
+				output: `Error in HTTP ${testType} embed progress test: ${error.message}`,
+				passed: false,
+			};
+		}
+	}
+
+	protected async httpEmbedInference(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const modelUrl = params.modelUrl;
+		const text = params.text || "This is a test sentence for embedding generation.";
+		const minDimensions = expectation.minDimensions || 1024;
+		const { testType } = this.getHttpTestType(modelUrl);
+
+		try {
+			// Use cached model if available, otherwise load
+			let activeModelId = this.httpEmbedModelCache.get(modelUrl);
+			if (!activeModelId) {
+				activeModelId = await this.sdk.loadModel({
+					modelSrc: modelUrl,
+					modelType: "embeddings",
+				});
+				this.httpEmbedModelCache.set(modelUrl, activeModelId);
+			}
+
+			const embeddings = await this.sdk.embed({
+				modelId: activeModelId,
+				text: text,
+			});
+
+			const embeddingLength = Array.isArray(embeddings) ? embeddings.length : 0;
+			const hasEmbeddings = embeddingLength >= minDimensions;
+
+			return {
+				output: `HTTP ${testType} embed inference: Generated ${embeddingLength}-dimensional embeddings`,
+				passed: hasEmbeddings,
+				modelId: activeModelId || undefined,
+			};
+		} catch (error: any) {
+			return {
+				output: `HTTP ${testType} embed inference failed: ${error.message}`,
 				passed: false,
 			};
 		}
@@ -4765,14 +4907,14 @@ export abstract class TestExecutorBase {
 		}
 
 		try {
-			const result = await this.sdk.embed({
+			const embeddings = await this.sdk.embed({
 				modelId,
 				text: params.text || "",
 			});
 
 			// If embedding succeeded with empty text, that might be acceptable behavior
 			// Check if SDK returns empty vector or handles gracefully
-			const dimensions = result.embedding?.length || 0;
+			const dimensions = Array.isArray(embeddings) ? embeddings.length : 0;
 			return {
 				output: `SDK allowed empty text embedding | Dimensions: ${dimensions}`,
 				passed: dimensions === 0, // Pass if returns empty vector

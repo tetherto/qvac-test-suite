@@ -294,6 +294,146 @@ export class TestBuilder {
 		};
 	}
 
+  // ========== HTTP PATTERN-BASED/ARCHIVE SHARDED TESTS ==========
+
+  buildHttpShardedEmbedLoadTest(): TestDefinition {
+    return {
+      testId: 'http-sharded-embed-load',
+      payload: JSON.stringify({
+        testId: 'http-sharded-embed-load',
+        params: {
+          modelType: 'embeddings',
+          modelUrl:
+            'https://huggingface.co/opaninakuffo/gte-large-fp16-sharded/resolve/main/gte-large_fp16-00003-of-00005.gguf',
+        },
+        expectation: {
+          type: 'model-loaded',
+          validation: 'returns-model-id',
+          isSharded: true,
+          isHttp: true,
+        },
+        expectedOutcome: 'pass',
+      }),
+      dependency: 'none',
+      estimatedDurationMs: 300000, // 5 minutes for HTTP sharded download (~650MB)
+    };
+  }
+
+  buildHttpShardedEmbedProgressTest(): TestDefinition {
+    return {
+      testId: 'http-sharded-embed-progress',
+      payload: JSON.stringify({
+        testId: 'http-sharded-embed-progress',
+        params: {
+          modelType: 'embeddings',
+          modelUrl:
+            'https://huggingface.co/opaninakuffo/gte-large-fp16-sharded/resolve/main/gte-large_fp16-00003-of-00005.gguf',
+          trackProgress: true,
+        },
+        expectation: {
+          type: 'progress-tracked',
+          validation: 'shard-info-present',
+          requiresShardInfo: true,
+        },
+        expectedOutcome: 'pass',
+      }),
+      dependency: 'none',
+      estimatedDurationMs: 120000,
+    };
+  }
+
+  buildHttpShardedEmbedInferenceTest(): TestDefinition {
+    return {
+      testId: 'http-sharded-embed-inference',
+      payload: JSON.stringify({
+        testId: 'http-sharded-embed-inference',
+        params: {
+          modelType: 'embeddings',
+          modelUrl:
+            'https://huggingface.co/opaninakuffo/gte-large-fp16-sharded/resolve/main/gte-large_fp16-00003-of-00005.gguf',
+          text: 'This is a test sentence for embedding generation using an HTTP sharded model.',
+        },
+        expectation: {
+          type: 'embedding-success',
+          validation: 'has-embeddings',
+          minDimensions: 1024,
+        },
+        expectedOutcome: 'pass',
+      }),
+      dependency: 'http-sharded-embed',
+      estimatedDurationMs: 300000,
+    };
+  }
+
+  buildHttpArchiveEmbedLoadTest(): TestDefinition {
+    return {
+      testId: 'http-archive-embed-load',
+      payload: JSON.stringify({
+        testId: 'http-archive-embed-load',
+        params: {
+          modelType: 'embeddings',
+          // GTE-Large FP16 embedding model as tar.gz archive from Hugging Face
+          modelUrl:
+            'https://huggingface.co/opaninakuffo/gte-large-fp16-sharded-tgz/resolve/main/gte-large_fp16.tgz',
+        },
+        expectation: {
+          type: 'model-loaded',
+          validation: 'returns-model-id',
+          isArchive: true,
+          isHttp: true,
+        },
+        expectedOutcome: 'pass',
+      }),
+      dependency: 'none',
+      estimatedDurationMs: 300000, // 5 minutes for HTTP archive download + extraction
+    };
+  }
+
+  buildHttpArchiveEmbedProgressTest(): TestDefinition {
+    return {
+      testId: 'http-archive-embed-progress',
+      payload: JSON.stringify({
+        testId: 'http-archive-embed-progress',
+        params: {
+          modelType: 'embeddings',
+          modelUrl:
+            'https://huggingface.co/opaninakuffo/gte-large-fp16-sharded-tgz/resolve/main/gte-large_fp16.tgz',
+          trackProgress: true,
+        },
+        expectation: {
+          type: 'progress-tracked',
+          validation: 'archive-progress',
+        },
+        expectedOutcome: 'pass',
+      }),
+      dependency: 'none',
+      estimatedDurationMs: 300000,
+    };
+  }
+
+  buildHttpArchiveEmbedInferenceTest(): TestDefinition {
+    return {
+      testId: 'http-archive-embed-inference',
+      payload: JSON.stringify({
+        testId: 'http-archive-embed-inference',
+        params: {
+          modelType: 'embeddings',
+          modelUrl:
+            'https://huggingface.co/opaninakuffo/gte-large-fp16-sharded-tgz/resolve/main/gte-large_fp16.tgz',
+          text: 'This is a test sentence for embedding generation using an HTTP archive model.',
+        },
+        expectation: {
+          type: 'embedding-success',
+          validation: 'has-embeddings',
+          minDimensions: 1024,
+        },
+        expectedOutcome: 'pass',
+      }),
+      dependency: 'http-archive-embed',
+      estimatedDurationMs: 300000,
+    };
+  }
+
 	// ========== STRUCTURED ERROR TESTS (PR #243) ==========
 
 	buildErrorInvalidModelIdTest(): TestDefinition {
@@ -3604,6 +3744,14 @@ export class TestBuilder {
 		// tests.push(this.buildEmbedJavaScriptCodeTest());
 		// tests.push(this.buildEmbedJsonDataTest());
 		// tests.push(this.buildEmbedHtmlContentTest());
+
+		// HTTP pattern-based sharded and archive embedding tests (PR #305)
+		tests.push(this.buildHttpShardedEmbedLoadTest());
+		tests.push(this.buildHttpShardedEmbedProgressTest());
+		tests.push(this.buildHttpShardedEmbedInferenceTest());
+		tests.push(this.buildHttpArchiveEmbedLoadTest());
+		tests.push(this.buildHttpArchiveEmbedProgressTest());
+		tests.push(this.buildHttpArchiveEmbedInferenceTest());
 	}
 
 	// Translation tests
