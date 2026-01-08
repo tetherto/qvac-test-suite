@@ -143,7 +143,8 @@ export abstract class ConsumerBase {
 			return 'nmt';
 		} else if (testId.startsWith("translation")) {
 			return 'translation';
-		} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
+		} else if (testId.startsWith("embed") || testId.startsWith("rag-") || testId.startsWith("http-")) {
+			// http-sharded-embed and http-archive-embed tests load their own model from URL
 			return 'embedding';
 		} else if (testId.startsWith("tools-")) {
 			return 'tools';
@@ -593,12 +594,15 @@ export abstract class ConsumerBase {
 		const isToolsTest = testId.startsWith("tools-");
 		const isEmbeddingTest = testId.startsWith("embed-") || testId.startsWith("rag-");
 		const isTtsTest = testId.startsWith("tts-");
+		const isHttpDownloadTest = testId.startsWith("http-sharded-") || testId.startsWith("http-archive-");
 		
 		// Mobile devices need more time for heavy operations
 		const isMobile = this.platform === "mobile" || this.platform.includes("mobile");
 		const mobileMultiplier = isMobile ? 1.5 : 1.0; // 50% more time on mobile
 		
-		if (isDestructiveTest) {
+		if (isHttpDownloadTest) {
+			return Math.round(300000 * mobileMultiplier); // 300s desktop, 450s mobile
+		} else if (isDestructiveTest) {
 			return 10000; // 10s
 		} else if (isLargeRagTest) {
 			return Math.round(120000 * mobileMultiplier); // 120s desktop, 180s mobile
