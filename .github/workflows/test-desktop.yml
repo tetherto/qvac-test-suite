@@ -41,6 +41,7 @@ on:
 
 jobs:
   build:
+    # Windows builds directly on test runner (skip cache due to native addon issues)
     strategy:
       matrix:
         include:
@@ -50,9 +51,6 @@ jobs:
           - os: macos-latest
             platform: darwin
             arch: arm64
-          - os: windows-latest
-            platform: win32
-            arch: x64
     runs-on: ${{ matrix.os }}
     env:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -212,6 +210,10 @@ jobs:
           fail-on-cache-miss: true
 
       # --- Windows: Full build directly on runner ---
+      - name: Install Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        uses: jakoch/install-vulkan-sdk-action@v1.4.0
+
       - name: List global npm packages (Windows)
         if: runner.os == 'Windows'
         run: npm list -g --depth=0
@@ -253,6 +255,110 @@ jobs:
             execSync('bun run build', { stdio: 'inherit' });
           } else {
             console.log('⚠️  No build script found in root package.json - skipping');
+          }
+
+      - name: Debug - Check VC++ Redistributables (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          Write-Host "=== Installed VC++ Redistributables ==="
+          Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*,
+                           HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* |
+            Where-Object { $_.DisplayName -like "*Visual C++*" -or $_.DisplayName -like "*Microsoft Visual C++*" } |
+            Select-Object DisplayName, DisplayVersion |
+            Format-Table -AutoSize
+
+      - name: Debug - Inspect native addon (Windows)
+        if: runner.os == 'Windows'
+        shell: node {0}
+        run: |
+          const { execSync } = require('child_process');
+          const fs = require('fs');
+          const path = require('path');
+
+          // Find @qvac native packages with prebuilds
+          const addonPaths = [
+            'node_modules/@qvac/sdk/node_modules/@qvac/tts-onnx',
+            'node_modules/@qvac/sdk/node_modules/@qvac/llm-llamacpp',
+            'node_modules/@qvac/sdk/node_modules/@qvac/transcription-whispercpp'
+          ];
+
+          const allDependencies = new Set();
+
+          for (const addonPath of addonPaths) {
+            if (!fs.existsSync(addonPath)) continue;
+
+            console.log(`\n=== ${addonPath} ===`);
+
+            // Check prebuilds
+            const prebuildPath = path.join(addonPath, 'prebuilds');
+            if (fs.existsSync(prebuildPath)) {
+              const platforms = fs.readdirSync(prebuildPath);
+              console.log(`Platforms: ${platforms.join(', ')}`);
+
+              // Check win32-x64
+              const winPath = path.join(prebuildPath, 'win32-x64');
+              if (fs.existsSync(winPath)) {
+                console.log('win32-x64 contents:');
+                fs.readdirSync(winPath).forEach(f => {
+                  const fullPath = path.join(winPath, f);
+                  const stats = fs.statSync(fullPath);
+                  console.log(`  ${f} (${stats.size} bytes)`);
+                });
+
+                // Find .bare files and check dependencies
+                const bareFiles = fs.readdirSync(winPath).filter(f => f.endsWith('.bare'));
+                for (const bareFile of bareFiles) {
+                  const fullPath = path.join(winPath, bareFile);
+                  console.log(`\n--- Dependencies: ${bareFile} ---`);
+                  try {
+                    const result = execSync(`dumpbin /dependents "${fullPath}"`, { encoding: 'utf8', timeout: 30000 });
+                    console.log(result);
+                    // Parse DLL names from output
+                    const dllMatches = result.match(/^\s+(\S+\.dll)/gim);
+                    if (dllMatches) {
+                      dllMatches.forEach(m => allDependencies.add(m.trim()));
+                    }
+                  } catch (err) {
+                    console.log(`dumpbin not available: ${err.message}`);
+                  }
+                }
+              } else {
+                console.log('⚠️  No win32-x64 prebuild!');
+              }
+            }
+          }
+
+          // Check if dependencies are present on system
+          if (allDependencies.size > 0) {
+            console.log('\n=== Checking if dependencies exist on system ===');
+            for (const dll of allDependencies) {
+              try {
+                const result = execSync(`where "${dll}"`, { encoding: 'utf8', timeout: 5000 });
+                console.log(`✅ ${dll}: ${result.trim().split('\n')[0]}`);
+              } catch (err) {
+                console.log(`❌ ${dll}: NOT FOUND`);
+              }
+            }
+          }
+
+          // Also check common VC++ runtime DLLs directly
+          console.log('\n=== Checking common VC++ runtime DLLs ===');
+          const commonDlls = [
+            'VCRUNTIME140.dll',
+            'VCRUNTIME140_1.dll',
+            'MSVCP140.dll',
+            'CONCRT140.dll',
+            'onnxruntime.dll',
+            'onnxruntime_providers_shared.dll'
+          ];
+          for (const dll of commonDlls) {
+            try {
+              const result = execSync(`where "${dll}"`, { encoding: 'utf8', timeout: 5000 });
+              console.log(`✅ ${dll}: ${result.trim().split('\n')[0]}`);
+            } catch (err) {
+              console.log(`❌ ${dll}: NOT FOUND`);
+            }
           }
 
       - name: Verify SDK works - run example (Windows)
@@ -626,7 +732,7 @@ jobs:
           for (const platform of platforms) {
             const currentFiles = fs.existsSync('current-results') ? fs.readdirSync('current-results').filter(f => f.includes(platform) && f.endsWith('.json')) : [];
             const baselineFiles = fs.existsSync('baseline-results') ? fs.readdirSync('baseline-results').filter(f => f.includes(platform) && f.endsWith('.json')) : [];
-            
+
             if (currentFiles.length > 0 && baselineFiles.length > 0) {
               const current = `current-results/${currentFiles[0]}`;
               const baseline = `baseline-results/${baselineFiles[0]}`;
@@ -659,7 +765,7 @@ jobs:
                 comment += `| ${platform} | ${json.summary.passed} | ${json.summary.failed} | ${json.summary.total} | ${json.summary.successRate}% | ${json.summary.duration}s |\n`;
               }
             }
-            
+
             comment += '\n### 📦 Artifacts\n\n';
             comment += `[View all artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts)\n`;
           } else {
@@ -667,11 +773,11 @@ jobs:
             for (const comparison of comparisons) {
               const platform = path.basename(comparison, '.json').replace('comparison-', '');
               execSync(`npx qvac-test report:format --input "${comparison}" --format markdown --output "platform-${platform}.md"`, { stdio: 'inherit' });
-              
+
               comment += `## ${platform}\n`;
               comment += fs.readFileSync(`platform-${platform}.md`, 'utf8') + '\n';
             }
-            
+
             comment += '### 📦 Artifacts\n\n';
             comment += `[View all artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts)\n`;
           }
