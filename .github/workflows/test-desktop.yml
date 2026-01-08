@@ -239,36 +239,47 @@ jobs:
             }
           }
 
-          # dxcore.dll is missing on Windows Server - try to get from Windows SDK or D3D Agility SDK
+          # dxcore.dll is missing on Windows Server - try to download from NuGet
           if (-not (Test-Path "C:\Windows\System32\dxcore.dll")) {
             Write-Host "`n=== Attempting to install dxcore.dll ==="
 
-            # Try Microsoft.Direct3D.D3D12 which includes dxcore
-            Write-Host "Installing Microsoft.Direct3D.D3D12 from NuGet..."
-            nuget install Microsoft.Direct3D.D3D12 -OutputDirectory $env:TEMP\d3d12 -Version 1.614.1
+            # Download NuGet packages directly
+            $packages = @(
+              @{ Name = "Microsoft.Direct3D.D3D12"; Version = "1.614.1" },
+              @{ Name = "Microsoft.Direct3D.DXCore"; Version = "1.0.2" }
+            )
 
-            # Search for dxcore.dll in the package
-            $dxcore = Get-ChildItem -Path "$env:TEMP\d3d12" -Recurse -Filter "dxcore.dll" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "x64" } | Select-Object -First 1
-            if ($dxcore) {
-              Write-Host "Found dxcore.dll: $($dxcore.FullName)"
-              Copy-Item $dxcore.FullName -Destination "C:\Windows\System32\dxcore.dll" -Force
-              Write-Host "✅ dxcore.dll installed"
-            } else {
-              Write-Host "dxcore.dll not in D3D12 package. Listing contents:"
-              Get-ChildItem -Path "$env:TEMP\d3d12" -Recurse -Filter "*.dll" | ForEach-Object { Write-Host "  $($_.FullName)" }
+            foreach ($pkg in $packages) {
+              $url = "https://www.nuget.org/api/v2/package/$($pkg.Name)/$($pkg.Version)"
+              $zipPath = "$env:TEMP\$($pkg.Name).zip"
+              $extractPath = "$env:TEMP\$($pkg.Name)"
 
-              # Try D3D12Core package
-              Write-Host "`nTrying Microsoft.Direct3D.DXCore..."
-              nuget install Microsoft.Direct3D.DXCore -OutputDirectory $env:TEMP\dxcore -Version 1.0.2
-              $dxcore2 = Get-ChildItem -Path "$env:TEMP\dxcore" -Recurse -Filter "dxcore.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
-              if ($dxcore2) {
-                Write-Host "Found: $($dxcore2.FullName)"
-                Copy-Item $dxcore2.FullName -Destination "C:\Windows\System32\dxcore.dll" -Force
-                Write-Host "✅ dxcore.dll installed"
-              } else {
-                Write-Host "dxcore.dll not found. Listing:"
-                Get-ChildItem -Path "$env:TEMP\dxcore" -Recurse -Filter "*.dll" | ForEach-Object { Write-Host "  $($_.FullName)" }
+              Write-Host "Downloading $($pkg.Name)..."
+              try {
+                Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+                Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+                Write-Host "✅ Downloaded and extracted $($pkg.Name)"
+              } catch {
+                Write-Host "❌ Failed to download $($pkg.Name): $_"
+                continue
               }
+
+              # Search for dxcore.dll
+              $dxcore = Get-ChildItem -Path $extractPath -Recurse -Filter "dxcore.dll" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "x64" } | Select-Object -First 1
+              if ($dxcore) {
+                Write-Host "Found dxcore.dll: $($dxcore.FullName)"
+                Copy-Item $dxcore.FullName -Destination "C:\Windows\System32\dxcore.dll" -Force
+                Write-Host "✅ dxcore.dll installed to System32"
+                break
+              } else {
+                Write-Host "dxcore.dll not in $($pkg.Name). DLLs found:"
+                Get-ChildItem -Path $extractPath -Recurse -Filter "*.dll" | ForEach-Object { Write-Host "  $($_.Name)" }
+              }
+            }
+
+            # Final check
+            if (-not (Test-Path "C:\Windows\System32\dxcore.dll")) {
+              Write-Host "❌ Could not install dxcore.dll from NuGet packages"
             }
           }
 
