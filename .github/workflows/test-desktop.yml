@@ -214,6 +214,60 @@ jobs:
         if: runner.os == 'Windows'
         uses: jakoch/install-vulkan-sdk-action@v1.4.0
 
+      - name: Check/Install DirectML (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          Write-Host "=== Windows Version ==="
+          [System.Environment]::OSVersion.Version
+
+          Write-Host "`n=== Checking for existing DirectML.dll ==="
+          $systemDml = "C:\Windows\System32\DirectML.dll"
+          if (Test-Path $systemDml) {
+            $ver = (Get-Item $systemDml).VersionInfo
+            Write-Host "✅ Found: $systemDml"
+            Write-Host "   Version: $($ver.FileVersion)"
+            Write-Host "   Size: $((Get-Item $systemDml).Length) bytes"
+          } else {
+            Write-Host "❌ DirectML.dll NOT in System32"
+
+            # Search common locations
+            Write-Host "`n=== Searching for DirectML.dll ==="
+            $found = Get-ChildItem -Path "C:\Windows" -Recurse -Filter "directml.dll" -ErrorAction SilentlyContinue | Select-Object -First 5
+            if ($found) {
+              $found | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+            } else {
+              Write-Host "Not found anywhere in C:\Windows"
+            }
+
+            # Install from NuGet
+            Write-Host "`n=== Installing DirectML from NuGet ==="
+            nuget install Microsoft.AI.DirectML -OutputDirectory $env:TEMP\directml -Version 1.15.1
+
+            $dmlPath = Get-ChildItem -Path "$env:TEMP\directml" -Recurse -Filter "DirectML.dll" | Where-Object { $_.FullName -match "x64" } | Select-Object -First 1
+            if ($dmlPath) {
+              Write-Host "Found in NuGet: $($dmlPath.FullName)"
+              Copy-Item $dmlPath.FullName -Destination "C:\Windows\System32\DirectML.dll" -Force
+              Write-Host "✅ DirectML.dll installed to System32"
+            } else {
+              Write-Host "❌ Failed to find DirectML.dll in NuGet package"
+              Get-ChildItem -Path "$env:TEMP\directml" -Recurse -Filter "*.dll" | ForEach-Object { Write-Host $_.FullName }
+            }
+          }
+
+      - name: Debug - Vulkan diagnostics (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          echo === Vulkan SDK environment ===
+          echo VULKAN_SDK=%VULKAN_SDK%
+          echo.
+          echo === vulkaninfoSDK ===
+          "%VULKAN_SDK%\Bin\vulkaninfoSDK.exe" --summary 2>&1 || echo vulkaninfoSDK failed
+          echo.
+          echo === Available Vulkan layers ===
+          dir "%VULKAN_SDK%\Bin\*.dll" 2>nul || echo No DLLs in Vulkan SDK Bin
+
       - name: List global npm packages (Windows)
         if: runner.os == 'Windows'
         run: npm list -g --depth=0
@@ -342,17 +396,21 @@ jobs:
             }
           }
 
-          // Also check common VC++ runtime DLLs directly
-          console.log('\n=== Checking common VC++ runtime DLLs ===');
-          const commonDlls = [
+          // Check actual dependencies of tts-onnx.bare:
+          // KERNEL32.dll, dxcore.dll, d3d12.dll, DirectML.dll, dxgi.dll, ADVAPI32.dll,
+          // VCRUNTIME140.dll, VCRUNTIME140_1.dll, api-ms-win-crt-*.dll
+          console.log('\n=== Checking required DLLs for tts-onnx.bare ===');
+          const requiredDlls = [
+            'KERNEL32.dll',
+            'dxcore.dll',
+            'd3d12.dll',
+            'DirectML.dll',
+            'dxgi.dll',
+            'ADVAPI32.dll',
             'VCRUNTIME140.dll',
-            'VCRUNTIME140_1.dll',
-            'MSVCP140.dll',
-            'CONCRT140.dll',
-            'onnxruntime.dll',
-            'onnxruntime_providers_shared.dll'
+            'VCRUNTIME140_1.dll'
           ];
-          for (const dll of commonDlls) {
+          for (const dll of requiredDlls) {
             try {
               const result = execSync(`where "${dll}"`, { encoding: 'utf8', timeout: 5000 });
               console.log(`✅ ${dll}: ${result.trim().split('\n')[0]}`);
