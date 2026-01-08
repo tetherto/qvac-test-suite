@@ -1092,13 +1092,18 @@ export abstract class TestExecutorBase {
 
 	protected httpEmbedModelCache: Map<string, string> = new Map();
 
-	protected async httpEmbedLoad(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
-		try {
-			const modelUrl = params.modelUrl;
-			const modelType = params.modelType || "embeddings";
-			const isArchive = modelUrl?.endsWith('.tar.gz') || modelUrl?.endsWith('.tgz');
-			const testType = isArchive ? 'archive' : 'pattern-based';
+	/** Utility to determine test type from model URL */
+	protected getHttpTestType(modelUrl?: string): { isArchive: boolean; testType: string } {
+		const isArchive = modelUrl?.endsWith('.tar.gz') || modelUrl?.endsWith('.tgz') || false;
+		return { isArchive, testType: isArchive ? 'archive' : 'pattern-based' };
+	}
 
+	protected async httpEmbedLoad(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		const modelUrl = params.modelUrl;
+		const modelType = params.modelType || "embeddings";
+		const { testType } = this.getHttpTestType(modelUrl);
+
+		try {
 			if (!modelUrl) {
 				return {
 					output: `HTTP ${testType} embed test requires modelUrl parameter`,
@@ -1120,8 +1125,6 @@ export abstract class TestExecutorBase {
 				modelId: loadedModelId,
 			};
 		} catch (error: any) {
-			const isArchive = params.modelUrl?.endsWith('.tar.gz') || params.modelUrl?.endsWith('.tgz');
-			const testType = isArchive ? 'archive' : 'pattern-based';
 			return {
 				output: `Error loading HTTP ${testType} embed model: ${error.message}`,
 				passed: false,
@@ -1130,12 +1133,11 @@ export abstract class TestExecutorBase {
 	}
 
 	protected async httpEmbedProgress(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
-		try {
-			const modelUrl = params.modelUrl;
-			const modelType = params.modelType || "embeddings";
-			const isArchive = modelUrl?.endsWith('.tar.gz') || modelUrl?.endsWith('.tgz');
-			const testType = isArchive ? 'archive' : 'pattern-based';
+		const modelUrl = params.modelUrl;
+		const modelType = params.modelType || "embeddings";
+		const { isArchive, testType } = this.getHttpTestType(modelUrl);
 
+		try {
 			if (!modelUrl) {
 				return {
 					output: `HTTP ${testType} embed progress test requires modelUrl parameter`,
@@ -1170,8 +1172,6 @@ export abstract class TestExecutorBase {
 				modelId: loadedModelId,
 			};
 		} catch (error: any) {
-			const isArchive = params.modelUrl?.endsWith('.tar.gz') || params.modelUrl?.endsWith('.tgz');
-			const testType = isArchive ? 'archive' : 'pattern-based';
 			return {
 				output: `Error in HTTP ${testType} embed progress test: ${error.message}`,
 				passed: false,
@@ -1180,13 +1180,12 @@ export abstract class TestExecutorBase {
 	}
 
 	protected async httpEmbedInference(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
-		try {
-			const modelUrl = params.modelUrl;
-			const text = params.text || "This is a test sentence for embedding generation.";
-			const minDimensions = expectation.minDimensions || 1024;
-			const isArchive = modelUrl?.endsWith('.tar.gz') || modelUrl?.endsWith('.tgz');
-			const testType = isArchive ? 'archive' : 'pattern-based';
+		const modelUrl = params.modelUrl;
+		const text = params.text || "This is a test sentence for embedding generation.";
+		const minDimensions = expectation.minDimensions || 1024;
+		const { testType } = this.getHttpTestType(modelUrl);
 
+		try {
 			// Use cached model if available, otherwise load
 			let activeModelId = this.httpEmbedModelCache.get(modelUrl);
 			if (!activeModelId) {
@@ -1211,8 +1210,6 @@ export abstract class TestExecutorBase {
 				modelId: activeModelId || undefined,
 			};
 		} catch (error: any) {
-			const isArchive = params.modelUrl?.endsWith('.tar.gz') || params.modelUrl?.endsWith('.tgz');
-			const testType = isArchive ? 'archive' : 'pattern-based';
 			return {
 				output: `HTTP ${testType} embed inference failed: ${error.message}`,
 				passed: false,
