@@ -198,7 +198,9 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `arch=${arch}\n`, 'utf8');
           console.log(`Platform: ${platform}, Arch: ${arch}`);
 
+      # --- Non-Windows: Restore from cache ---
       - name: Restore build cache
+        if: runner.os != 'Windows'
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -209,16 +211,104 @@ jobs:
           enableCrossOsArchive: true
           fail-on-cache-miss: true
 
-      - name: Debug - Upload cached files (Windows only)
+      # --- Windows: Full build directly on runner ---
+      - name: List global npm packages (Windows)
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: debug-cached-files-windows-${{ github.run_number }}
-          path: |
-            ${{ inputs.working-directory }}/dist
-            ${{ inputs.working-directory }}/build
-            ${{ inputs.working-directory }}/node_modules
-          retention-days: 3
+        run: npm list -g --depth=0
+
+      - name: Configure npm registries (Windows)
+        if: runner.os == 'Windows'
+        shell: node {0}
+        run: |
+          const { execSync } = require('child_process');
+          const fs = require('fs');
+
+          if (!process.env.NPM_TOKEN) { console.log('❌ NPM_TOKEN is empty'); process.exit(1); }
+          if (!process.env.PAT_TOKEN) { console.log('❌ PAT_TOKEN is empty'); process.exit(1); }
+
+          const lines = [
+            'registry=https://registry.npmjs.org/',
+            '@qvac:registry=https://registry.npmjs.org/',
+            '@tetherto:registry=https://npm.pkg.github.com/',
+            `//registry.npmjs.org/:_authToken=${process.env.NPM_TOKEN}`,
+            `//npm.pkg.github.com/:_authToken=${process.env.PAT_TOKEN}`
+          ];
+          fs.writeFileSync('.npmrc', lines.join('\n'), 'utf8');
+          console.log('✅ .npmrc configured');
+
+      - name: Install dependencies - root (Windows)
+        if: runner.os == 'Windows'
+        run: bun install
+
+      - name: Build project - root (Windows)
+        if: runner.os == 'Windows'
+        shell: node {0}
+        run: |
+          const { execSync } = require('child_process');
+          const fs = require('fs');
+
+          const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          if (packageJson.scripts && packageJson.scripts.build) {
+            console.log('Building root project...');
+            execSync('bun run build', { stdio: 'inherit' });
+          } else {
+            console.log('⚠️  No build script found in root package.json - skipping');
+          }
+
+      - name: Verify SDK works - run example (Windows)
+        if: runner.os == 'Windows'
+        shell: node {0}
+        run: |
+          const { execSync } = require('child_process');
+          const fs = require('fs');
+
+          // Check if examples directory exists
+          if (!fs.existsSync('examples')) {
+            console.log('⚠️  No examples directory found - skipping SDK verification');
+            process.exit(0);
+          }
+
+          // Find a demo file to run
+          const exampleFiles = fs.readdirSync('examples').filter(f => f.endsWith('.ts') || f.endsWith('.js'));
+          if (exampleFiles.length === 0) {
+            console.log('⚠️  No example files found - skipping SDK verification');
+            process.exit(0);
+          }
+
+          // Prefer multi-model-demo.ts if it exists
+          let targetExample = exampleFiles.find(f => f.includes('multi-model-demo')) || exampleFiles[0];
+          console.log(`Running example: examples/${targetExample}`);
+
+          try {
+            execSync(`bun run examples/${targetExample}`, { stdio: 'inherit', timeout: 60000 });
+            console.log('✅ SDK example ran successfully');
+          } catch (err) {
+            console.log('❌ SDK example failed');
+            console.log(`   Exit code: ${err.status}`);
+            if (err.stderr) console.log(`   Stderr: ${err.stderr.toString()}`);
+            process.exit(1);
+          }
+
+      - name: Copy .npmrc to consumer directory (Windows)
+        if: runner.os == 'Windows'
+        shell: node {0}
+        run: |
+          const fs = require('fs');
+          const path = require('path');
+          const npmrcContent = fs.readFileSync('.npmrc', 'utf8');
+          const consumerDir = '${{ inputs.working-directory }}';
+          fs.writeFileSync(path.join(consumerDir, '.npmrc'), npmrcContent, 'utf8');
+          console.log('✅ .npmrc copied to consumer directory');
+
+      - name: Install dependencies - consumer (Windows)
+        if: runner.os == 'Windows'
+        working-directory: ${{ inputs.working-directory }}
+        run: npm install --install-links
+
+      - name: Build project - consumer (Windows)
+        if: runner.os == 'Windows'
+        working-directory: ${{ inputs.working-directory }}
+        run: bun run build
 
       - name: Setup MQTT certificates
         shell: node {0}
