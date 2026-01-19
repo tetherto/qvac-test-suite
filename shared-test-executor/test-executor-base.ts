@@ -25,7 +25,6 @@ export interface SDKFunctions {
 	LLAMA_3_2_1B_INST_Q4_0: any;
 	GTE_LARGE_FP16: any;
 	GTE_LARGE_335M_FP16_SHARD?: any; // Sharded model constant (PR #237)
-	OCR_CRAFT_ENGLISH_DETECTOR?: any; // OCR detector model constant
 	OCR_CRAFT_LATIN_RECOGNIZER?: any; // OCR recognizer model constant
 	SDK_CLIENT_ERROR_CODES?: Record<string, number>; // Structured error codes (PR #243)
 	SDK_SERVER_ERROR_CODES?: Record<string, number>; // Structured error codes (PR #243)
@@ -4945,15 +4944,15 @@ export abstract class TestExecutorBase {
 				return { output: "OCR function not available in SDK", passed: false };
 			}
 
-			if (!this.sdk.OCR_CRAFT_ENGLISH_DETECTOR || !this.sdk.OCR_CRAFT_LATIN_RECOGNIZER) {
-				return { output: "OCR model constants not available in SDK", passed: false };
+			if (!this.sdk.OCR_CRAFT_LATIN_RECOGNIZER) {
+				return { output: "OCR model constant (OCR_CRAFT_LATIN_RECOGNIZER) not available in SDK", passed: false };
 			}
 
-			console.log("   📝 Loading OCR model (CRAFT English Detector + Latin Recognizer)...");
+			console.log("   📝 Loading OCR model (CRAFT Latin Recognizer - detector auto-derived)...");
 			
+			// Only need to pass the recognizer - detector is auto-derived from same hyperdrive key
 			const loadedModelId = await this.sdk.loadModel({
-				modelSrc: this.sdk.OCR_CRAFT_ENGLISH_DETECTOR,
-				recognizerModelSrc: this.sdk.OCR_CRAFT_LATIN_RECOGNIZER,
+				modelSrc: this.sdk.OCR_CRAFT_LATIN_RECOGNIZER,
 				modelType: "ocr",
 				modelConfig: {
 					langList: ["en"],

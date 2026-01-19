@@ -13,7 +13,6 @@ import {
 	loggingStream,
 	LLAMA_3_2_1B_INST_Q4_0,
 	GTE_LARGE_FP16,
-	OCR_CRAFT_ENGLISH_DETECTOR,
 	OCR_CRAFT_LATIN_RECOGNIZER,
 } from "@tetherto/sdk-dev";
 // Dynamic import for SDK_LOG_ID (QVAC-9211) - may not be in types yet
@@ -41,7 +40,6 @@ export class TestExecutor extends TestExecutorBase {
 			SDK_LOG_ID,
 			LLAMA_3_2_1B_INST_Q4_0,
 			GTE_LARGE_FP16,
-			OCR_CRAFT_ENGLISH_DETECTOR,
 			OCR_CRAFT_LATIN_RECOGNIZER,
 			SDK_CLIENT_ERROR_CODES: undefined, // Not available in this SDK version
 			SDK_SERVER_ERROR_CODES: undefined, // Not available in this SDK version

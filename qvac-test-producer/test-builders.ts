@@ -3534,7 +3534,7 @@ export class TestBuilder {
 				testId: "model-load-ocr",
 				params: {
 					modelType: "ocr",
-					modelConstant: "OCR_CRAFT_ENGLISH_DETECTOR",
+					modelConstant: "OCR_CRAFT_LATIN_RECOGNIZER",
 				},
 				expectation: {
 					type: "model-loaded",
@@ -3543,7 +3543,7 @@ export class TestBuilder {
 				expectedOutcome: "pass",
 			}),
 			dependency: "none",
-			estimatedDurationMs: 90000, // 1.5 minutes for OCR model loading
+			estimatedDurationMs: 120000, // 2 minutes for OCR model loading
 		};
 	}
 
@@ -3563,7 +3563,7 @@ export class TestBuilder {
 				expectedOutcome: "pass",
 			}),
 			dependency: "ocr",
-			estimatedDurationMs: 60000,
+			estimatedDurationMs: 120000,
 		};
 	}
 
@@ -3583,7 +3583,7 @@ export class TestBuilder {
 				expectedOutcome: "pass",
 			}),
 			dependency: "ocr",
-			estimatedDurationMs: 60000,
+			estimatedDurationMs: 120000,
 		};
 	}
 
@@ -3604,7 +3604,7 @@ export class TestBuilder {
 				expectedOutcome: "pass",
 			}),
 			dependency: "ocr",
-			estimatedDurationMs: 60000,
+			estimatedDurationMs: 120000,
 		};
 	}
 
@@ -3625,7 +3625,7 @@ export class TestBuilder {
 				expectedOutcome: "pass",
 			}),
 			dependency: "ocr",
-			estimatedDurationMs: 60000,
+			estimatedDurationMs: 120000,
 		};
 	}
 
@@ -3647,7 +3647,7 @@ export class TestBuilder {
 				debugInfo: "Sign image - validates OCR returns results from signage",
 			}),
 			dependency: "ocr",
-			estimatedDurationMs: 30000,
+			estimatedDurationMs: 120000,
 		};
 	}
 
@@ -3669,7 +3669,7 @@ export class TestBuilder {
 				debugInfo: "Logo image - validates OCR handles logo graphics",
 			}),
 			dependency: "ocr",
-			estimatedDurationMs: 30000,
+			estimatedDurationMs: 120000,
 		};
 	}
 
@@ -3691,7 +3691,7 @@ export class TestBuilder {
 				debugInfo: "Chart image - validates OCR handles data visualizations",
 			}),
 			dependency: "ocr",
-			estimatedDurationMs: 30000,
+			estimatedDurationMs: 120000,
 		};
 	}
 
@@ -3713,7 +3713,7 @@ export class TestBuilder {
 				debugInfo: "No-text image - validates OCR handles images without text gracefully",
 			}),
 			dependency: "ocr",
-			estimatedDurationMs: 30000,
+			estimatedDurationMs: 120000,
 		};
 	}
 
@@ -3757,7 +3757,7 @@ export class TestBuilder {
 				debugInfo: "Small 64px image - validates OCR handles tiny images",
 			}),
 			dependency: "ocr",
-			estimatedDurationMs: 30000,
+			estimatedDurationMs: 120000,
 		};
 	}
 
@@ -3779,7 +3779,7 @@ export class TestBuilder {
 				debugInfo: "Low quality image - validates OCR robustness with compression artifacts",
 			}),
 			dependency: "ocr",
-			estimatedDurationMs: 30000,
+			estimatedDurationMs: 120000,
 		};
 	}
 
@@ -3801,7 +3801,7 @@ export class TestBuilder {
 				debugInfo: "Mixed language image - validates OCR with multiple scripts (Korean, English, etc.)",
 			}),
 			dependency: "ocr",
-			estimatedDurationMs: 30000,
+			estimatedDurationMs: 120000,
 		};
 	}
 
