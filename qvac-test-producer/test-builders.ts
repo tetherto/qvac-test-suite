@@ -3534,7 +3534,7 @@ export class TestBuilder {
 				testId: "model-load-ocr",
 				params: {
 					modelType: "ocr",
-					modelConstant: "OCR_CRAFT_LATIN_RECOGNIZER",
+					modelConstant: "OCR_CRAFT_LATIN_RECOGNIZER_1",
 				},
 				expectation: {
 					type: "model-loaded",

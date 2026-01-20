@@ -6,7 +6,7 @@ import {
   WHISPER_TINY,
   VAD_SILERO_5_1_2,
   QWEN_3_1_7B_INST_Q4,
-  OCR_CRAFT_LATIN_RECOGNIZER,
+  OCR_CRAFT_LATIN_RECOGNIZER_1,
 } from '@qvac/sdk';
 
 export class ModelManager {
@@ -123,7 +123,7 @@ export class ModelManager {
       console.log('    [ModelManager] Loading OCR model (CRAFT Latin Recognizer - detector auto-derived)...');
       // Only need to pass the recognizer - detector is auto-derived from same hyperdrive key
       this.ocrModelId = await loadModel({
-        modelSrc: OCR_CRAFT_LATIN_RECOGNIZER,
+        modelSrc: OCR_CRAFT_LATIN_RECOGNIZER_1,
         modelType: 'ocr',
         modelConfig: {
           langList: ['en'],
