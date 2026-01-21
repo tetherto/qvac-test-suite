@@ -40,11 +40,12 @@ export abstract class ConsumerBase {
 	protected translationModelId: string | null = null;
 	protected nmtModelId: string | null = null;
 	protected bergamotModelId: string | null = null; // QVAC-10524: Bergamot engine
-	protected ocrModelId: string | null = null;
+	protected ocrModelId: string | null = null; // QVAC-9157: OCR model
 	protected toolsModelId: string | null = null;
 	protected visionModelId: string | null = null;
 	protected ttsModelId: string | null = null;
 	protected executor: any; // TestExecutor type
+	
 	protected registered = false;
 	protected testsCompleted = 0;
 	protected testsPassed = 0;
@@ -80,7 +81,10 @@ export abstract class ConsumerBase {
 
 	/**
 	 * Get platform-specific eSpeak-ng-data path
-	 * First checks ESPEAK_DATA_PATH environment variable, then falls back to platform defaults
+	 * Priority:
+	 * 1. ESPEAK_DATA_PATH environment variable (if set)
+	 * 2. Platform-specific system installation paths
+	 * 3. Fallback to repo's shared-test-data/espeak-ng-data (for development)
 	 */
 	protected getESpeakDataPath(): string {
 		// Check environment variable first
@@ -106,8 +110,8 @@ export abstract class ConsumerBase {
 			// Linux
 			return '/usr/share/espeak-ng-data';
 		} else if (platform === 'android') {
-			// Android - app-specific path (adjust package name as needed)
-			return '/data/data/com.tetherto.qvac/files/espeak-ng-data';
+			// Android - use bundled assets path (native code reads from APK)
+			return '/android_asset/espeak-ng-data';
 		} else {
 			// iOS or unknown - fallback to relative path (iOS resolves from app bundle)
 			return 'espeak-ng-data';
@@ -123,13 +127,50 @@ export abstract class ConsumerBase {
 	protected abstract loadTtsModel(): Promise<string>;
 	protected abstract loadNmtModel(): Promise<string>;
 	protected abstract loadBergamotModel(): Promise<string>; // QVAC-10524
-	protected abstract loadOcrModel(): Promise<string>;
+	protected abstract loadOcrModel(): Promise<string>; // QVAC-9157
 
 	// Determine which model type a test needs
 	protected getRequiredModelType(testId: string): 'llm' | 'whisper' | 'embedding' | 'translation' | 'nmt' | 'bergamot' | 'ocr' | 'tools' | 'vision' | 'tts' | null {
+		// QVAC-9157: OCR tests need OCR model pre-loaded
 		if (testId.startsWith("ocr-") || testId === "model-load-ocr") {
 			return 'ocr';
-		} else if (testId.startsWith("transcription") || testId.startsWith("config-reload")) {
+		}
+		// SDK core API tests - no model needed
+		if (testId.startsWith("sdk-ping") || testId.startsWith("sdk-close") || 
+		    testId.startsWith("sdk-get-model") || testId.startsWith("sdk-download") ||
+		    testId.startsWith("sdk-get-logger") || testId.startsWith("sdk-log-")) {
+			return null;
+		}
+		// P2P tests - handled separately
+		if (testId.startsWith("p2p-")) {
+			return 'llm'; // Need LLM for inference
+		}
+		// Addon API tests
+		if (testId.startsWith("addon-primary") || testId.startsWith("addon-output") ||
+		    testId.startsWith("addon-specific") || testId.startsWith("addon-unresponsive") ||
+		    testId.startsWith("addon-dynamic") || testId === "addon-param-passing-llm" ||
+		    testId.startsWith("addon-error-reporting-llm")) {
+			return 'llm';
+		}
+		if (testId === "addon-param-passing-embedding" || testId.startsWith("addon-error-reporting-embedding")) {
+			return 'embedding';
+		}
+		// Multimodal tests
+		if (testId.startsWith("multimodal-")) {
+			return 'vision';
+		}
+		// Archive model tests
+		if (testId.startsWith("archive-model")) {
+			return 'embedding';
+		}
+		// SDK cancel tests need the model being cancelled
+		if (testId === "sdk-cancel-completion") {
+			return 'llm';
+		}
+		if (testId === "sdk-cancel-transcription") {
+			return 'whisper';
+		}
+		if (testId.startsWith("transcription") || testId.startsWith("config-reload")) {
 			// Config reload tests (QVAC-9409) require Whisper model
 			return 'whisper';
 		} else if (testId.startsWith("addon-logging-")) {
@@ -147,15 +188,23 @@ export abstract class ConsumerBase {
 			return 'nmt';
 		} else if (testId.startsWith("translation")) {
 			return 'translation';
-		} else if (testId.startsWith("embed") || testId.startsWith("rag-") || testId.startsWith("http-")) {
-			// http-sharded-embed and http-archive-embed tests load their own model from URL
+		} else if (testId.startsWith("embed") || testId.startsWith("rag-")) {
 			return 'embedding';
 		} else if (testId.startsWith("tools-")) {
 			return 'tools';
-		} else if (testId.startsWith("vision-")) {
+		} else if (testId.startsWith("vision-") || testId.startsWith("smolvlm-")) {
 			return 'vision';
 		} else if (testId.startsWith("tts-")) {
 			return 'tts';
+		} else if (testId.startsWith("qwen3-") || testId.startsWith("salamandra-") || testId.startsWith("medgemma-")) {
+			// New model inference tests (QVAC model quality coverage)
+			return 'llm';
+		} else if (testId.startsWith("whisper-large-")) {
+			// Whisper large transcription tests
+			return 'whisper';
+		} else if (testId.startsWith("embedding-gemma-")) {
+			// Embedding Gemma tests
+			return 'embedding';
 		} else if (
 			testId.startsWith("completion") ||
 			testId.startsWith("model-load") ||
@@ -187,13 +236,23 @@ export abstract class ConsumerBase {
 	}
 
 	// Ensure required model is loaded for a test
+	// Returns null if model failed to load (test will fail individually)
 	protected async ensureModelForTest(testId: string): Promise<string | null> {
 		const requiredModelType = this.getRequiredModelType(testId);
 
 		if (requiredModelType === 'llm') {
 			if (!this.llmModelId) {
 				this.log(`   📦 Loading LLM model...`);
-				this.llmModelId = await this.loadLlmModel();
+				try {
+					this.llmModelId = await this.loadLlmModel();
+					if (!this.llmModelId) {
+						this.log(`   ❌ LLM model failed to load`);
+						return null;
+					}
+				} catch (e: any) {
+					this.log(`   ❌ LLM model load error: ${e.message?.substring(0, 50)}`);
+					return null;
+				}
 			}
 			return this.llmModelId;
 		}
@@ -201,7 +260,16 @@ export abstract class ConsumerBase {
 		if (requiredModelType === 'embedding') {
 			if (!this.embeddingModelId) {
 				this.log(`   📦 Loading Embedding model...`);
-				this.embeddingModelId = await this.loadEmbeddingModel();
+				try {
+					this.embeddingModelId = await this.loadEmbeddingModel();
+					if (!this.embeddingModelId) {
+						this.log(`   ❌ Embedding model failed to load`);
+						return null;
+					}
+				} catch (e: any) {
+					this.log(`   ❌ Embedding model load error: ${e.message?.substring(0, 50)}`);
+					return null;
+				}
 			}
 			return this.embeddingModelId;
 		}
@@ -209,7 +277,16 @@ export abstract class ConsumerBase {
 		if (requiredModelType === 'whisper') {
 			if (!this.whisperModelId) {
 				this.log(`   📦 Loading Whisper model...`);
-				this.whisperModelId = await this.loadWhisperModel();
+				try {
+					this.whisperModelId = await this.loadWhisperModel();
+					if (!this.whisperModelId) {
+						this.log(`   ❌ Whisper model failed to load`);
+						return null;
+					}
+				} catch (e: any) {
+					this.log(`   ❌ Whisper model load error: ${e.message?.substring(0, 50)}`);
+					return null;
+				}
 			}
 			return this.whisperModelId;
 		}
@@ -218,7 +295,14 @@ export abstract class ConsumerBase {
 			// Translation uses the LLM model
 			if (!this.llmModelId) {
 				this.log(`   📦 Loading LLM model for translation...`);
-				this.llmModelId = await this.loadLlmModel();
+				try {
+					this.llmModelId = await this.loadLlmModel();
+					if (!this.llmModelId) {
+						return null;
+					}
+				} catch (e: any) {
+					return null;
+				}
 			}
 			this.translationModelId = this.llmModelId;
 			return this.llmModelId;
@@ -227,10 +311,19 @@ export abstract class ConsumerBase {
 		if (requiredModelType === 'nmt') {
 			if (!this.nmtModelId) {
 				this.log(`   📦 Loading NMT model (Marian/Opus)...`);
-				this.nmtModelId = await this.loadNmtModel();
-				// Set the NMT model ID in the executor
-				if (this.executor.setNmtModelId) {
-					this.executor.setNmtModelId(this.nmtModelId);
+				try {
+					this.nmtModelId = await this.loadNmtModel();
+					if (!this.nmtModelId) {
+						this.log(`   ❌ NMT model failed to load`);
+						return null;
+					}
+					// Set the NMT model ID in the executor
+					if (this.executor.setNmtModelId) {
+						this.executor.setNmtModelId(this.nmtModelId);
+					}
+				} catch (e: any) {
+					this.log(`   ❌ NMT model load error: ${e.message?.substring(0, 50)}`);
+					return null;
 				}
 			}
 			return this.nmtModelId;
@@ -240,21 +333,41 @@ export abstract class ConsumerBase {
 			// QVAC-10524: Bergamot translation engine
 			if (!this.bergamotModelId) {
 				this.log(`   📦 Loading Bergamot model (EN→FR)...`);
-				this.bergamotModelId = await this.loadBergamotModel();
-				// Set the Bergamot model ID in the executor
-				if (this.executor.setBergamotModelId) {
-					this.executor.setBergamotModelId(this.bergamotModelId);
+				try {
+					this.bergamotModelId = await this.loadBergamotModel();
+					if (!this.bergamotModelId) {
+						this.log(`   ❌ Bergamot model failed to load`);
+						return null;
+					}
+					// Set the Bergamot model ID in the executor
+					if (this.executor.setBergamotModelId) {
+						this.executor.setBergamotModelId(this.bergamotModelId);
+					}
+				} catch (e: any) {
+					this.log(`   ❌ Bergamot model load error: ${e.message?.substring(0, 50)}`);
+					return null;
 				}
 			}
 			return this.bergamotModelId;
 		}
 
 		if (requiredModelType === 'ocr') {
+			// QVAC-9157: OCR model support
 			if (!this.ocrModelId) {
 				this.log(`   📦 Loading OCR model (CRAFT Latin Recognizer)...`);
-				this.ocrModelId = await this.loadOcrModel();
-				if (this.executor.setOcrModelId) {
-					this.executor.setOcrModelId(this.ocrModelId);
+				try {
+					this.ocrModelId = await this.loadOcrModel();
+					if (!this.ocrModelId) {
+						this.log(`   ❌ OCR model failed to load`);
+						return null;
+					}
+					// Set the OCR model ID in the executor
+					if (this.executor.setOcrModelId) {
+						this.executor.setOcrModelId(this.ocrModelId);
+					}
+				} catch (e: any) {
+					this.log(`   ❌ OCR model load error: ${e.message?.substring(0, 50)}`);
+					return null;
 				}
 			}
 			return this.ocrModelId;
@@ -263,10 +376,19 @@ export abstract class ConsumerBase {
 		if (requiredModelType === 'tools') {
 			if (!this.toolsModelId) {
 				this.log(`   📦 Loading Tools model (QWEN)...`);
-				this.toolsModelId = await this.loadToolsModel();
-				// Set the tools model ID in the executor
-				if (this.executor.setToolsModelId) {
-					this.executor.setToolsModelId(this.toolsModelId);
+				try {
+					this.toolsModelId = await this.loadToolsModel();
+					if (!this.toolsModelId) {
+						this.log(`   ❌ Tools model failed to load`);
+						return null;
+					}
+					// Set the tools model ID in the executor
+					if (this.executor.setToolsModelId) {
+						this.executor.setToolsModelId(this.toolsModelId);
+					}
+				} catch (e: any) {
+					this.log(`   ❌ Tools model load error: ${e.message?.substring(0, 50)}`);
+					return null;
 				}
 			}
 			return this.toolsModelId;
@@ -275,10 +397,19 @@ export abstract class ConsumerBase {
 		if (requiredModelType === 'vision') {
 			if (!this.visionModelId) {
 				this.log(`   📦 Loading Vision model (SmolVLM2)...`);
-				this.visionModelId = await this.loadVisionModel();
-				// Set the vision model ID in the executor
-				if (this.executor.setVisionModelId) {
-					this.executor.setVisionModelId(this.visionModelId);
+				try {
+					this.visionModelId = await this.loadVisionModel();
+					if (!this.visionModelId) {
+						this.log(`   ❌ Vision model failed to load`);
+						return null;
+					}
+					// Set the vision model ID in the executor
+					if (this.executor.setVisionModelId) {
+						this.executor.setVisionModelId(this.visionModelId);
+					}
+				} catch (e: any) {
+					this.log(`   ❌ Vision model load error: ${e.message?.substring(0, 50)}`);
+					return null;
 				}
 			}
 			return this.visionModelId;
@@ -287,10 +418,19 @@ export abstract class ConsumerBase {
 		if (requiredModelType === 'tts') {
 			if (!this.ttsModelId) {
 				this.log(`   📦 Loading TTS model (Piper)...`);
-				this.ttsModelId = await this.loadTtsModel();
-				// Set the TTS model ID in the executor
-				if (this.executor.setTtsModelId) {
-					this.executor.setTtsModelId(this.ttsModelId);
+				try {
+					this.ttsModelId = await this.loadTtsModel();
+					if (!this.ttsModelId) {
+						this.log(`   ❌ TTS model failed to load`);
+						return null;
+					}
+					// Set the TTS model ID in the executor
+					if (this.executor.setTtsModelId) {
+						this.executor.setTtsModelId(this.ttsModelId);
+					}
+				} catch (e: any) {
+					this.log(`   ❌ TTS model load error: ${e.message?.substring(0, 50)}`);
+					return null;
 				}
 			}
 			return this.ttsModelId;
@@ -449,6 +589,41 @@ export abstract class ConsumerBase {
 			// Ensure required model is loaded for this test
 			let modelId = await this.ensureModelForTest(testId);
 
+			// Handle failed model load - test will fail individually
+			if (modelId === null && this.getRequiredModelType(testId) !== null) {
+				const duration = Date.now() - startTime;
+				this.log(`❌ ${testId} (${duration}ms)`);
+				this.log(`   Model failed to load for test`);
+				
+				// Report as failed (model couldn't be loaded)
+				this.client.publish(
+					"qvac/result",
+					JSON.stringify({
+						runId: this.runId,
+						consumerId: this.consumerId,
+						uniqueTestId,
+						testId,
+						result: { passed: false, output: "Required model failed to load" },
+						timestamp: new Date().toISOString(),
+						durationMs: duration,
+						outcome: "failed",
+					}),
+					{ qos: 1 }
+				);
+
+				this.testsCompleted++;
+				this.testsFailed++;
+				this.updateStats({
+					testsCompleted: this.testsCompleted,
+					testsFailed: this.testsFailed,
+					currentTest: testId,
+				});
+
+				this.isProcessingTest = false;
+				this.requestNextTest();
+				return;
+			}
+
 			// Calculate timeout based on test type
 			const timeoutMs = this.getTestTimeout(testId);
 
@@ -488,18 +663,25 @@ export abstract class ConsumerBase {
 				else if (modelType === 'tools') this.toolsModelId = null;
 				else if (modelType === 'nmt') this.nmtModelId = null;
 				else if (modelType === 'bergamot') this.bergamotModelId = null;
+				else if (modelType === 'ocr') this.ocrModelId = null;
 				else if (modelType === 'vision') this.visionModelId = null;
 				else if (modelType === 'tts') this.ttsModelId = null;
 				
 				// Reload model
 				modelId = await this.ensureModelForTest(testId);
-				this.log(`   🔄 Retrying with new model ID: ${modelId}`);
 				
-				try {
-					testPromise = this.executor.executeTest(testId, modelId, params, expectation);
-					result = await Promise.race([testPromise, timeoutPromise]);
-				} catch (retryError: any) {
-					result = { passed: false, output: `Error after retry: ${retryError.message}` };
+				// If reload also failed, mark as failed
+				if (modelId === null && this.getRequiredModelType(testId) !== null) {
+					result = { passed: false, output: "Model reload failed" };
+				} else {
+					this.log(`   🔄 Retrying with new model ID: ${modelId}`);
+					
+					try {
+						testPromise = this.executor.executeTest(testId, modelId, params, expectation);
+						result = await Promise.race([testPromise, timeoutPromise]);
+					} catch (retryError: any) {
+						result = { passed: false, output: `Error after retry: ${retryError.message}` };
+					}
 				}
 			}
 
@@ -609,14 +791,40 @@ export abstract class ConsumerBase {
 		const isToolsTest = testId.startsWith("tools-");
 		const isEmbeddingTest = testId.startsWith("embed-") || testId.startsWith("rag-");
 		const isTtsTest = testId.startsWith("tts-");
-		const isHttpDownloadTest = testId.startsWith("http-sharded-") || testId.startsWith("http-archive-");
+		const isOcrTest = testId.startsWith("ocr-") || testId === "model-load-ocr";
+		const isHttpModelTest = testId.startsWith("http-archive") || testId.startsWith("http-sharded");
+		const isComplexCompletionTest = testId.includes("concurrent") || testId.includes("repeated") ||
+		                                 testId.includes("whitespace") || testId.includes("json-format") ||
+		                                 testId.includes("code-generation") || testId.includes("conversation-context") ||
+		                                 testId.includes("list-generation") || testId.includes("qa-from-context") ||
+		                                 testId.includes("single-word") || testId.includes("yes-no") ||
+		                                 testId.includes("sentence-completion") || testId.includes("reload-after-error");
+		
+		// Specialized model tests that may need to download large models (1-3GB)
+		const isQwen3Test = testId.startsWith("qwen3-") || testId.includes("qwen3");
+		const isSalamandraTest = testId.startsWith("salamandra-") || testId.includes("salamandra");
+		const isMedgemmaTest = testId.startsWith("medgemma-") || testId.includes("medgemma");
+		const isEmbeddingGemmaTest = testId.startsWith("embedding-gemma-") || testId.includes("embedding-gemma");
+		const isSmolvlmTest = testId.startsWith("smolvlm-") || testId.includes("smolvlm");
+		const isWhisperLargeTest = testId.startsWith("whisper-large-") || testId.includes("whisper-large");
+		const isArchiveModelTest = testId.startsWith("archive-model-");
+		const isSpecializedModelTest = isQwen3Test || isSalamandraTest || isMedgemmaTest || 
+		                               isEmbeddingGemmaTest || isSmolvlmTest || isWhisperLargeTest ||
+		                               isArchiveModelTest;
 		
 		// Mobile devices need more time for heavy operations
 		const isMobile = this.platform === "mobile" || this.platform.includes("mobile");
 		const mobileMultiplier = isMobile ? 1.5 : 1.0; // 50% more time on mobile
 		
-		if (isHttpDownloadTest) {
-			return Math.round(300000 * mobileMultiplier); // 300s desktop, 450s mobile
+		// Specialized model tests need long timeout for potential model downloads (1-3GB)
+		if (isSpecializedModelTest) {
+			return 300000; // 5 minutes for specialized model tests (allows for large downloads)
+		}
+		// HTTP model download tests need very long timeout (large file downloads)
+		else if (isHttpModelTest) {
+			return 600000; // 10 minutes for HTTP model downloads
+		} else if (isOcrTest) {
+			return 300000; // 300s (5 minutes) for OCR tests
 		} else if (isDestructiveTest) {
 			return 10000; // 10s
 		} else if (isLargeRagTest) {
@@ -639,6 +847,8 @@ export abstract class ConsumerBase {
 			return 90000; // 90s for tools tests on mobile (QWEN 7B is heavy)
 		} else if (isEmbeddingTest && isMobile) {
 			return 90000; // 90s for embedding tests on mobile (GTE_LARGE is heavy)
+		} else if (isComplexCompletionTest) {
+			return 120000; // 2 minutes for complex completion tests
 		} else {
 			return 60000; // 60s default
 		}
@@ -669,6 +879,11 @@ export abstract class ConsumerBase {
 				await unloadModel({ modelId: this.translationModelId });
 				this.translationModelId = null;
 				this.log(`   🔄 Unloaded Translation model`);
+			}
+			if (this.ocrModelId) {
+				await unloadModel({ modelId: this.ocrModelId });
+				this.ocrModelId = null;
+				this.log(`   🔄 Unloaded OCR model`);
 			}
 			this.log(`   ✅ Recovery complete - models will reload on next test`);
 		} catch (recoveryError: any) {
