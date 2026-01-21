@@ -1,5 +1,6 @@
 import { ConsumerBase, type ConsumerCallbacks } from "../shared-consumer/consumer-base";
 import type { MqttClient } from "mqtt";
+import { Platform } from "react-native";
 import {
 	loadModel,
 	unloadModel,
@@ -16,6 +17,7 @@ import {
 	BERGAMOT_ENFR, // QVAC-10524: Bergamot translation engine
 	OCR_CRAFT_LATIN_RECOGNIZER_1,
 } from "@tetherto/sdk-dev";
+import { getEspeakDataPathForSDK } from "./espeak-utils";
 
 export class MobileConsumer extends ConsumerBase {
 	constructor(
@@ -27,6 +29,21 @@ export class MobileConsumer extends ConsumerBase {
 		callbacks: ConsumerCallbacks
 	) {
 		super(client, consumerId, platform, runId, executor, callbacks);
+	}
+
+	/**
+	 * Override for mobile platforms - returns the platform-specific espeak-ng-data path
+	 * 
+	 * On mobile, we cannot use process.env, so we use the bundled asset path instead.
+	 * The espeak-ng-data is bundled via the withEspeakNgData Expo plugin.
+	 * 
+	 * Android: Uses /android_asset/espeak-ng-data (native asset access)
+	 * iOS: Uses the bundle directory path
+	 */
+	protected getESpeakDataPath(): string {
+		const path = getEspeakDataPathForSDK();
+		this.log(`   📂 eSpeak data path: ${path}`);
+		return path;
 	}
 
 	protected async loadLlmModel(): Promise<string> {
@@ -138,6 +155,15 @@ export class MobileConsumer extends ConsumerBase {
 	}
 
 	protected async loadOcrModel(): Promise<string> {
+		// QVAC-9157: OCR model support (updated to _1 per PR 39)
+		// Debug: Check if constant is available
+		console.log("[OCR] OCR_CRAFT_LATIN_RECOGNIZER_1 available:", !!OCR_CRAFT_LATIN_RECOGNIZER_1);
+		console.log("[OCR] OCR_CRAFT_LATIN_RECOGNIZER_1 value:", JSON.stringify(OCR_CRAFT_LATIN_RECOGNIZER_1));
+		
+		if (!OCR_CRAFT_LATIN_RECOGNIZER_1) {
+			throw new Error("OCR_CRAFT_LATIN_RECOGNIZER_1 constant not available in mobile SDK");
+		}
+		
 		// Only need to pass the recognizer - detector is auto-derived
 		return await loadModel({
 			modelSrc: OCR_CRAFT_LATIN_RECOGNIZER_1,

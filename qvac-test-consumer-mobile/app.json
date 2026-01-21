@@ -44,7 +44,8 @@
           }
         }
       ],
-      ["./plugins/withAndroidNdkVersion.js", "29.0.14206865"]
+      ["./plugins/withAndroidNdkVersion.js", "29.0.14206865"],
+      "./plugins/withEspeakNgData.js"
     ],
     "extra": {
       "eas": {

@@ -4,6 +4,7 @@ import Constants from "expo-constants";
 import { env } from "@/env";
 import { TestExecutor } from "./test-executor";
 import { MobileConsumer } from "./consumer-logic";
+import { initializeEspeakData, getEspeakDataPathForSDK } from "./espeak-utils";
 
 interface BatchStats {
 	testsCompleted: number;
@@ -48,6 +49,11 @@ export default function BatchConsumer() {
 				addLog(`📱 Device: ${Constants.deviceName || "Unknown"}`);
 				addLog(`🆔 ID: ${consumerId.substring(0, 30)}...`);
 				addLog(`🔑 Run ID: ${runId}\n`);
+
+				// Initialize espeak-ng-data for TTS tests
+				addLog("📦 Initializing eSpeak data...");
+				await initializeEspeakData(addLog);
+				addLog(`   📂 eSpeak path: ${getEspeakDataPathForSDK()}`);
 
 				const executor = new TestExecutor();
 

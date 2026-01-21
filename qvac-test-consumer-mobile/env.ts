@@ -23,6 +23,8 @@ const envSchema = z.object({
   EXPO_PUBLIC_MQTT_PATH: z.string().default(""),
   EXPO_PUBLIC_MQTT_TOPICS: z.string().default("qvac/test"),
   EXPO_PUBLIC_RUN_ID: z.string().default("*"),
+  // TTS espeak-ng-data path override (optional, uses bundled assets by default)
+  EXPO_PUBLIC_ESPEAK_DATA_PATH: z.string().optional(),
 });
 
 const parsed = envSchema.parse({
@@ -36,6 +38,7 @@ const parsed = envSchema.parse({
   EXPO_PUBLIC_MQTT_TOPICS:
     process.env.EXPO_PUBLIC_MQTT_TOPICS ?? process.env.EXPO_PUBLIC_MQTT_TOPIC,
   EXPO_PUBLIC_RUN_ID: process.env.EXPO_PUBLIC_RUN_ID,
+  EXPO_PUBLIC_ESPEAK_DATA_PATH: process.env.EXPO_PUBLIC_ESPEAK_DATA_PATH,
 });
 
 const topics = parsed.EXPO_PUBLIC_MQTT_TOPICS.split(",")
@@ -47,6 +50,7 @@ export const env = {
   topics,
   useSsl: parsed.EXPO_PUBLIC_MQTT_SSL === "true",
   RUN_ID: parsed.EXPO_PUBLIC_RUN_ID,
+  EXPO_PUBLIC_ESPEAK_DATA_PATH: parsed.EXPO_PUBLIC_ESPEAK_DATA_PATH,
 };
 
 export type Env = typeof env;
