@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@qvac/sdk": "file:../../qvac-sdk",
-    "@tetherto/qvac-test-suite": "file:../framework"
+    "@tetherto/qvac-test-suite": "file:../framework/tetherto-qvac-test-suite-0.2.0.tgz",
+    "react-native-bare-kit": "^0.11.4"
   },
   "devDependencies": {
     "rimraf": "^6.0.1",

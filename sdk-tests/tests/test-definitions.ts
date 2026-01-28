@@ -157,14 +157,6 @@ export const tests = [
   // OCR tests
   ...ocrTests,
 
-  // Model tests (second section - duplicates like old structure)
-  modelLoadLlm,
-  modelLoadEmbedding,
-  modelLoadInvalid,
-  modelUnload,
-  modelLoadConcurrent,
-  modelReloadLlm,
-
   // Additional model tests
   modelSwitchLlm,
   modelReloadAfterError,
