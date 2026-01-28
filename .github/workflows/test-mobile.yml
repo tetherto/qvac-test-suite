@@ -22,6 +22,14 @@ on:
         required: false
         type: number
         default: 30
+      device-farm-project-arn:
+        description: 'AWS Device Farm project ARN'
+        required: true
+        type: string
+      device-pools:
+        description: 'JSON array of device pools [{name, arn}] - e.g. [{"name":"pixel-7","arn":"arn:aws:devicefarm:..."}]'
+        required: true
+        type: string
     secrets:
       PAT_TOKEN:
         required: true
@@ -42,10 +50,6 @@ on:
       AWS_ACCESS_KEY_ID:
         required: true
       AWS_SECRET_ACCESS_KEY:
-        required: true
-      AWS_DEVICE_FARM_PROJECT_ARN:
-        required: true
-      ANDROID_DEVICE_POOL_ARN:
         required: true
 
 jobs:
@@ -196,13 +200,15 @@ jobs:
           path: ${{ inputs.working-directory }}/build/consumers/android/consumer.apk
           retention-days: 7
 
-  # Job 2: Upload to Device Farm and schedule run
+  # Job 2: Upload to Device Farm and schedule runs (matrix per device pool)
   device-farm:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    outputs:
-      run-arn: ${{ steps.schedule.outputs.run-arn }}
+    strategy:
+      fail-fast: false
+      matrix:
+        device: ${{ fromJson(inputs.device-pools) }}
     steps:
       - name: Download APK artifact
         uses: actions/download-artifact@v4
@@ -220,11 +226,11 @@ jobs:
       - name: Upload APK to Device Farm
         id: upload-app
         run: |
-          echo "📤 Uploading APK to Device Farm..."
+          echo "📤 Uploading APK to Device Farm for ${{ matrix.device.name }}..."
           
           UPLOAD_RESPONSE=$(aws devicefarm create-upload \
-            --project-arn "${{ secrets.AWS_DEVICE_FARM_PROJECT_ARN }}" \
-            --name "consumer-${{ needs.build.outputs.runId }}.apk" \
+            --project-arn "${{ inputs.device-farm-project-arn }}" \
+            --name "consumer-${{ needs.build.outputs.runId }}-${{ matrix.device.name }}.apk" \
             --type "ANDROID_APP" \
             --output json)
           
@@ -256,82 +262,18 @@ jobs:
             sleep 10
           done
 
-      - name: Create and upload test spec
-        id: upload-spec
-        run: |
-          echo "📝 Creating minimal test spec..."
-          
-          # Create test spec - app self-tests via MQTT, we just need to keep it running
-          cat > testspec.yml << 'EOF'
-          version: 0.1
-          android_test_host: amazon_linux_2
-
-          phases:
-            install:
-              commands:
-                - echo "App self-tests via MQTT - no test package needed"
-            
-            test:
-              commands:
-                - echo "Device Farm session active - app running tests via MQTT"
-                - echo "Session will stay alive for up to ${{ inputs.device-farm-timeout }} minutes"
-                - echo "Producer will collect results via MQTT broker"
-                - sleep $(( ${{ inputs.device-farm-timeout }} * 60 ))
-            
-            post_test:
-              commands:
-                - echo "Test phase complete"
-
-          artifacts:
-            - $DEVICEFARM_LOG_DIR
-          EOF
-          
-          cat testspec.yml
-          
-          echo "📤 Uploading test spec..."
-          SPEC_RESPONSE=$(aws devicefarm create-upload \
-            --project-arn "${{ secrets.AWS_DEVICE_FARM_PROJECT_ARN }}" \
-            --name "testspec.yml" \
-            --type "APPIUM_NODE_TEST_SPEC" \
-            --output json)
-          
-          SPEC_UPLOAD_URL=$(echo $SPEC_RESPONSE | jq -r '.upload.url')
-          SPEC_UPLOAD_ARN=$(echo $SPEC_RESPONSE | jq -r '.upload.arn')
-          
-          echo "spec-arn=$SPEC_UPLOAD_ARN" >> $GITHUB_OUTPUT
-          
-          curl -T "testspec.yml" "$SPEC_UPLOAD_URL"
-          
-          # Wait for processing
-          for i in {1..20}; do
-            STATUS=$(aws devicefarm get-upload --arn "$SPEC_UPLOAD_ARN" --query "upload.status" --output text)
-            echo "Test spec status (attempt $i/20): $STATUS"
-            
-            if [ "$STATUS" = "SUCCEEDED" ]; then
-              echo "✅ Test spec upload successful"
-              break
-            fi
-            
-            if [ "$STATUS" = "FAILED" ]; then
-              echo "❌ Test spec upload failed"
-              exit 1
-            fi
-            
-            sleep 5
-          done
-
       - name: Schedule Device Farm run
         id: schedule
         run: |
-          echo "🚀 Scheduling Device Farm test run..."
+          echo "🚀 Scheduling Device Farm run on ${{ matrix.device.name }}..."
           
-          RUN_NAME="mobile-${{ github.run_number }}-${{ github.run_attempt }}"
+          RUN_NAME="mobile-${{ matrix.device.name }}-${{ github.run_number }}-${{ github.run_attempt }}"
           
           # Use BUILTIN_FUZZ - simplest way to just launch the app
           # The app will auto-connect to MQTT and run tests
           RUN_ARN=$(aws devicefarm schedule-run \
-            --project-arn "${{ secrets.AWS_DEVICE_FARM_PROJECT_ARN }}" \
-            --device-pool-arn "${{ secrets.ANDROID_DEVICE_POOL_ARN }}" \
+            --project-arn "${{ inputs.device-farm-project-arn }}" \
+            --device-pool-arn "${{ matrix.device.arn }}" \
             --app-arn "${{ steps.upload-app.outputs.app-arn }}" \
             --name "$RUN_NAME" \
             --test type=BUILTIN_FUZZ \
@@ -342,9 +284,9 @@ jobs:
           echo "✅ Device Farm run scheduled: $RUN_ARN"
           
           # Extract run URL for logs
-          PROJECT_ID=$(echo "${{ secrets.AWS_DEVICE_FARM_PROJECT_ARN }}" | sed -n 's/.*:project:\(.*\)/\1/p')
+          PROJECT_ID=$(echo "${{ inputs.device-farm-project-arn }}" | sed -n 's/.*:project:\(.*\)/\1/p')
           RUN_ID=$(echo "$RUN_ARN" | sed -n 's/.*:run:[^/]*\/\(.*\)/\1/p')
-          echo "📊 Device Farm Console: https://us-west-2.console.aws.amazon.com/devicefarm/home#/mobile/projects/${PROJECT_ID}/runs/${RUN_ID}"
+          echo "📊 Device Farm Console (${{ matrix.device.name }}): https://us-west-2.console.aws.amazon.com/devicefarm/home#/mobile/projects/${PROJECT_ID}/runs/${RUN_ID}"
 
   # Job 3: Run producer (parallel with Device Farm)
   run-producer:
