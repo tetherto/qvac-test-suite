@@ -1,6 +1,6 @@
 {
   "name": "@tetherto/qvac-test-suite",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Generic distributed testing framework for multi-platform execution",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,12 +10,21 @@
   },
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
+    },
+    "./mobile": {
+      "types": "./dist/mobile-runtime.d.ts",
+      "require": "./dist/mobile-runtime.js",
+      "import": "./dist/mobile-runtime.js",
+      "default": "./dist/mobile-runtime.js"
     }
   },
   "files": [
     "dist",
+    "templates",
     "README.md"
   ],
   "scripts": {

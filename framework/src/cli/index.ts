@@ -2,6 +2,7 @@
 import { Command } from 'commander';
 import { runProducer } from './commands/run-producer.js';
 import { runConsumerDesktop } from './commands/run-consumer-desktop.js';
+import { buildConsumerMobile } from './commands/build-consumer-mobile.js';
 import { reportCompare } from './commands/report-compare.js';
 import { reportFormat } from './commands/report-format.js';
 
@@ -30,6 +31,22 @@ program
   .option('--config <path>', 'Path to config directory', process.cwd())
   .option('--platform <platform>', 'Platform name', 'desktop')
   .action(runConsumerDesktop);
+
+program
+  .command('build:consumer:android')
+  .description('Build Android consumer (.apk)')
+  .option('--config <path>', 'Path to config directory', process.cwd())
+  .option('--runId <id>', 'Bake runId into build (required for mobile)')
+  .option('--mqtt-broker <url>', 'Override MQTT broker URL')
+  .action((opts) => buildConsumerMobile({ ...opts, platform: 'android' }));
+
+program
+  .command('build:consumer:ios')
+  .description('Build iOS consumer (.ipa)')
+  .option('--config <path>', 'Path to config directory', process.cwd())
+  .option('--runId <id>', 'Bake runId into build (required for mobile)')
+  .option('--mqtt-broker <url>', 'Override MQTT broker URL')
+  .action((opts) => buildConsumerMobile({ ...opts, platform: 'ios' }));
 
 program
   .command('report:compare')
