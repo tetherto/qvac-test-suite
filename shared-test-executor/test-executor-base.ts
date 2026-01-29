@@ -534,6 +534,12 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("cache-multiple-models-info", this.cacheMultipleModels.bind(this));
 		this.testHandlers.set("cache-persists-after-unload", this.cachePersistsAfterUnload.bind(this));
 		this.testHandlers.set("cache-invalid-key-error", this.cacheInvalidKey.bind(this));
+		// KV Cache Sliding Window Tests (QVAC-11331, PR #378)
+		this.testHandlers.set("cache-kv-sliding-window", this.completion.bind(this));
+		this.testHandlers.set("cache-kv-boolean-enabled", this.completion.bind(this));
+		this.testHandlers.set("cache-kv-sequential-calls", this.completion.bind(this));
+		this.testHandlers.set("cache-kv-streaming-sliding-window", this.completionStreaming.bind(this));
+		this.testHandlers.set("cache-kv-long-single-message", this.completion.bind(this));
 	}
 
 	public async executeTest(

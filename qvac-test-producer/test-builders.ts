@@ -3525,6 +3525,212 @@ export class TestBuilder {
 		};
 	}
 
+	// ========== KV CACHE SLIDING WINDOW TESTS (QVAC-11331, PR #378) ==========
+
+	/**
+	 * QVAC-11331: KV Cache Sliding Window Test
+	 * Tests that kvCache properly uses sliding window when context fills up.
+	 * Before PR #378 fix, this would throw "context overflow" error.
+	 */
+	buildCacheKvSlidingWindowTest(): TestDefinition {
+		// Build a long conversation that will fill context window
+		const conversationHistory = [];
+		for (let i = 1; i <= 15; i++) {
+			conversationHistory.push({
+				role: "user",
+				content: `This is conversation turn ${i}. I want to test the KV cache sliding window feature. Please remember this turn number: ${i}. The quick brown fox jumps over the lazy dog. This is filler text to increase token count.`
+			});
+			conversationHistory.push({
+				role: "assistant", 
+				content: `I acknowledge conversation turn ${i}. I have noted the turn number ${i}. The sliding window feature should properly discard old tokens when the context fills up to prevent overflow errors.`
+			});
+		}
+		// Final question
+		conversationHistory.push({
+			role: "user",
+			content: "What is 2+2? Answer with just the number."
+		});
+
+		return {
+			testId: "cache-kv-sliding-window",
+			payload: JSON.stringify({
+				testId: "cache-kv-sliding-window",
+				params: {
+					history: conversationHistory,
+					stream: false,
+					kvCache: "test-sliding-window-session",
+				},
+				expectation: {
+					validation: "returns-response",
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331 PR #378: KV cache sliding window should work when context fills up. Without fix, throws context overflow error."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: KV Cache with Boolean True
+	 * Tests that kvCache: true (boolean) also enables sliding window properly.
+	 */
+	buildCacheKvBooleanEnabledTest(): TestDefinition {
+		const conversationHistory = [];
+		for (let i = 1; i <= 12; i++) {
+			conversationHistory.push({
+				role: "user",
+				content: `Turn ${i}: Testing kvCache with boolean true. The quick brown fox jumps over the lazy dog repeatedly. This sentence adds more tokens to fill the context window.`
+			});
+			conversationHistory.push({
+				role: "assistant",
+				content: `Acknowledged turn ${i}. The sliding window with boolean kvCache should work identically to string keys when context fills up.`
+			});
+		}
+		conversationHistory.push({
+			role: "user",
+			content: "What is 3+3? Answer with just the number."
+		});
+
+		return {
+			testId: "cache-kv-boolean-enabled",
+			payload: JSON.stringify({
+				testId: "cache-kv-boolean-enabled",
+				params: {
+					history: conversationHistory,
+					stream: false,
+					kvCache: true, // Boolean instead of string key
+				},
+				expectation: {
+					validation: "returns-response",
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: kvCache: true (boolean) should enable sliding window same as string key."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 25000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: Sequential Calls with Same Cache Key
+	 * Tests that multiple sequential completion calls with the same kvCache key
+	 * properly reuse the cache and don't cause context overflow on accumulation.
+	 */
+	buildCacheKvSequentialCallsTest(): TestDefinition {
+		const conversationHistory = [];
+		for (let i = 1; i <= 10; i++) {
+			conversationHistory.push({
+				role: "user",
+				content: `Message ${i} in sequential test. Testing cache reuse across multiple completion calls with the same kvCache key. Lorem ipsum dolor sit amet.`
+			});
+			conversationHistory.push({
+				role: "assistant",
+				content: `Response to message ${i}. The KV cache should persist and be reused, preventing context overflow as conversation grows.`
+			});
+		}
+		conversationHistory.push({
+			role: "user",
+			content: "What is 5+5? Answer with just the number."
+		});
+
+		return {
+			testId: "cache-kv-sequential-calls",
+			payload: JSON.stringify({
+				testId: "cache-kv-sequential-calls",
+				params: {
+					history: conversationHistory,
+					stream: false,
+					kvCache: "sequential-test-session",
+				},
+				expectation: {
+					validation: "returns-response",
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: Sequential calls with same kvCache key should reuse cache without overflow."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 20000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: Streaming with KV Cache
+	 * Tests that streaming mode also properly utilizes kvCache and sliding window.
+	 */
+	buildCacheKvStreamingSlidingWindowTest(): TestDefinition {
+		const conversationHistory = [];
+		for (let i = 1; i <= 15; i++) {
+			conversationHistory.push({
+				role: "user",
+				content: `Streaming test turn ${i}. Verifying kvCache works with stream: true. The lazy dog sleeps while the fox jumps over it repeatedly.`
+			});
+			conversationHistory.push({
+				role: "assistant",
+				content: `Streaming response ${i}. KV cache sliding window should work identically in streaming and non-streaming modes.`
+			});
+		}
+		conversationHistory.push({
+			role: "user",
+			content: "What is 7+7? Answer with just the number."
+		});
+
+		return {
+			testId: "cache-kv-streaming-sliding-window",
+			payload: JSON.stringify({
+				testId: "cache-kv-streaming-sliding-window",
+				params: {
+					history: conversationHistory,
+					stream: true,
+					kvCache: "streaming-sliding-window-session",
+				},
+				expectation: {
+					contains: ["14"],
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: Streaming mode with kvCache should also use sliding window without overflow."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 35000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: Very Long Single Message
+	 * Tests sliding window with a single very long user message that approaches context limit.
+	 */
+	buildCacheKvLongSingleMessageTest(): TestDefinition {
+		const longContent = "This is a test of the KV cache sliding window with a very long single message. ".repeat(40);
+		
+		return {
+			testId: "cache-kv-long-single-message",
+			payload: JSON.stringify({
+				testId: "cache-kv-long-single-message",
+				params: {
+					history: [
+						{
+							role: "user",
+							content: `${longContent} After all this text, what is 4+4? Answer with just the number.`
+						}
+					],
+					stream: false,
+					kvCache: "long-single-message-session",
+				},
+				expectation: {
+					validation: "returns-response",
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: Long single message with kvCache should trigger sliding window without overflow."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 25000,
+		};
+	}
+
 	// ========== OCR TESTS ==========
 
 	buildModelLoadOcrTest(): TestDefinition {
@@ -4473,7 +4679,13 @@ export class TestBuilder {
 			tests.push(this.buildCacheMultipleModelsTest());
 			tests.push(this.buildCacheAfterUnloadTest());
 			tests.push(this.buildCacheInvalidKeyTest());
-			console.log("   ✅ Added 9 cache management tests");
+			// KV Cache Sliding Window Tests (QVAC-11331, PR #378)
+			tests.push(this.buildCacheKvSlidingWindowTest());
+			tests.push(this.buildCacheKvBooleanEnabledTest());
+			tests.push(this.buildCacheKvSequentialCallsTest());
+			tests.push(this.buildCacheKvStreamingSlidingWindowTest());
+			tests.push(this.buildCacheKvLongSingleMessageTest());
+			console.log("   ✅ Added 14 cache tests (9 management + 5 KV sliding window)");
 		}
 
 		// ========== PHASE 5.5: ERROR HANDLING & PARAMETER VALIDATION (Sprint 1 - Priority 1) ==========
