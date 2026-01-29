@@ -4187,9 +4187,36 @@ export abstract class TestExecutorBase {
 				}
 			})();
 
+			// Trigger an operation to generate logs (model may already be loaded from prior tests)
+			const triggerLogsPromise = (async () => {
+				await new Promise(resolve => setTimeout(resolve, 100)); // Small delay for stream to start
+				try {
+					if (modelType === "llm" && modelId) {
+						// Do a small inference to generate logs
+						const result = this.sdk.completion({
+							modelId,
+							history: [{ role: "user", content: "Hi" }],
+							stream: false,
+							maxTokens: 5,
+						});
+						await result.text;
+					} else if (modelType === "embedding" && modelId) {
+						await this.sdk.embed({ modelId, content: "test" });
+					} else if (modelType === "whisper" && modelId) {
+						// Whisper needs audio - skip triggering, rely on buffered logs
+					} else if (modelType === "tts" && this.ttsModelId) {
+						// TTS - do a small synthesis
+						const result = this.sdk.textToSpeech({ modelId: this.ttsModelId, text: "hi" });
+						for await (const _ of result.audioStream) { break; }
+					}
+				} catch (e) {
+					// Ignore errors from trigger operation
+				}
+			})();
+
 			await Promise.race([
 				collectLogsPromise,
-				new Promise(resolve => setTimeout(resolve, timeoutMs)),
+				triggerLogsPromise.then(() => new Promise(resolve => setTimeout(resolve, timeoutMs - 100))),
 			]);
 
 			// Validate based on expectation type
@@ -5346,11 +5373,15 @@ export abstract class TestExecutorBase {
 				content = await this.readDocumentFile(documentFile, "documents");
 			}
 
+			// Use unique workspace name to avoid model mismatch errors from prior runs
+			// Append model ID to ensure workspace matches the current embedding model
+			const uniqueWorkspace = `${workspace}-${modelId.substring(0, 8)}`;
+
 			console.log(`   📚 Testing RAG embeddings with chunk size ${chunkSize}, overlap ${chunkOverlap}`);
 
 			const result = await this.sdk.ragIngest({
 				modelId,
-				workspace,
+				workspace: uniqueWorkspace,
 				documents: [content],
 				chunk: true,
 				chunkOpts: { chunkSize, chunkOverlap, chunkStrategy },
