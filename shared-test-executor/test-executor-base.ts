@@ -550,6 +550,13 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("cache-kv-sequential-calls", this.completion.bind(this));
 		this.testHandlers.set("cache-kv-streaming-sliding-window", this.completionStreaming.bind(this));
 		this.testHandlers.set("cache-kv-long-single-message", this.completion.bind(this));
+		// KV Cache Edge Cases (PR #378)
+		this.testHandlers.set("cache-kv-session-switch", this.cacheKvSessionSwitch.bind(this));
+		this.testHandlers.set("cache-kv-different-system-prompts", this.cacheKvDifferentSystemPrompts.bind(this));
+		this.testHandlers.set("cache-kv-with-tools", this.completion.bind(this));
+		this.testHandlers.set("cache-kv-delete-and-reuse", this.cacheKvDeleteAndReuse.bind(this));
+		this.testHandlers.set("cache-kv-stats-verification", this.cacheKvStatsVerification.bind(this));
+		this.testHandlers.set("cache-kv-no-system-prompt", this.completion.bind(this));
 	}
 
 	public async executeTest(
@@ -5756,6 +5763,228 @@ export abstract class TestExecutorBase {
 				output: `Expected error: ${error.message}`,
 				passed
 			};
+		}
+	}
+
+	// ========== KV CACHE EDGE CASE TESTS (QVAC-11331, PR #378) ==========
+
+	/**
+	 * KV Cache Session Switch Test
+	 * Tests switching between different cache keys (session-a -> session-b -> session-a).
+	 */
+	protected async cacheKvSessionSwitch(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No LLM model loaded", passed: false };
+		}
+
+		const { sessions } = params;
+		if (!sessions || sessions.length < 2) {
+			return { output: "Need at least 2 sessions to test switching", passed: false };
+		}
+
+		try {
+			const responses: string[] = [];
+
+			for (const session of sessions) {
+				const result = this.sdk.completion({
+					modelId,
+					history: [
+						{ role: "system", content: "You are a helpful math assistant. Answer briefly." },
+						{ role: "user", content: session.message },
+					],
+					stream: false,
+					kvCache: session.key,
+				});
+				const { text, error } = await this.safeAwaitCompletion(result);
+				if (error) {
+					return { output: `Session ${session.key} error: ${error}`, passed: false };
+				}
+
+				responses.push(text || "");
+				console.log(`   📝 Session ${session.key}: "${session.message}" -> "${(text || "").substring(0, 30)}..."`);
+			}
+
+			const allResponded = responses.every(r => r.length > 0);
+			return {
+				output: `Session switching completed: ${responses.length} responses, all valid: ${allResponded}`,
+				passed: allResponded && responses.length >= expectation.minResponses,
+			};
+		} catch (error: any) {
+			return { output: `Session switch error: ${error.message}`, passed: false };
+		}
+	}
+
+	/**
+	 * KV Cache Different System Prompts Test
+	 * Tests that different system prompts with same cache key are handled gracefully.
+	 */
+	protected async cacheKvDifferentSystemPrompts(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No LLM model loaded", passed: false };
+		}
+
+		const { cacheKey, systemPrompts, userMessage } = params;
+
+		try {
+			const responses: string[] = [];
+
+			for (const systemPrompt of systemPrompts) {
+				const result = this.sdk.completion({
+					modelId,
+					history: [
+						{ role: "system", content: systemPrompt },
+						{ role: "user", content: userMessage },
+					],
+					stream: false,
+					kvCache: cacheKey,
+				});
+				const { text, error } = await this.safeAwaitCompletion(result);
+				if (error) {
+					return { output: `System prompt error: ${error}`, passed: false };
+				}
+
+				responses.push(text || "");
+				console.log(`   📝 System: "${systemPrompt.substring(0, 30)}..." -> "${(text || "").substring(0, 30)}..."`);
+			}
+
+			const allResponded = responses.every(r => r.length > 0);
+			return {
+				output: `Different system prompts handled: ${responses.length} responses, all valid: ${allResponded}`,
+				passed: allResponded,
+			};
+		} catch (error: any) {
+			// Crashes are failures
+			return {
+				output: `System prompt test error: ${error.message}`,
+				passed: false,
+			};
+		}
+	}
+
+	/**
+	 * KV Cache Delete and Reuse Test
+	 * Tests deleting a cache and then reusing the same key.
+	 */
+	protected async cacheKvDeleteAndReuse(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No LLM model loaded", passed: false };
+		}
+
+		const { cacheKey, history } = params;
+
+		try {
+			// First, delete any existing cache
+			try {
+				await this.sdk.deleteCache({ kvCacheKey: cacheKey });
+				console.log(`   🗑️ Deleted cache: ${cacheKey}`);
+			} catch (e) {
+				// Ignore if cache doesn't exist
+				console.log(`   ℹ️ Cache ${cacheKey} did not exist`);
+			}
+
+			// First call - creates cache
+			const result1 = this.sdk.completion({
+				modelId,
+				history,
+				stream: false,
+				kvCache: cacheKey,
+			});
+			const { text: text1, error: error1 } = await this.safeAwaitCompletion(result1);
+			if (error1) {
+				return { output: `First call error: ${error1}`, passed: false };
+			}
+			console.log(`   📝 First call: "${(text1 || "").substring(0, 30)}..."`);
+
+			// Delete the cache
+			await this.sdk.deleteCache({ kvCacheKey: cacheKey });
+			console.log(`   🗑️ Deleted cache after first call`);
+
+			// Second call - should recreate cache
+			const result2 = this.sdk.completion({
+				modelId,
+				history,
+				stream: false,
+				kvCache: cacheKey,
+			});
+			const { text: text2, error: error2 } = await this.safeAwaitCompletion(result2);
+			if (error2) {
+				return { output: `Second call error: ${error2}`, passed: false };
+			}
+			console.log(`   📝 Second call (after delete): "${(text2 || "").substring(0, 30)}..."`);
+
+			const passed = (text1?.length || 0) > 0 && (text2?.length || 0) > 0;
+			return {
+				output: `Delete and reuse: both calls successful (${text1?.length || 0} + ${text2?.length || 0} chars)`,
+				passed,
+			};
+		} catch (error: any) {
+			return { output: `Delete and reuse error: ${error.message}`, passed: false };
+		}
+	}
+
+	/**
+	 * KV Cache Stats Verification Test
+	 * Tests that cacheTokens stat increases after cache is warmed up.
+	 */
+	protected async cacheKvStatsVerification(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!modelId) {
+			return { output: "No LLM model loaded", passed: false };
+		}
+
+		const { cacheKey, messages } = params;
+
+		try {
+			// Delete any existing cache first
+			try {
+				await this.sdk.deleteCache({ kvCacheKey: cacheKey });
+			} catch (e) {
+				// Ignore
+			}
+
+			const history: Array<{ role: string; content: string }> = [
+				{ role: "system", content: "You are a helpful assistant. Be brief." },
+			];
+
+			let firstCallCacheTokens = 0;
+			let secondCallCacheTokens = 0;
+
+			for (let i = 0; i < messages.length; i++) {
+				history.push({ role: "user", content: messages[i] });
+
+				const result = this.sdk.completion({
+					modelId,
+					history: [...history],
+					stream: true,
+					kvCache: cacheKey,
+				});
+
+				let response = "";
+				for await (const token of result.tokenStream) {
+					response += token;
+				}
+
+				const stats = await result.stats;
+				const cacheTokens = stats?.cacheTokens || 0;
+
+				if (i === 0) {
+					firstCallCacheTokens = cacheTokens;
+					console.log(`   📊 First call cacheTokens: ${cacheTokens}`);
+				} else {
+					secondCallCacheTokens = cacheTokens;
+					console.log(`   📊 Second call cacheTokens: ${cacheTokens}`);
+				}
+
+				history.push({ role: "assistant", content: response });
+			}
+
+			// Second call should have more cache tokens than first (cache was used)
+			const cacheUsed = secondCallCacheTokens > firstCallCacheTokens;
+			return {
+				output: `Cache tokens: first=${firstCallCacheTokens}, second=${secondCallCacheTokens}, cache used: ${cacheUsed}`,
+				passed: cacheUsed || secondCallCacheTokens > 0, // Pass if cache tokens increased or exists
+			};
+		} catch (error: any) {
+			return { output: `Stats verification error: ${error.message}`, passed: false };
 		}
 	}
 

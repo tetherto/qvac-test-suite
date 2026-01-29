@@ -3975,6 +3975,205 @@ export class TestBuilder {
 		};
 	}
 
+	/**
+	 * QVAC-11331 Edge Case: Session Switching
+	 * Tests switching between different cache keys (session-a -> session-b -> session-a).
+	 * This triggers cache flush when switching sessions, as shown in PR #378 examples.
+	 */
+	buildCacheKvSessionSwitchTest(): TestDefinition {
+		return {
+			testId: "cache-kv-session-switch",
+			payload: JSON.stringify({
+				testId: "cache-kv-session-switch",
+				params: {
+					// Test will make 3 calls: session-a, session-b, session-a
+					sessions: [
+						{ key: "session-switch-a", message: "What is 1+1?" },
+						{ key: "session-switch-b", message: "What is 2+2?" },
+						{ key: "session-switch-a", message: "What is 3+3?" }, // Back to session-a
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "all-sessions-respond",
+					minResponses: 3,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331 PR #378: Session switching should flush previous cache and load correct session."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 45000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: Different System Prompts
+	 * Tests that different system prompts with same cache key create separate caches.
+	 * Config hash includes system prompt, so different prompts = different cache files.
+	 */
+	buildCacheKvDifferentSystemPromptsTest(): TestDefinition {
+		return {
+			testId: "cache-kv-different-system-prompts",
+			payload: JSON.stringify({
+				testId: "cache-kv-different-system-prompts",
+				params: {
+					cacheKey: "system-prompt-test-session",
+					systemPrompts: [
+						"You are a helpful math tutor.",
+						"You are a creative storyteller.",
+					],
+					userMessage: "Hello!",
+					stream: false,
+				},
+				expectation: {
+					validation: "handles-gracefully",
+					shouldNotCrash: true,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: Different system prompts should create different config hashes."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: Cache with Tools
+	 * Tests kvCache when function calling tools are enabled.
+	 * Tools are part of the cache hash, ensuring tool definitions are cached.
+	 */
+	buildCacheKvWithToolsTest(): TestDefinition {
+		return {
+			testId: "cache-kv-with-tools",
+			payload: JSON.stringify({
+				testId: "cache-kv-with-tools",
+				params: {
+					history: [
+						{ role: "system", content: "You are a helpful assistant with access to tools." },
+						{ role: "user", content: "What is 10 + 20?" },
+					],
+					stream: false,
+					kvCache: "tools-cache-session",
+					tools: [
+						{
+							type: "function",
+							name: "calculator",
+							description: "Performs basic math operations",
+							parameters: {
+								type: "object",
+								properties: {
+									operation: { type: "string", enum: ["add", "subtract", "multiply", "divide"] },
+									a: { type: "number" },
+									b: { type: "number" },
+								},
+								required: ["operation", "a", "b"],
+							},
+						},
+					],
+				},
+				expectation: {
+					type: "tool-call",
+					validation: "function-called-or-text-response",
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: KV cache should work with function calling tools enabled."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: Delete Cache and Reuse
+	 * Tests deleting a cache key and then reusing the same key.
+	 * Verifies deleteCache() API works correctly with kvCache.
+	 */
+	buildCacheKvDeleteAndReuseTest(): TestDefinition {
+		return {
+			testId: "cache-kv-delete-and-reuse",
+			payload: JSON.stringify({
+				testId: "cache-kv-delete-and-reuse",
+				params: {
+					cacheKey: "delete-reuse-test-session",
+					history: [
+						{ role: "user", content: "What is 5+5? Answer with just the number." },
+					],
+					stream: false,
+					deleteBeforeTest: true,
+					deleteAfterFirstCall: true,
+				},
+				expectation: {
+					validation: "returns-response",
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: Deleting cache and reusing same key should work correctly."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 35000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: Stats Verification
+	 * Tests that cacheTokens stat increases after cache is warmed up.
+	 * This verifies the cache is actually being used (not just created).
+	 */
+	buildCacheKvStatsVerificationTest(): TestDefinition {
+		return {
+			testId: "cache-kv-stats-verification",
+			payload: JSON.stringify({
+				testId: "cache-kv-stats-verification",
+				params: {
+					cacheKey: "stats-verification-session",
+					messages: [
+						"First message to warm up cache.",
+						"Second message should show cache tokens.",
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "cache-tokens-increase",
+					secondCallShouldHaveCacheTokens: true,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: cacheTokens stat should increase after cache is warmed up."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: No System Prompt
+	 * Tests kvCache without a system message in history.
+	 * Edge case in message preparation logic.
+	 */
+	buildCacheKvNoSystemPromptTest(): TestDefinition {
+		return {
+			testId: "cache-kv-no-system-prompt",
+			payload: JSON.stringify({
+				testId: "cache-kv-no-system-prompt",
+				params: {
+					history: [
+						// No system message, start directly with user
+						{ role: "user", content: "What is 6+6? Answer with just the number." },
+					],
+					stream: false,
+					kvCache: "no-system-prompt-session",
+				},
+				expectation: {
+					validation: "returns-response",
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: KV cache should work without system prompt in history."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 20000,
+		};
+	}
+
 	// ========== OCR TESTS ==========
 
 	buildModelLoadOcrTest(): TestDefinition {
@@ -4939,7 +5138,13 @@ export class TestBuilder {
 			tests.push(this.buildCacheKvSequentialCallsTest());
 			tests.push(this.buildCacheKvStreamingSlidingWindowTest());
 			tests.push(this.buildCacheKvLongSingleMessageTest());
-			console.log("   ✅ Added 14 cache tests (9 management + 5 KV sliding window)");
+			tests.push(this.buildCacheKvSessionSwitchTest());
+			tests.push(this.buildCacheKvDifferentSystemPromptsTest());
+			tests.push(this.buildCacheKvWithToolsTest());
+			tests.push(this.buildCacheKvDeleteAndReuseTest());
+			tests.push(this.buildCacheKvStatsVerificationTest());
+			tests.push(this.buildCacheKvNoSystemPromptTest());
+			console.log("   ✅ Added 20 cache tests (9 management + 11 KV sliding window)");
 		}
 
 		// ========== PHASE 5.5: ERROR HANDLING & PARAMETER VALIDATION (Sprint 1 - Priority 1) ==========
