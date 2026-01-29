@@ -2058,6 +2058,250 @@ export class TestBuilder {
 		};
 	}
 
+	// ========== LOGGING EDGE CASE TESTS ==========
+
+	/**
+	 * Edge Case: Invalid log level should be handled gracefully
+	 * Tests that SDK doesn't crash with invalid log level input
+	 */
+	buildLoggingInvalidLevelTest(): TestDefinition {
+		return {
+			testId: "logging-invalid-level",
+			payload: JSON.stringify({
+				testId: "logging-invalid-level",
+				params: {
+					logLevel: "invalid_level_xyz",
+				},
+				expectation: {
+					type: "logging-error",
+					validation: "handles-gracefully",
+					shouldNotCrash: true,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "SDK should handle invalid log level gracefully without crashing"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	/**
+	 * Edge Case: Rapid log level switching
+	 * Tests that rapidly changing log levels doesn't cause race conditions
+	 */
+	buildLoggingRapidLevelSwitchTest(): TestDefinition {
+		return {
+			testId: "logging-rapid-level-switch",
+			payload: JSON.stringify({
+				testId: "logging-rapid-level-switch",
+				params: {
+					levelSequence: ["debug", "warn", "error", "info", "debug", "off", "warn"],
+					switchDelayMs: 50,
+				},
+				expectation: {
+					type: "logging-stability",
+					validation: "no-race-conditions",
+					finalLevelApplied: "warn",
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Rapid log level switching should not cause race conditions"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	/**
+	 * Edge Case: Concurrent operations logging
+	 * Tests that multiple concurrent operations log correctly without interleaving issues
+	 */
+	buildLoggingConcurrentOperationsTest(): TestDefinition {
+		return {
+			testId: "logging-concurrent-operations",
+			payload: JSON.stringify({
+				testId: "logging-concurrent-operations",
+				params: {
+					operations: ["completion", "embedding"],
+					runConcurrently: true,
+				},
+				expectation: {
+					type: "logging-concurrent",
+					validation: "logs-from-all-operations",
+					allOperationsLogged: true,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Concurrent operations should all produce logs without corruption"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 20000,
+		};
+	}
+
+	/**
+	 * Edge Case: Log level persists across model reload
+	 * Tests that log settings survive model unload/reload cycle
+	 */
+	buildLoggingPersistAcrossReloadTest(): TestDefinition {
+		return {
+			testId: "logging-persist-across-reload",
+			payload: JSON.stringify({
+				testId: "logging-persist-across-reload",
+				params: {
+					setLogLevel: "debug",
+					unloadModel: true,
+					reloadModel: true,
+				},
+				expectation: {
+					type: "logging-persistence",
+					validation: "level-persists-after-reload",
+					expectedLevelAfterReload: "debug",
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Log level should persist across model unload/reload"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	/**
+	 * Edge Case: All addons silent simultaneously
+	 * Tests that all addons can be silenced at once
+	 */
+	buildLoggingAllAddonsSilentTest(): TestDefinition {
+		return {
+			testId: "logging-all-addons-silent",
+			payload: JSON.stringify({
+				testId: "logging-all-addons-silent",
+				params: {
+					addonLogLevels: {
+						llm: "off",
+						embedding: "off",
+						whisper: "off",
+						tts: "off",
+						sdk: "off",
+					},
+				},
+				expectation: {
+					type: "logging-per-addon",
+					validation: "all-silent",
+					expectNoLogs: true,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Setting all addons to 'off' should produce no logs"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	/**
+	 * Edge Case: Very long log message
+	 * Tests handling of extremely long log messages (potential truncation)
+	 */
+	buildLoggingLongMessageTest(): TestDefinition {
+		return {
+			testId: "logging-long-message",
+			payload: JSON.stringify({
+				testId: "logging-long-message",
+				params: {
+					triggerLongLog: true,
+					expectedMinLength: 1000,
+				},
+				expectation: {
+					type: "logging-content",
+					validation: "handles-long-message",
+					shouldNotCrash: true,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "SDK should handle very long log messages gracefully"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	/**
+	 * Edge Case: Log streaming buffer stress
+	 * Tests log streaming under high-volume log output
+	 */
+	buildLoggingStreamingStressTest(): TestDefinition {
+		return {
+			testId: "logging-streaming-stress",
+			payload: JSON.stringify({
+				testId: "logging-streaming-stress",
+				params: {
+					logLevel: "debug",
+					performMultipleOperations: true,
+					operationCount: 3,
+				},
+				expectation: {
+					type: "logging-streaming",
+					validation: "handles-high-volume",
+					noDroppedLogs: true,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Log streaming should handle high volume without dropping logs"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 25000,
+		};
+	}
+
+	/**
+	 * Edge Case: Log timestamps accuracy
+	 * Tests that log timestamps are accurate and in correct order
+	 */
+	buildLoggingTimestampAccuracyTest(): TestDefinition {
+		return {
+			testId: "logging-timestamp-accuracy",
+			payload: JSON.stringify({
+				testId: "logging-timestamp-accuracy",
+				params: {
+					logLevel: "debug",
+					verifyTimestamps: true,
+				},
+				expectation: {
+					type: "logging-metadata",
+					validation: "timestamps-accurate",
+					timestampsInOrder: true,
+					timestampsWithinTolerance: 1000,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Log timestamps should be accurate and monotonically increasing"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	/**
+	 * Edge Case: Log namespace filtering
+	 * Tests filtering logs by specific namespace
+	 */
+	buildLoggingNamespaceFilterTest(): TestDefinition {
+		return {
+			testId: "logging-namespace-filter",
+			payload: JSON.stringify({
+				testId: "logging-namespace-filter",
+				params: {
+					enabledNamespaces: ["llamacpp:llm"],
+					disabledNamespaces: ["llamacpp:embed", "whispercpp", "tts"],
+				},
+				expectation: {
+					type: "logging-namespace",
+					validation: "only-enabled-namespaces",
+					shouldSeeNamespace: "llamacpp:llm",
+					shouldNotSeeNamespaces: ["llamacpp:embed", "whispercpp", "tts"],
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Only enabled namespaces should produce logs"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 15000,
+		};
+	}
+
 	// ========== ADDITIONAL LLM COMPLETION TESTS ==========
 
 	buildCompletionSystemMessageTest(): TestDefinition {
@@ -4587,7 +4831,17 @@ export class TestBuilder {
 		// Edge cases - error handling and real-time logging
 		tests.push(this.buildAddonLoggingInvalidModelIdTest());
 		tests.push(this.buildAddonLoggingDuringInferenceTest());
-		console.log("   ✅ Added 7 logging tests (4 addon + 1 SDK server + 2 edge cases)");
+		// Logging edge case tests - additional coverage
+		tests.push(this.buildLoggingInvalidLevelTest());
+		tests.push(this.buildLoggingRapidLevelSwitchTest());
+		tests.push(this.buildLoggingConcurrentOperationsTest());
+		tests.push(this.buildLoggingPersistAcrossReloadTest());
+		tests.push(this.buildLoggingAllAddonsSilentTest());
+		tests.push(this.buildLoggingLongMessageTest());
+		tests.push(this.buildLoggingStreamingStressTest());
+		tests.push(this.buildLoggingTimestampAccuracyTest());
+		tests.push(this.buildLoggingNamespaceFilterTest());
+		console.log("   ✅ Added 16 logging tests (7 addon + 9 edge cases)");
 	}
 
 	// OCR tests
