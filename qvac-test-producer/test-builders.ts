@@ -2058,6 +2058,250 @@ export class TestBuilder {
 		};
 	}
 
+	// ========== LOGGING EDGE CASE TESTS ==========
+
+	/**
+	 * Edge Case: Invalid log level should be handled gracefully
+	 * Tests that SDK doesn't crash with invalid log level input
+	 */
+	buildLoggingInvalidLevelTest(): TestDefinition {
+		return {
+			testId: "logging-invalid-level",
+			payload: JSON.stringify({
+				testId: "logging-invalid-level",
+				params: {
+					logLevel: "invalid_level_xyz",
+				},
+				expectation: {
+					type: "logging-error",
+					validation: "handles-gracefully",
+					shouldNotCrash: true,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "SDK should handle invalid log level gracefully without crashing"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 5000,
+		};
+	}
+
+	/**
+	 * Edge Case: Rapid log level switching
+	 * Tests that rapidly changing log levels doesn't cause race conditions
+	 */
+	buildLoggingRapidLevelSwitchTest(): TestDefinition {
+		return {
+			testId: "logging-rapid-level-switch",
+			payload: JSON.stringify({
+				testId: "logging-rapid-level-switch",
+				params: {
+					levelSequence: ["debug", "warn", "error", "info", "debug", "off", "warn"],
+					switchDelayMs: 50,
+				},
+				expectation: {
+					type: "logging-stability",
+					validation: "no-race-conditions",
+					finalLevelApplied: "warn",
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Rapid log level switching should not cause race conditions"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	/**
+	 * Edge Case: Concurrent operations logging
+	 * Tests that multiple concurrent operations log correctly without interleaving issues
+	 */
+	buildLoggingConcurrentOperationsTest(): TestDefinition {
+		return {
+			testId: "logging-concurrent-operations",
+			payload: JSON.stringify({
+				testId: "logging-concurrent-operations",
+				params: {
+					operations: ["completion", "embedding"],
+					runConcurrently: true,
+				},
+				expectation: {
+					type: "logging-concurrent",
+					validation: "logs-from-all-operations",
+					allOperationsLogged: true,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Concurrent operations should all produce logs without corruption"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 20000,
+		};
+	}
+
+	/**
+	 * Edge Case: Log level persists across model reload
+	 * Tests that log settings survive model unload/reload cycle
+	 */
+	buildLoggingPersistAcrossReloadTest(): TestDefinition {
+		return {
+			testId: "logging-persist-across-reload",
+			payload: JSON.stringify({
+				testId: "logging-persist-across-reload",
+				params: {
+					setLogLevel: "debug",
+					unloadModel: true,
+					reloadModel: true,
+				},
+				expectation: {
+					type: "logging-persistence",
+					validation: "level-persists-after-reload",
+					expectedLevelAfterReload: "debug",
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Log level should persist across model unload/reload"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	/**
+	 * Edge Case: All addons silent simultaneously
+	 * Tests that all addons can be silenced at once
+	 */
+	buildLoggingAllAddonsSilentTest(): TestDefinition {
+		return {
+			testId: "logging-all-addons-silent",
+			payload: JSON.stringify({
+				testId: "logging-all-addons-silent",
+				params: {
+					addonLogLevels: {
+						llm: "off",
+						embedding: "off",
+						whisper: "off",
+						tts: "off",
+						sdk: "off",
+					},
+				},
+				expectation: {
+					type: "logging-per-addon",
+					validation: "all-silent",
+					expectNoLogs: true,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Setting all addons to 'off' should produce no logs"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	/**
+	 * Edge Case: Very long log message
+	 * Tests handling of extremely long log messages (potential truncation)
+	 */
+	buildLoggingLongMessageTest(): TestDefinition {
+		return {
+			testId: "logging-long-message",
+			payload: JSON.stringify({
+				testId: "logging-long-message",
+				params: {
+					triggerLongLog: true,
+					expectedMinLength: 1000,
+				},
+				expectation: {
+					type: "logging-content",
+					validation: "handles-long-message",
+					shouldNotCrash: true,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "SDK should handle very long log messages gracefully"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	/**
+	 * Edge Case: Log streaming buffer stress
+	 * Tests log streaming under high-volume log output
+	 */
+	buildLoggingStreamingStressTest(): TestDefinition {
+		return {
+			testId: "logging-streaming-stress",
+			payload: JSON.stringify({
+				testId: "logging-streaming-stress",
+				params: {
+					logLevel: "debug",
+					performMultipleOperations: true,
+					operationCount: 3,
+				},
+				expectation: {
+					type: "logging-streaming",
+					validation: "handles-high-volume",
+					noDroppedLogs: true,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Log streaming should handle high volume without dropping logs"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 25000,
+		};
+	}
+
+	/**
+	 * Edge Case: Log timestamps accuracy
+	 * Tests that log timestamps are accurate and in correct order
+	 */
+	buildLoggingTimestampAccuracyTest(): TestDefinition {
+		return {
+			testId: "logging-timestamp-accuracy",
+			payload: JSON.stringify({
+				testId: "logging-timestamp-accuracy",
+				params: {
+					logLevel: "debug",
+					verifyTimestamps: true,
+				},
+				expectation: {
+					type: "logging-metadata",
+					validation: "timestamps-accurate",
+					timestampsInOrder: true,
+					timestampsWithinTolerance: 1000,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Log timestamps should be accurate and monotonically increasing"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 10000,
+		};
+	}
+
+	/**
+	 * Edge Case: Log namespace filtering
+	 * Tests filtering logs by specific namespace
+	 */
+	buildLoggingNamespaceFilterTest(): TestDefinition {
+		return {
+			testId: "logging-namespace-filter",
+			payload: JSON.stringify({
+				testId: "logging-namespace-filter",
+				params: {
+					enabledNamespaces: ["llamacpp:llm"],
+					disabledNamespaces: ["llamacpp:embed", "whispercpp", "tts"],
+				},
+				expectation: {
+					type: "logging-namespace",
+					validation: "only-enabled-namespaces",
+					shouldSeeNamespace: "llamacpp:llm",
+					shouldNotSeeNamespaces: ["llamacpp:embed", "whispercpp", "tts"],
+				},
+				expectedOutcome: "pass",
+				debugInfo: "Only enabled namespaces should produce logs"
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 15000,
+		};
+	}
+
 	// ========== ADDITIONAL LLM COMPLETION TESTS ==========
 
 	buildCompletionSystemMessageTest(): TestDefinition {
@@ -3525,6 +3769,411 @@ export class TestBuilder {
 		};
 	}
 
+	// ========== KV CACHE SLIDING WINDOW TESTS (QVAC-11331, PR #378) ==========
+
+	/**
+	 * QVAC-11331: KV Cache Sliding Window Test
+	 * Tests that kvCache properly uses sliding window when context fills up.
+	 * Before PR #378 fix, this would throw "context overflow" error.
+	 */
+	buildCacheKvSlidingWindowTest(): TestDefinition {
+		// Build a long conversation that will fill context window
+		const conversationHistory = [];
+		for (let i = 1; i <= 15; i++) {
+			conversationHistory.push({
+				role: "user",
+				content: `This is conversation turn ${i}. I want to test the KV cache sliding window feature. Please remember this turn number: ${i}. The quick brown fox jumps over the lazy dog. This is filler text to increase token count.`
+			});
+			conversationHistory.push({
+				role: "assistant", 
+				content: `I acknowledge conversation turn ${i}. I have noted the turn number ${i}. The sliding window feature should properly discard old tokens when the context fills up to prevent overflow errors.`
+			});
+		}
+		// Final question
+		conversationHistory.push({
+			role: "user",
+			content: "What is 2+2? Answer with just the number."
+		});
+
+		return {
+			testId: "cache-kv-sliding-window",
+			payload: JSON.stringify({
+				testId: "cache-kv-sliding-window",
+				params: {
+					history: conversationHistory,
+					stream: false,
+					kvCache: "test-sliding-window-session",
+				},
+				expectation: {
+					validation: "returns-response",
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331 PR #378: KV cache sliding window should work when context fills up. Without fix, throws context overflow error."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: KV Cache with Boolean True
+	 * Tests that kvCache: true (boolean) also enables sliding window properly.
+	 */
+	buildCacheKvBooleanEnabledTest(): TestDefinition {
+		const conversationHistory = [];
+		for (let i = 1; i <= 12; i++) {
+			conversationHistory.push({
+				role: "user",
+				content: `Turn ${i}: Testing kvCache with boolean true. The quick brown fox jumps over the lazy dog repeatedly. This sentence adds more tokens to fill the context window.`
+			});
+			conversationHistory.push({
+				role: "assistant",
+				content: `Acknowledged turn ${i}. The sliding window with boolean kvCache should work identically to string keys when context fills up.`
+			});
+		}
+		conversationHistory.push({
+			role: "user",
+			content: "What is 3+3? Answer with just the number."
+		});
+
+		return {
+			testId: "cache-kv-boolean-enabled",
+			payload: JSON.stringify({
+				testId: "cache-kv-boolean-enabled",
+				params: {
+					history: conversationHistory,
+					stream: false,
+					kvCache: true, // Boolean instead of string key
+				},
+				expectation: {
+					validation: "returns-response",
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: kvCache: true (boolean) should enable sliding window same as string key."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 25000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: Sequential Calls with Same Cache Key
+	 * Tests that multiple sequential completion calls with the same kvCache key
+	 * properly reuse the cache and don't cause context overflow on accumulation.
+	 */
+	buildCacheKvSequentialCallsTest(): TestDefinition {
+		const conversationHistory = [];
+		for (let i = 1; i <= 10; i++) {
+			conversationHistory.push({
+				role: "user",
+				content: `Message ${i} in sequential test. Testing cache reuse across multiple completion calls with the same kvCache key. Lorem ipsum dolor sit amet.`
+			});
+			conversationHistory.push({
+				role: "assistant",
+				content: `Response to message ${i}. The KV cache should persist and be reused, preventing context overflow as conversation grows.`
+			});
+		}
+		conversationHistory.push({
+			role: "user",
+			content: "What is 5+5? Answer with just the number."
+		});
+
+		return {
+			testId: "cache-kv-sequential-calls",
+			payload: JSON.stringify({
+				testId: "cache-kv-sequential-calls",
+				params: {
+					history: conversationHistory,
+					stream: false,
+					kvCache: "sequential-test-session",
+				},
+				expectation: {
+					validation: "returns-response",
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: Sequential calls with same kvCache key should reuse cache without overflow."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 20000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: Streaming with KV Cache
+	 * Tests that streaming mode also properly utilizes kvCache and sliding window.
+	 */
+	buildCacheKvStreamingSlidingWindowTest(): TestDefinition {
+		const conversationHistory = [];
+		for (let i = 1; i <= 15; i++) {
+			conversationHistory.push({
+				role: "user",
+				content: `Streaming test turn ${i}. Verifying kvCache works with stream: true. The lazy dog sleeps while the fox jumps over it repeatedly.`
+			});
+			conversationHistory.push({
+				role: "assistant",
+				content: `Streaming response ${i}. KV cache sliding window should work identically in streaming and non-streaming modes.`
+			});
+		}
+		conversationHistory.push({
+			role: "user",
+			content: "What is 7+7? Answer with just the number."
+		});
+
+		return {
+			testId: "cache-kv-streaming-sliding-window",
+			payload: JSON.stringify({
+				testId: "cache-kv-streaming-sliding-window",
+				params: {
+					history: conversationHistory,
+					stream: true,
+					kvCache: "streaming-sliding-window-session",
+				},
+				expectation: {
+					contains: ["14"],
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: Streaming mode with kvCache should also use sliding window without overflow."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 35000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: Very Long Single Message
+	 * Tests sliding window with a single very long user message that approaches context limit.
+	 */
+	buildCacheKvLongSingleMessageTest(): TestDefinition {
+		const longContent = "This is a test of the KV cache sliding window with a very long single message. ".repeat(40);
+		
+		return {
+			testId: "cache-kv-long-single-message",
+			payload: JSON.stringify({
+				testId: "cache-kv-long-single-message",
+				params: {
+					history: [
+						{
+							role: "user",
+							content: `${longContent} After all this text, what is 4+4? Answer with just the number.`
+						}
+					],
+					stream: false,
+					kvCache: "long-single-message-session",
+				},
+				expectation: {
+					validation: "returns-response",
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: Long single message with kvCache should trigger sliding window without overflow."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 25000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: Session Switching
+	 * Tests switching between different cache keys (session-a -> session-b -> session-a).
+	 * This triggers cache flush when switching sessions, as shown in PR #378 examples.
+	 */
+	buildCacheKvSessionSwitchTest(): TestDefinition {
+		return {
+			testId: "cache-kv-session-switch",
+			payload: JSON.stringify({
+				testId: "cache-kv-session-switch",
+				params: {
+					// Test will make 3 calls: session-a, session-b, session-a
+					sessions: [
+						{ key: "session-switch-a", message: "What is 1+1?" },
+						{ key: "session-switch-b", message: "What is 2+2?" },
+						{ key: "session-switch-a", message: "What is 3+3?" }, // Back to session-a
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "all-sessions-respond",
+					minResponses: 3,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331 PR #378: Session switching should flush previous cache and load correct session."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 45000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: Different System Prompts
+	 * Tests that different system prompts with same cache key create separate caches.
+	 * Config hash includes system prompt, so different prompts = different cache files.
+	 */
+	buildCacheKvDifferentSystemPromptsTest(): TestDefinition {
+		return {
+			testId: "cache-kv-different-system-prompts",
+			payload: JSON.stringify({
+				testId: "cache-kv-different-system-prompts",
+				params: {
+					cacheKey: "system-prompt-test-session",
+					systemPrompts: [
+						"You are a helpful math tutor.",
+						"You are a creative storyteller.",
+					],
+					userMessage: "Hello!",
+					stream: false,
+				},
+				expectation: {
+					validation: "handles-gracefully",
+					shouldNotCrash: true,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: Different system prompts should create different config hashes."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: Cache with Tools
+	 * Tests kvCache when function calling tools are enabled.
+	 * Tools are part of the cache hash, ensuring tool definitions are cached.
+	 */
+	buildCacheKvWithToolsTest(): TestDefinition {
+		return {
+			testId: "cache-kv-with-tools",
+			payload: JSON.stringify({
+				testId: "cache-kv-with-tools",
+				params: {
+					history: [
+						{ role: "system", content: "You are a helpful assistant with access to tools." },
+						{ role: "user", content: "What is 10 + 20?" },
+					],
+					stream: false,
+					kvCache: "tools-cache-session",
+					tools: [
+						{
+							type: "function",
+							name: "calculator",
+							description: "Performs basic math operations",
+							parameters: {
+								type: "object",
+								properties: {
+									operation: { type: "string", enum: ["add", "subtract", "multiply", "divide"] },
+									a: { type: "number" },
+									b: { type: "number" },
+								},
+								required: ["operation", "a", "b"],
+							},
+						},
+					],
+				},
+				expectation: {
+					type: "tool-call",
+					validation: "function-called-or-text-response",
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: KV cache should work with function calling tools enabled."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: Delete Cache and Reuse
+	 * Tests deleting a cache key and then reusing the same key.
+	 * Verifies deleteCache() API works correctly with kvCache.
+	 */
+	buildCacheKvDeleteAndReuseTest(): TestDefinition {
+		return {
+			testId: "cache-kv-delete-and-reuse",
+			payload: JSON.stringify({
+				testId: "cache-kv-delete-and-reuse",
+				params: {
+					cacheKey: "delete-reuse-test-session",
+					history: [
+						{ role: "user", content: "What is 5+5? Answer with just the number." },
+					],
+					stream: false,
+					deleteBeforeTest: true,
+					deleteAfterFirstCall: true,
+				},
+				expectation: {
+					validation: "returns-response",
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: Deleting cache and reusing same key should work correctly."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 35000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: Stats Verification
+	 * Tests that cacheTokens stat increases after cache is warmed up.
+	 * This verifies the cache is actually being used (not just created).
+	 */
+	buildCacheKvStatsVerificationTest(): TestDefinition {
+		return {
+			testId: "cache-kv-stats-verification",
+			payload: JSON.stringify({
+				testId: "cache-kv-stats-verification",
+				params: {
+					cacheKey: "stats-verification-session",
+					messages: [
+						"First message to warm up cache.",
+						"Second message should show cache tokens.",
+					],
+					stream: false,
+				},
+				expectation: {
+					validation: "cache-tokens-increase",
+					secondCallShouldHaveCacheTokens: true,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: cacheTokens stat should increase after cache is warmed up."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	/**
+	 * QVAC-11331 Edge Case: No System Prompt
+	 * Tests kvCache without a system message in history.
+	 * Edge case in message preparation logic.
+	 */
+	buildCacheKvNoSystemPromptTest(): TestDefinition {
+		return {
+			testId: "cache-kv-no-system-prompt",
+			payload: JSON.stringify({
+				testId: "cache-kv-no-system-prompt",
+				params: {
+					history: [
+						// No system message, start directly with user
+						{ role: "user", content: "What is 6+6? Answer with just the number." },
+					],
+					stream: false,
+					kvCache: "no-system-prompt-session",
+				},
+				expectation: {
+					validation: "returns-response",
+					minLength: 1,
+				},
+				expectedOutcome: "pass",
+				debugInfo: "QVAC-11331: KV cache should work without system prompt in history."
+			}),
+			dependency: "llm",
+			estimatedDurationMs: 20000,
+		};
+	}
+
 	// ========== OCR TESTS ==========
 
 	buildModelLoadOcrTest(): TestDefinition {
@@ -4381,7 +5030,17 @@ export class TestBuilder {
 		// Edge cases - error handling and real-time logging
 		tests.push(this.buildAddonLoggingInvalidModelIdTest());
 		tests.push(this.buildAddonLoggingDuringInferenceTest());
-		console.log("   ✅ Added 7 logging tests (4 addon + 1 SDK server + 2 edge cases)");
+		// Logging edge case tests - additional coverage
+		tests.push(this.buildLoggingInvalidLevelTest());
+		tests.push(this.buildLoggingRapidLevelSwitchTest());
+		tests.push(this.buildLoggingConcurrentOperationsTest());
+		tests.push(this.buildLoggingPersistAcrossReloadTest());
+		tests.push(this.buildLoggingAllAddonsSilentTest());
+		tests.push(this.buildLoggingLongMessageTest());
+		tests.push(this.buildLoggingStreamingStressTest());
+		tests.push(this.buildLoggingTimestampAccuracyTest());
+		tests.push(this.buildLoggingNamespaceFilterTest());
+		console.log("   ✅ Added 16 logging tests (7 addon + 9 edge cases)");
 	}
 
 	// OCR tests
@@ -4473,7 +5132,19 @@ export class TestBuilder {
 			tests.push(this.buildCacheMultipleModelsTest());
 			tests.push(this.buildCacheAfterUnloadTest());
 			tests.push(this.buildCacheInvalidKeyTest());
-			console.log("   ✅ Added 9 cache management tests");
+			// KV Cache Sliding Window Tests (QVAC-11331, PR #378)
+			tests.push(this.buildCacheKvSlidingWindowTest());
+			tests.push(this.buildCacheKvBooleanEnabledTest());
+			tests.push(this.buildCacheKvSequentialCallsTest());
+			tests.push(this.buildCacheKvStreamingSlidingWindowTest());
+			tests.push(this.buildCacheKvLongSingleMessageTest());
+			tests.push(this.buildCacheKvSessionSwitchTest());
+			tests.push(this.buildCacheKvDifferentSystemPromptsTest());
+			tests.push(this.buildCacheKvWithToolsTest());
+			tests.push(this.buildCacheKvDeleteAndReuseTest());
+			tests.push(this.buildCacheKvStatsVerificationTest());
+			tests.push(this.buildCacheKvNoSystemPromptTest());
+			console.log("   ✅ Added 20 cache tests (9 management + 11 KV sliding window)");
 		}
 
 		// ========== PHASE 5.5: ERROR HANDLING & PARAMETER VALIDATION (Sprint 1 - Priority 1) ==========
