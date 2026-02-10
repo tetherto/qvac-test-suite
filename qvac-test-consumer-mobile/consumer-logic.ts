@@ -16,7 +16,7 @@ import {
 	MARIAN_OPUS_DE_EN_Q0F32,
 	BERGAMOT_ENFR, // QVAC-10524: Bergamot translation engine
 	OCR_CRAFT_LATIN_RECOGNIZER_1,
-} from "@tetherto/sdk-dev";
+} from "@qvac/sdk";
 import { getEspeakDataPathForSDK } from "./espeak-utils";
 
 export class MobileConsumer extends ConsumerBase {

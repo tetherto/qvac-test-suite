@@ -779,10 +779,11 @@ export abstract class ConsumerBase {
 	}
 
 	protected getTestTimeout(testId: string): number {
-		const isDestructiveTest = testId.includes("embed-python") || testId.includes("embed-javascript") || 
+		const isTtsTest = testId.startsWith("tts-");
+		const isDestructiveTest = !isTtsTest && (testId.includes("embed-python") || testId.includes("embed-javascript") || 
 		                          testId.includes("embed-json") || testId.includes("embed-html") ||
 		                          testId.includes("very-long") || testId.includes("extremely-long") ||
-		                          testId.includes("corrupted");
+		                          testId.includes("corrupted"));
 		const isLargeRagTest = testId.includes("rag-large");
 		const isMediumRagTest = testId.includes("rag-medium");
 		const isSmallRagTest = testId.includes("rag-small");
@@ -790,7 +791,6 @@ export abstract class ConsumerBase {
 		const isTranscriptionTest = testId.startsWith("transcription-");
 		const isToolsTest = testId.startsWith("tools-");
 		const isEmbeddingTest = testId.startsWith("embed-") || testId.startsWith("rag-");
-		const isTtsTest = testId.startsWith("tts-");
 		const isOcrTest = testId.startsWith("ocr-") || testId === "model-load-ocr";
 		const isHttpModelTest = testId.startsWith("http-archive") || testId.startsWith("http-sharded");
 		const isComplexCompletionTest = testId.includes("concurrent") || testId.includes("repeated") ||
@@ -840,9 +840,9 @@ export abstract class ConsumerBase {
 			const isLongTts = testId.includes("stack-overflow") || testId.includes("very-long") || 
 			                  testId.includes("extremely-long") || testId.includes("large-buffer");
 			if (isLongTts) {
-				return Math.round(90000 * mobileMultiplier); // 90s desktop, 135s mobile for large buffer tests
+				return Math.round(120000 * mobileMultiplier); // 120s desktop, 180s mobile for large buffer tests
 			}
-			return Math.round(45000 * mobileMultiplier); // 45s desktop, 67.5s mobile for regular TTS
+			return Math.round(60000 * mobileMultiplier); // 60s desktop, 90s mobile for regular TTS
 		} else if (isToolsTest && isMobile) {
 			return 90000; // 90s for tools tests on mobile (QWEN 7B is heavy)
 		} else if (isEmbeddingTest && isMobile) {

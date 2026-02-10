@@ -52,21 +52,28 @@ const withEspeakNgDataAndroid = (config) => {
         
         copyDirSync(srcDir, destDir);
         
-        // Count files copied
-        const countFiles = (dir) => {
-          let count = 0;
+        // Count files and collect relative paths for runtime manifest
+        const collectFiles = (dir, basePath = "") => {
+          const files = [];
           const entries = fs.readdirSync(dir, { withFileTypes: true });
           for (const entry of entries) {
+            const relPath = basePath ? `${basePath}/${entry.name}` : entry.name;
             if (entry.isDirectory()) {
-              count += countFiles(path.join(dir, entry.name));
+              files.push(...collectFiles(path.join(dir, entry.name), relPath));
             } else {
-              count++;
+              files.push(relPath);
             }
           }
-          return count;
+          return files;
         };
         
-        console.log(`  Copied ${countFiles(destDir)} files`);
+        const fileList = collectFiles(destDir);
+        console.log(`  Copied ${fileList.length} files`);
+        
+        // Write manifest so runtime code knows which files to copy from assets to files dir
+        const manifestPath = path.join(destDir, "_manifest.json");
+        fs.writeFileSync(manifestPath, JSON.stringify(fileList, null, 2));
+        console.log(`  Generated manifest with ${fileList.length} entries`);
       } else {
         console.warn(`[withEspeakNgData] WARNING: espeak-ng-data not found at ${srcDir}`);
         console.warn(`  TTS tests will fail without espeak-ng-data`);
@@ -98,7 +105,27 @@ const withEspeakNgDataIOS = (config) => {
         console.log(`  Destination: ${destDir}`);
         
         copyDirSync(srcDir, destDir);
-        console.log(`  Copy complete`);
+        
+        // Generate manifest for runtime copying (same as Android)
+        const collectFiles = (dir, basePath = "") => {
+          const files = [];
+          const entries = fs.readdirSync(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            const relPath = basePath ? `${basePath}/${entry.name}` : entry.name;
+            if (entry.isDirectory()) {
+              files.push(...collectFiles(path.join(dir, entry.name), relPath));
+            } else {
+              files.push(relPath);
+            }
+          }
+          return files;
+        };
+        
+        const fileList = collectFiles(destDir);
+        const manifestPath = path.join(destDir, "_manifest.json");
+        fs.writeFileSync(manifestPath, JSON.stringify(fileList, null, 2));
+        console.log(`  Copied ${fileList.length} files`);
+        console.log(`  Generated manifest with ${fileList.length} entries`);
       } else {
         console.warn(`[withEspeakNgData] WARNING: espeak-ng-data not found at ${srcDir}`);
       }
