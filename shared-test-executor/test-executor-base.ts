@@ -25,9 +25,12 @@ export interface SDKFunctions {
 	LLAMA_3_2_1B_INST_Q4_0: any;
 	GTE_LARGE_FP16: any;
 	GTE_LARGE_335M_FP16_SHARD?: any; // Sharded model constant (PR #237)
-	OCR_CRAFT_LATIN_RECOGNIZER_1?: any; // OCR recognizer model constant
+	OCR_LATIN_RECOGNIZER_1?: any; // OCR recognizer model constant
 	SDK_CLIENT_ERROR_CODES?: Record<string, number>; // Structured error codes (PR #243)
 	SDK_SERVER_ERROR_CODES?: Record<string, number>; // Structured error codes (PR #243)
+	modelRegistryList?: any; // Registry public API
+	modelRegistrySearch?: any; // Registry public API
+	modelRegistryGetModel?: any; // Registry public API
 }
 
 // Platform-specific functions interface for dependency injection
@@ -557,6 +560,19 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("cache-kv-delete-and-reuse", this.cacheKvDeleteAndReuse.bind(this));
 		this.testHandlers.set("cache-kv-stats-verification", this.cacheKvStatsVerification.bind(this));
 		this.testHandlers.set("cache-kv-no-system-prompt", this.completion.bind(this));
+
+		// Registry public API tests
+		this.testHandlers.set("registry-list-basic", this.registryListBasic.bind(this));
+		this.testHandlers.set("registry-list-returns-models", this.registryListReturnsModels.bind(this));
+		this.testHandlers.set("registry-list-entry-shape", this.registryListEntryShape.bind(this));
+		this.testHandlers.set("registry-search-no-filters", this.registrySearchNoFilters.bind(this));
+		this.testHandlers.set("registry-search-by-engine-llm", this.registrySearchByEngine.bind(this));
+		this.testHandlers.set("registry-search-by-filter-whisper", this.registrySearchByFilter.bind(this));
+		this.testHandlers.set("registry-search-by-quantization", this.registrySearchByQuantization.bind(this));
+		this.testHandlers.set("registry-search-no-results", this.registrySearchNoResults.bind(this));
+		this.testHandlers.set("registry-get-model-valid", this.registryGetModelValid.bind(this));
+		this.testHandlers.set("registry-get-model-not-found", this.registryGetModelNotFound.bind(this));
+		this.testHandlers.set("registry-get-model-matches-list", this.registryGetModelMatchesList.bind(this));
 	}
 
 	public async executeTest(
@@ -5186,15 +5202,15 @@ export abstract class TestExecutorBase {
 				return { output: "OCR function not available in SDK", passed: false };
 			}
 
-			if (!this.sdk.OCR_CRAFT_LATIN_RECOGNIZER_1) {
-				return { output: "OCR model constant (OCR_CRAFT_LATIN_RECOGNIZER) not available in SDK", passed: false };
+			if (!this.sdk.OCR_LATIN_RECOGNIZER_1) {
+				return { output: "OCR model constant (OCR_LATIN_RECOGNIZER) not available in SDK", passed: false };
 			}
 
 			console.log("   📝 Loading OCR model (CRAFT Latin Recognizer - detector auto-derived)...");
 			
 			// Only need to pass the recognizer - detector is auto-derived from same hyperdrive key
 			const loadedModelId = await this.sdk.loadModel({
-				modelSrc: this.sdk.OCR_CRAFT_LATIN_RECOGNIZER_1,
+				modelSrc: this.sdk.OCR_LATIN_RECOGNIZER_1,
 				modelType: "ocr",
 				modelConfig: {
 					langList: ["en"],
@@ -6142,6 +6158,345 @@ export abstract class TestExecutorBase {
 			};
 		} catch (error: any) {
 			return { output: `TTS streaming error: ${error.message}`, passed: false };
+		}
+	}
+
+	// ========== REGISTRY PUBLIC API TESTS ==========
+
+	protected async registryListBasic(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!this.sdk.modelRegistryList) {
+			return { output: "modelRegistryList not available in this SDK version", passed: false };
+		}
+
+		try {
+			const models = await this.sdk.modelRegistryList();
+
+			if (!Array.isArray(models)) {
+				return { output: `Expected array, got ${typeof models}`, passed: false };
+			}
+
+			return {
+				output: `modelRegistryList returned ${models.length} models`,
+				passed: true,
+			};
+		} catch (error: any) {
+			return { output: `Registry list error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async registryListReturnsModels(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!this.sdk.modelRegistryList) {
+			return { output: "modelRegistryList not available in this SDK version", passed: false };
+		}
+
+		try {
+			const models = await this.sdk.modelRegistryList();
+
+			if (!Array.isArray(models) || models.length === 0) {
+				return { output: "Registry returned empty model list", passed: false };
+			}
+
+			return {
+				output: `Registry returned ${models.length} models`,
+				passed: true,
+			};
+		} catch (error: any) {
+			return { output: `Registry list error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async registryListEntryShape(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!this.sdk.modelRegistryList) {
+			return { output: "modelRegistryList not available in this SDK version", passed: false };
+		}
+
+		try {
+			const models = await this.sdk.modelRegistryList();
+
+			if (!Array.isArray(models) || models.length === 0) {
+				return { output: "No models to validate entry shape", passed: false };
+			}
+
+			const entry = models[0];
+			const requiredFields = [
+				"name", "registryPath", "registrySource", "blobCoreKey",
+				"blobBlockOffset", "blobBlockLength", "blobByteOffset",
+				"modelId", "addon", "expectedSize", "sha256Checksum",
+				"engine", "quantization", "params",
+			];
+			const missing = requiredFields.filter((f) => entry[f] === undefined || entry[f] === null);
+
+			if (missing.length > 0) {
+				return { output: `Entry missing fields: ${missing.join(", ")}`, passed: false };
+			}
+
+			return {
+				output: `Entry "${entry.name}" has all ${requiredFields.length} required fields (addon=${entry.addon}, engine=${entry.engine})`,
+				passed: true,
+			};
+		} catch (error: any) {
+			return { output: `Registry list error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async registrySearchNoFilters(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!this.sdk.modelRegistrySearch) {
+			return { output: "modelRegistrySearch not available in this SDK version", passed: false };
+		}
+
+		try {
+			const models = await this.sdk.modelRegistrySearch();
+
+			if (!Array.isArray(models) || models.length === 0) {
+				return { output: "Search with no filters returned empty results", passed: false };
+			}
+
+			return {
+				output: `Search (no filters) returned ${models.length} models`,
+				passed: true,
+			};
+		} catch (error: any) {
+			return { output: `Registry search error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async registrySearchByEngine(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!this.sdk.modelRegistrySearch) {
+			return { output: "modelRegistrySearch not available in this SDK version", passed: false };
+		}
+
+		try {
+			const engine = params.engine || "@qvac/llm-llamacpp";
+			const models = await this.sdk.modelRegistrySearch({ engine });
+
+			if (!Array.isArray(models)) {
+				return { output: `Expected array, got ${typeof models}`, passed: false };
+			}
+
+			if (models.length === 0) {
+				return { output: `No models found for engine "${engine}"`, passed: false };
+			}
+
+			// All returned models should have the same addon type (engine resolves to addon)
+			const expectedAddon = expectation.expectedAddon || "llm";
+			const mismatched = models.filter((m: any) => m.addon !== expectedAddon);
+
+			if (mismatched.length > 0) {
+				return {
+					output: `${mismatched.length} models don't match addon "${expectedAddon}" (first: ${mismatched[0].name} addon=${mismatched[0].addon})`,
+					passed: false,
+				};
+			}
+
+			return {
+				output: `Search by engine "${engine}" returned ${models.length} models, all addon="${expectedAddon}"`,
+				passed: true,
+			};
+		} catch (error: any) {
+			return { output: `Registry search error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async registrySearchByFilter(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!this.sdk.modelRegistrySearch) {
+			return { output: "modelRegistrySearch not available in this SDK version", passed: false };
+		}
+
+		try {
+			const filter = params.filter || "whisper";
+			const models = await this.sdk.modelRegistrySearch({ filter });
+
+			if (!Array.isArray(models)) {
+				return { output: `Expected array, got ${typeof models}`, passed: false };
+			}
+
+			if (models.length === 0) {
+				return { output: `No models found for filter "${filter}"`, passed: false };
+			}
+
+			const filterLower = filter.toLowerCase();
+			const mismatched = models.filter((m: any) => {
+				const searchable = `${m.name} ${m.registryPath} ${m.addon} ${m.engine}`.toLowerCase();
+				return !searchable.includes(filterLower);
+			});
+
+			if (mismatched.length > 0) {
+				return {
+					output: `${mismatched.length} models don't match filter "${filter}" (first: ${mismatched[0].name})`,
+					passed: false,
+				};
+			}
+
+			return {
+				output: `Search by filter "${filter}" returned ${models.length} matching models`,
+				passed: true,
+			};
+		} catch (error: any) {
+			return { output: `Registry search error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async registrySearchByQuantization(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!this.sdk.modelRegistrySearch) {
+			return { output: "modelRegistrySearch not available in this SDK version", passed: false };
+		}
+
+		try {
+			const quantization = params.quantization || "q4";
+			const models = await this.sdk.modelRegistrySearch({ quantization });
+
+			if (!Array.isArray(models)) {
+				return { output: `Expected array, got ${typeof models}`, passed: false };
+			}
+
+			if (models.length === 0) {
+				return { output: `No models found for quantization "${quantization}"`, passed: false };
+			}
+
+			return {
+				output: `Search by quantization "${quantization}" returned ${models.length} models`,
+				passed: true,
+			};
+		} catch (error: any) {
+			return { output: `Registry search error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async registrySearchNoResults(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!this.sdk.modelRegistrySearch) {
+			return { output: "modelRegistrySearch not available in this SDK version", passed: false };
+		}
+
+		try {
+			const filter = params.filter || "nonexistent-model-xyz-12345";
+			const models = await this.sdk.modelRegistrySearch({ filter });
+
+			if (!Array.isArray(models)) {
+				return { output: `Expected array, got ${typeof models}`, passed: false };
+			}
+
+			if (models.length !== 0) {
+				return {
+					output: `Expected empty results for nonsense filter, got ${models.length} models`,
+					passed: false,
+				};
+			}
+
+			return {
+				output: "Search with nonsense filter correctly returned 0 results",
+				passed: true,
+			};
+		} catch (error: any) {
+			return { output: `Registry search error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async registryGetModelValid(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!this.sdk.modelRegistryList || !this.sdk.modelRegistryGetModel) {
+			return { output: "modelRegistryList/GetModel not available in this SDK version", passed: false };
+		}
+
+		try {
+			// First get the list to find a valid registryPath + registrySource
+			const models = await this.sdk.modelRegistryList();
+
+			if (!Array.isArray(models) || models.length === 0) {
+				return { output: "No models in registry to test getModel", passed: false };
+			}
+
+			const first = models[0];
+			const model = await this.sdk.modelRegistryGetModel(first.registryPath, first.registrySource);
+
+			if (!model) {
+				return { output: `getModel returned null for "${first.registryPath}"`, passed: false };
+			}
+
+			const requiredFields = [
+				"name", "registryPath", "registrySource", "modelId",
+				"addon", "engine", "quantization",
+			];
+			const missing = requiredFields.filter((f) => model[f] === undefined || model[f] === null);
+
+			if (missing.length > 0) {
+				return { output: `getModel entry missing fields: ${missing.join(", ")}`, passed: false };
+			}
+
+			return {
+				output: `getModel("${first.registryPath}") returned "${model.name}" (addon=${model.addon}, engine=${model.engine})`,
+				passed: true,
+			};
+		} catch (error: any) {
+			return { output: `Registry getModel error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async registryGetModelNotFound(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!this.sdk.modelRegistryGetModel) {
+			return { output: "modelRegistryGetModel not available in this SDK version", passed: false };
+		}
+
+		try {
+			const registryPath = params.registryPath || "nonexistent/model/path.gguf";
+			const registrySource = params.registrySource || "nonexistent-source";
+
+			await this.sdk.modelRegistryGetModel(registryPath, registrySource);
+
+			return {
+				output: "Should have thrown error for nonexistent model, but succeeded",
+				passed: false,
+			};
+		} catch (error: any) {
+			const msg = error.message || String(error);
+			const containsExpected = msg.toLowerCase().includes("not found") || msg.toLowerCase().includes("failed");
+
+			return {
+				output: `getModel correctly threw: ${msg.substring(0, 200)}`,
+				passed: containsExpected,
+			};
+		}
+	}
+
+	protected async registryGetModelMatchesList(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!this.sdk.modelRegistryList || !this.sdk.modelRegistryGetModel) {
+			return { output: "modelRegistryList/GetModel not available in this SDK version", passed: false };
+		}
+
+		try {
+			const models = await this.sdk.modelRegistryList();
+
+			if (!Array.isArray(models) || models.length === 0) {
+				return { output: "No models in registry to test consistency", passed: false };
+			}
+
+			const listEntry = models[0];
+			const getEntry = await this.sdk.modelRegistryGetModel(listEntry.registryPath, listEntry.registrySource);
+
+			if (!getEntry) {
+				return { output: `getModel returned null for "${listEntry.registryPath}"`, passed: false };
+			}
+
+			const fieldsToCompare = ["name", "registryPath", "registrySource", "addon", "engine", "quantization", "modelId"];
+			const mismatches: string[] = [];
+
+			for (const field of fieldsToCompare) {
+				if (String(listEntry[field]) !== String(getEntry[field])) {
+					mismatches.push(`${field}: list="${listEntry[field]}" vs get="${getEntry[field]}"`);
+				}
+			}
+
+			if (mismatches.length > 0) {
+				return {
+					output: `getModel differs from list: ${mismatches.join("; ")}`,
+					passed: false,
+				};
+			}
+
+			return {
+				output: `getModel("${listEntry.registryPath}") matches list entry for "${listEntry.name}"`,
+				passed: true,
+			};
+		} catch (error: any) {
+			return { output: `Registry consistency check error: ${error.message}`, passed: false };
 		}
 	}
 }

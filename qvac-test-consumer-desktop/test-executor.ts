@@ -11,12 +11,15 @@ import {
 	deleteCache,
 	getModelInfo,
 	loggingStream,
+	modelRegistryList,
+	modelRegistrySearch,
+	modelRegistryGetModel,
 	LLAMA_3_2_1B_INST_Q4_0,
 	GTE_LARGE_FP16,
-	OCR_CRAFT_LATIN_RECOGNIZER_1,
-} from "@tetherto/sdk-dev";
+	OCR_LATIN_RECOGNIZER_1,
+} from "@tetherto/sdk-mono";
 // Dynamic import for SDK_LOG_ID (QVAC-9211) - may not be in types yet
-const sdkModule = require("@tetherto/sdk-dev");
+const sdkModule = require("@tetherto/sdk-mono");
 const SDK_LOG_ID: string | undefined = sdkModule.SDK_LOG_ID;
 import { TestExecutorBase, type SDKFunctions, type PlatformFunctions } from "../shared-test-executor/test-executor-base";
 import * as path from "path";
@@ -40,9 +43,12 @@ export class TestExecutor extends TestExecutorBase {
 			SDK_LOG_ID,
 			LLAMA_3_2_1B_INST_Q4_0,
 			GTE_LARGE_FP16,
-			OCR_CRAFT_LATIN_RECOGNIZER_1,
+			OCR_LATIN_RECOGNIZER_1,
 			SDK_CLIENT_ERROR_CODES: undefined, // Not available in this SDK version
 			SDK_SERVER_ERROR_CODES: undefined, // Not available in this SDK version
+			modelRegistryList,
+			modelRegistrySearch,
+			modelRegistryGetModel,
 		};
 		const platform: PlatformFunctions = {
 			pathJoin: path.join,

@@ -31,7 +31,7 @@
       "output": "single"
     },
     "plugins": [
-      "@tetherto/sdk-dev/expo-plugin",
+      "@tetherto/sdk-mono/expo-plugin",
       [
         "expo-build-properties",
         {

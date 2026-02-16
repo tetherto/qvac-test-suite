@@ -28,7 +28,7 @@ export const modelLoadEmbedding: TestDefinition = {
 
 export const modelLoadOcr: TestDefinition = {
   testId: 'model-load-ocr',
-  params: { modelType: 'ocr', modelConstant: 'OCR_CRAFT_LATIN_RECOGNIZER_1' },
+  params: { modelType: 'ocr', modelConstant: 'OCR_LATIN_RECOGNIZER_1' },
   expectation: { validation: 'type', expectedType: 'string' },
   metadata: { category: 'model', dependency: 'none', estimatedDurationMs: 90000 },
 };

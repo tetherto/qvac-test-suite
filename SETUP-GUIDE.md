@@ -197,7 +197,7 @@ adb install path/to/app-release.apk
 
 **NPM_TOKEN errors:**
 - Verify token is set: `echo $NPM_TOKEN` (macOS/Linux) or `echo $env:NPM_TOKEN` (Windows)
-- Ensure token has access to `@tetherto/sdk-dev` package
+- Ensure token has access to `@tetherto/sdk-mono` package
 
 ### Mobile Issues
 

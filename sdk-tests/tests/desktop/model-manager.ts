@@ -5,8 +5,8 @@ import {
   GTE_LARGE_FP16,
   WHISPER_TINY,
   VAD_SILERO_5_1_2,
-  QWEN_3_1_7B_INST_Q4,
-  OCR_CRAFT_LATIN_RECOGNIZER_1,
+  QWEN3_1_7B_INST_Q4,
+  OCR_LATIN_RECOGNIZER_1,
 } from '@qvac/sdk';
 
 export class ModelManager {
@@ -100,7 +100,7 @@ export class ModelManager {
     if (!this.toolsModelId) {
       console.log('    [ModelManager] Loading Tools model (Qwen 7B)...');
       const modelId = await loadModel({
-        modelSrc: QWEN_3_1_7B_INST_Q4,
+        modelSrc: QWEN3_1_7B_INST_Q4,
         modelType: 'llm',
         modelConfig: {
           ctx_size: 4096, // Qwen needs larger context for tools
@@ -123,7 +123,7 @@ export class ModelManager {
       console.log('    [ModelManager] Loading OCR model (CRAFT Latin Recognizer - detector auto-derived)...');
       // Only need to pass the recognizer - detector is auto-derived from same hyperdrive key
       this.ocrModelId = await loadModel({
-        modelSrc: OCR_CRAFT_LATIN_RECOGNIZER_1,
+        modelSrc: OCR_LATIN_RECOGNIZER_1,
         modelType: 'ocr',
         modelConfig: {
           langList: ['en'],

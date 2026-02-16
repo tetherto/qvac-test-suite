@@ -7,15 +7,15 @@ import {
 	WHISPER_TINY,
 	VAD_SILERO_5_1_2,
 	GTE_LARGE_FP16,
-	QWEN_3_1_7B_INST_Q4,
-	SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
-	MMPROJ_SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+	QWEN3_1_7B_INST_Q4,
+	SMOLVLM2_500M_MULTIMODAL_Q8_0,
+	MMPROJ_SMOLVLM2_500M_MULTIMODAL_Q8_0,
 	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM,
 	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG,
-	MARIAN_OPUS_DE_EN_Q0F32,
-	BERGAMOT_ENFR, // QVAC-10524: Bergamot translation engine
-	OCR_CRAFT_LATIN_RECOGNIZER_1,
-} from "@tetherto/sdk-dev";
+	MARIAN_OPUS_DE_EN_Q4_0,
+	BERGAMOT_EN_FR, // QVAC-10524: Bergamot translation engine
+	OCR_LATIN_RECOGNIZER_1,
+} from "@tetherto/sdk-mono";
 
 export class DesktopConsumer extends ConsumerBase {
 	constructor(
@@ -77,7 +77,7 @@ export class DesktopConsumer extends ConsumerBase {
 
 	protected async loadToolsModel(): Promise<string> {
 		return await loadModel({
-			modelSrc: QWEN_3_1_7B_INST_Q4,
+			modelSrc: QWEN3_1_7B_INST_Q4,
 			modelType: "llm",
 			modelConfig: {
 				ctx_size: 4096,
@@ -88,9 +88,9 @@ export class DesktopConsumer extends ConsumerBase {
 
 	protected async loadVisionModel(): Promise<string> {
 		return await loadModel({
-			modelSrc: SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+			modelSrc: SMOLVLM2_500M_MULTIMODAL_Q8_0,
 			modelType: "llm",
-			projectionModelSrc: MMPROJ_SMOLVLM2_2_500M_MULTIMODAL_Q8_0,
+			projectionModelSrc: MMPROJ_SMOLVLM2_500M_MULTIMODAL_Q8_0,
 			modelConfig: {
 				ctx_size: 1024,
 			},
@@ -113,7 +113,7 @@ export class DesktopConsumer extends ConsumerBase {
 		// QVAC-9401: NMT model with generation parameters
 		// QVAC-10524: Added engine: "Opus" (required after QVAC-9526)
 		return await loadModel({
-			modelSrc: MARIAN_OPUS_DE_EN_Q0F32,
+			modelSrc: MARIAN_OPUS_DE_EN_Q4_0,
 			modelType: "nmt",
 			modelConfig: {
 				engine: "Opus",
@@ -132,7 +132,7 @@ export class DesktopConsumer extends ConsumerBase {
 	protected async loadBergamotModel(): Promise<string> {
 		// QVAC-10524: Bergamot translation engine support
 		return await loadModel({
-			modelSrc: BERGAMOT_ENFR,
+			modelSrc: BERGAMOT_EN_FR,
 			modelType: "nmt",
 			modelConfig: {
 				engine: "Bergamot",
@@ -145,7 +145,7 @@ export class DesktopConsumer extends ConsumerBase {
 	protected async loadOcrModel(): Promise<string> {
 		// Only need to pass the recognizer - detector is auto-derived
 		return await loadModel({
-			modelSrc: OCR_CRAFT_LATIN_RECOGNIZER_1,
+			modelSrc: OCR_LATIN_RECOGNIZER_1,
 			modelType: "ocr",
 			modelConfig: {
 				langList: ["en"],
