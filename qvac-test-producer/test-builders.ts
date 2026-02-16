@@ -1428,7 +1428,7 @@ export class TestBuilder {
 	}
 
 	// ========== QVAC-9401: NMT TRANSLATION WITH GENERATION PARAMETERS ==========
-	// Using MARIAN_OPUS_DE_EN_Q0F32 (German to English)
+	// Using MARIAN_OPUS_DE_EN_Q4_0 (German to English)
 
 	buildNmtTranslationBasicTest(): TestDefinition {
 		return {
@@ -4183,7 +4183,7 @@ export class TestBuilder {
 				testId: "model-load-ocr",
 				params: {
 					modelType: "ocr",
-					modelConstant: "OCR_CRAFT_LATIN_RECOGNIZER_1",
+					modelConstant: "OCR_LATIN_RECOGNIZER_1",
 				},
 				expectation: {
 					type: "model-loaded",
@@ -4612,6 +4612,201 @@ export class TestBuilder {
 		};
 	}
 
+	// ========== REGISTRY PUBLIC API TESTS ==========
+
+	buildRegistryListBasicTest(): TestDefinition {
+		return {
+			testId: "registry-list-basic",
+			payload: JSON.stringify({
+				testId: "registry-list-basic",
+				params: {},
+				expectation: {
+					validation: "returns-array",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildRegistryListReturnsModelsTest(): TestDefinition {
+		return {
+			testId: "registry-list-returns-models",
+			payload: JSON.stringify({
+				testId: "registry-list-returns-models",
+				params: {},
+				expectation: {
+					validation: "non-empty-array",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildRegistryListEntryShapeTest(): TestDefinition {
+		return {
+			testId: "registry-list-entry-shape",
+			payload: JSON.stringify({
+				testId: "registry-list-entry-shape",
+				params: {},
+				expectation: {
+					validation: "entry-has-required-fields",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildRegistrySearchNoFiltersTest(): TestDefinition {
+		return {
+			testId: "registry-search-no-filters",
+			payload: JSON.stringify({
+				testId: "registry-search-no-filters",
+				params: {},
+				expectation: {
+					validation: "non-empty-array",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildRegistrySearchByEngineLlmTest(): TestDefinition {
+		return {
+			testId: "registry-search-by-engine-llm",
+			payload: JSON.stringify({
+				testId: "registry-search-by-engine-llm",
+				params: {
+					engine: "@qvac/llm-llamacpp",
+				},
+				expectation: {
+					validation: "all-match-addon",
+					expectedAddon: "llm",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildRegistrySearchByFilterWhisperTest(): TestDefinition {
+		return {
+			testId: "registry-search-by-filter-whisper",
+			payload: JSON.stringify({
+				testId: "registry-search-by-filter-whisper",
+				params: {
+					filter: "whisper",
+				},
+				expectation: {
+					validation: "all-match-filter",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildRegistrySearchByQuantizationTest(): TestDefinition {
+		return {
+			testId: "registry-search-by-quantization",
+			payload: JSON.stringify({
+				testId: "registry-search-by-quantization",
+				params: {
+					quantization: "q4",
+				},
+				expectation: {
+					validation: "non-empty-array",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildRegistrySearchNoResultsTest(): TestDefinition {
+		return {
+			testId: "registry-search-no-results",
+			payload: JSON.stringify({
+				testId: "registry-search-no-results",
+				params: {
+					filter: "nonexistent-model-xyz-12345",
+				},
+				expectation: {
+					validation: "empty-array",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildRegistryGetModelValidTest(): TestDefinition {
+		return {
+			testId: "registry-get-model-valid",
+			payload: JSON.stringify({
+				testId: "registry-get-model-valid",
+				params: {
+					useFirstFromList: true,
+				},
+				expectation: {
+					validation: "entry-has-required-fields",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildRegistryGetModelNotFoundTest(): TestDefinition {
+		return {
+			testId: "registry-get-model-not-found",
+			payload: JSON.stringify({
+				testId: "registry-get-model-not-found",
+				params: {
+					registryPath: "nonexistent/model/path.gguf",
+					registrySource: "nonexistent-source",
+				},
+				expectation: {
+					validation: "throws-error",
+					errorContains: "not found",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 15000,
+		};
+	}
+
+	buildRegistryGetModelMatchesListTest(): TestDefinition {
+		return {
+			testId: "registry-get-model-matches-list",
+			payload: JSON.stringify({
+				testId: "registry-get-model-matches-list",
+				params: {
+					useFirstFromList: true,
+				},
+				expectation: {
+					validation: "matches-list-entry",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 20000,
+		};
+	}
+
 	// ========== BUILD ALL TESTS ==========
 
 	buildAllTests(): TestDefinition[] {
@@ -4621,11 +4816,11 @@ export class TestBuilder {
 
 	/**
 	 * Build tests filtered by section/category
-	 * @param section - "all", "transcription", "completion", "embedding", "rag", "model", "translation", "nmt", "tools", "cache", "tts", "error", "config-reload", "addon-logging", or "ocr"
+	 * @param section - "all", "transcription", "completion", "embedding", "rag", "model", "translation", "nmt", "tools", "cache", "tts", "error", "config-reload", "addon-logging", "ocr", or "registry"
 	 */
 	buildTestsBySection(
 		tests: TestDefinition[],
-		section: "all" | "transcription" | "completion" | "embedding" | "rag" | "model" | "translation" | "nmt" | "tools" | "cache" | "tts" | "error" | "config-reload" | "addon-logging" | "ocr" = "all"
+		section: "all" | "transcription" | "completion" | "embedding" | "rag" | "model" | "translation" | "nmt" | "tools" | "cache" | "tts" | "error" | "config-reload" | "addon-logging" | "ocr" | "registry" = "all"
 	): TestDefinition[] {
 		tests = [];
 
@@ -5074,6 +5269,23 @@ export class TestBuilder {
 		tests.push(this.buildOcrMultiSizedTextTest());
 		tests.push(this.buildOcrMultipleFontsTest());
 		console.log("   ✅ Added 20 OCR tests");
+	}
+
+	// Registry public API tests
+	if (section === "all" || section === "registry") {
+		console.log("\n📋 Adding Registry Public API Tests");
+		tests.push(this.buildRegistryListBasicTest());
+		tests.push(this.buildRegistryListReturnsModelsTest());
+		tests.push(this.buildRegistryListEntryShapeTest());
+		tests.push(this.buildRegistrySearchNoFiltersTest());
+		tests.push(this.buildRegistrySearchByEngineLlmTest());
+		tests.push(this.buildRegistrySearchByFilterWhisperTest());
+		tests.push(this.buildRegistrySearchByQuantizationTest());
+		tests.push(this.buildRegistrySearchNoResultsTest());
+		tests.push(this.buildRegistryGetModelValidTest());
+		tests.push(this.buildRegistryGetModelNotFoundTest());
+		tests.push(this.buildRegistryGetModelMatchesListTest());
+		console.log("   ✅ Added 11 registry tests");
 	}
 
 		// ========== PHASE 4: ROBUSTNESS & ADVANCED SCENARIOS ==========
