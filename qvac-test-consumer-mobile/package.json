@@ -9,8 +9,10 @@
     "postinstall": "node scripts/postinstall.js"
   },
   "dependencies": {
+    "@qvac/sdk": "npm:@tetherto/sdk-mono@0.6.1-tmp.runid-22071646364",
     "@tetherto/sdk-mono": "0.6.1-tmp.runid-22071646364",
-    "@tetherto/cli-mono": "0.1.2-tmp.runid-22071646435",
+    "@qvac/cli": "npm:@tetherto/cli-mono@0.1.2-tmp.runid-22095485195",
+    "@tetherto/cli-mono": "0.1.2-tmp.runid-22095485195",
     "bare-abort-controller": "^1.0.0",
     "bare-buffer": "^3.3.0",
     "bare-crypto": "^1.9.2",
