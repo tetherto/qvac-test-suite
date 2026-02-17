@@ -4,7 +4,7 @@ import {
   unloadModel,
   LLAMA_3_2_1B_INST_Q4_0,
   GTE_LARGE_FP16,
-  OCR_CRAFT_LATIN_RECOGNIZER_1,
+  OCR_LATIN_RECOGNIZER_1,
 } from '@qvac/sdk';
 import { ValidationHelpers, type TestResult } from '@tetherto/qvac-test-suite';
 import { ModelManager } from '../model-manager.js';
@@ -77,7 +77,7 @@ export class ModelLoadingExecutor {
 
   async loadOcr(params: typeof modelLoadOcr.params, expectation: typeof modelLoadOcr.expectation): Promise<TestResult> {
     this.ocrModelId = await loadModel({
-      modelSrc: OCR_CRAFT_LATIN_RECOGNIZER_1,
+      modelSrc: OCR_LATIN_RECOGNIZER_1,
       modelType: 'ocr',
       modelConfig: {
         langList: ['en'],
