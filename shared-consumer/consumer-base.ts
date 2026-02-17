@@ -52,6 +52,7 @@ export abstract class ConsumerBase {
 	protected isProcessingTest = false;
 	protected shutdownRequested = false;
 	protected callbacks: ConsumerCallbacks;
+	protected testCount: number;
 
 	constructor(
 		client: MqttClient,
@@ -68,6 +69,7 @@ export abstract class ConsumerBase {
 		this.isWildcard = runId === '*';
 		this.executor = executor;
 		this.callbacks = callbacks;
+		this.testCount = 0;
 	}
 
 	protected log(message: string) {
@@ -91,7 +93,7 @@ export abstract class ConsumerBase {
 		// Platform-specific default paths
 		const platform = process.platform;
 		const arch = process.arch;
-		
+
 		if (platform === 'win32') {
 			// Windows
 			return 'C:/Program Files/eSpeak NG/espeak-ng-data';
@@ -418,7 +420,7 @@ export abstract class ConsumerBase {
 
 		this.shutdownRequested = true;
 		this.updateStats({ isComplete: true });
-		
+
 		if (!this.isProcessingTest) {
 			this.shutdown();
 		}
@@ -443,6 +445,11 @@ export abstract class ConsumerBase {
 			{ qos: 1 }
 		);
 
+		this.testCount++;
+		if(this.testCount % 10 === 0 || uniqueTestId.includes("model-load-ocr")) {
+			this.log(`   🔄 Resetting models (test #${this.testCount})...`);
+			await this.reset();
+		}
 		const startTime = Date.now();
 
 		try {
@@ -474,10 +481,10 @@ export abstract class ConsumerBase {
 																	expectation?.validation === 'throws-structured-error' ||
 																	expectation?.validation === 'handles-error';
 			const outputStr = result?.output || '';
-			const isModelNotFound = !result.passed && 
-				outputStr.includes("not found") && 
+			const isModelNotFound = !result.passed &&
+				outputStr.includes("not found") &&
 				outputStr.includes("Model with ID");
-			
+
 			if (isModelNotFound && !shouldExpectFailure) {
 				this.log(`   ⚠️  Model not found in result, reloading and retrying...`);
 				// Clear cached model ID to force reload
@@ -490,11 +497,11 @@ export abstract class ConsumerBase {
 				else if (modelType === 'bergamot') this.bergamotModelId = null;
 				else if (modelType === 'vision') this.visionModelId = null;
 				else if (modelType === 'tts') this.ttsModelId = null;
-				
+
 				// Reload model
 				modelId = await this.ensureModelForTest(testId);
 				this.log(`   🔄 Retrying with new model ID: ${modelId}`);
-				
+
 				try {
 					testPromise = this.executor.executeTest(testId, modelId, params, expectation);
 					result = await Promise.race([testPromise, timeoutPromise]);
@@ -529,7 +536,7 @@ export abstract class ConsumerBase {
 			} else {
 				this.testsFailed++;
 			}
-			
+
 			this.updateStats({
 				testsCompleted: this.testsCompleted,
 				testsPassed: this.testsPassed,
@@ -597,7 +604,7 @@ export abstract class ConsumerBase {
 	}
 
 	protected getTestTimeout(testId: string): number {
-		const isDestructiveTest = testId.includes("embed-python") || testId.includes("embed-javascript") || 
+		const isDestructiveTest = testId.includes("embed-python") || testId.includes("embed-javascript") ||
 		                          testId.includes("embed-json") || testId.includes("embed-html") ||
 		                          testId.includes("very-long") || testId.includes("extremely-long") ||
 		                          testId.includes("corrupted");
@@ -610,11 +617,11 @@ export abstract class ConsumerBase {
 		const isEmbeddingTest = testId.startsWith("embed-") || testId.startsWith("rag-");
 		const isTtsTest = testId.startsWith("tts-");
 		const isHttpDownloadTest = testId.startsWith("http-sharded-") || testId.startsWith("http-archive-");
-		
+
 		// Mobile devices need more time for heavy operations
 		const isMobile = this.platform === "mobile" || this.platform.includes("mobile");
 		const mobileMultiplier = isMobile ? 1.5 : 1.0; // 50% more time on mobile
-		
+
 		if (isHttpDownloadTest) {
 			return Math.round(300000 * mobileMultiplier); // 300s desktop, 450s mobile
 		} else if (isDestructiveTest) {
@@ -629,7 +636,7 @@ export abstract class ConsumerBase {
 			return Math.round(60000 * mobileMultiplier); // 60s desktop, 90s mobile
 		} else if (isTtsTest) {
 			// TTS tests: longer timeout for stack overflow prevention tests (QVAC-9403)
-			const isLongTts = testId.includes("stack-overflow") || testId.includes("very-long") || 
+			const isLongTts = testId.includes("stack-overflow") || testId.includes("very-long") ||
 			                  testId.includes("extremely-long") || testId.includes("large-buffer");
 			if (isLongTts) {
 				return Math.round(90000 * mobileMultiplier); // 90s desktop, 135s mobile for large buffer tests
@@ -646,35 +653,35 @@ export abstract class ConsumerBase {
 
 	protected async attemptCrashRecovery() {
 		this.log(`   ⚠️  SDK CRASH DETECTED - attempting recovery...`);
-		try {
-			// Import unloadModel - must be provided by subclass
-			const { unloadModel } = await this.getSDKFunctions();
 
-			if (this.llmModelId) {
-				await unloadModel({ modelId: this.llmModelId });
-				this.llmModelId = null;
-				this.log(`   🔄 Unloaded LLM model`);
-			}
-			if (this.whisperModelId) {
-				await unloadModel({ modelId: this.whisperModelId });
-				this.whisperModelId = null;
-				this.log(`   🔄 Unloaded Whisper model`);
-			}
-			if (this.embeddingModelId) {
-				await unloadModel({ modelId: this.embeddingModelId });
-				this.embeddingModelId = null;
-				this.log(`   🔄 Unloaded Embedding model`);
-			}
-			if (this.translationModelId) {
-				await unloadModel({ modelId: this.translationModelId });
-				this.translationModelId = null;
-				this.log(`   🔄 Unloaded Translation model`);
-			}
+		try {
+			this.log(`   🔄 Resetting models (recovery)...`);
+			await this.reset();
 			this.log(`   ✅ Recovery complete - models will reload on next test`);
 		} catch (recoveryError: any) {
 			this.log(`   ⚠️  Recovery failed: ${recoveryError?.message || String(recoveryError)}`);
 			this.log(`   ℹ️  Subsequent tests may fail (cascade effect)`);
 		}
+	}
+
+	protected async reset() {
+		const { unloadModel } = await this.getSDKFunctions();
+
+		type ModelIdKey = 'llmModelId' | 'whisperModelId' | 'embeddingModelId' | 'translationModelId' | 'nmtModelId' | 'bergamotModelId' | 'ocrModelId' | 'toolsModelId' | 'visionModelId' | 'ttsModelId' |'ocrModelId';
+		const modelKeys: ModelIdKey[] = ['llmModelId', 'whisperModelId', 'embeddingModelId', 'translationModelId', 'nmtModelId', 'bergamotModelId', 'ocrModelId', 'toolsModelId', 'visionModelId', 'ttsModelId', 'ocrModelId'];
+		for (const modelKey of modelKeys) {
+			const modelId = this[modelKey];
+			if (modelId) {
+				try {
+					await unloadModel({ modelId });
+					this[modelKey] = null;
+					this.log(`   🔄 Unloaded ${modelId} model. ${modelKey} = ${this[modelKey as keyof ConsumerBase]}`);
+				} catch (error: any) {
+					this.log(`   ⚠️  Error unloading ${modelId} model: ${error.message}`);
+				}
+			}
+		}
+		await new Promise((resolve) => setTimeout(resolve, 300));
 	}
 
 	// Abstract method to get SDK functions (platform-specific)
