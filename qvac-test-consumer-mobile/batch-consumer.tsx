@@ -24,9 +24,10 @@ export default function BatchConsumer() {
 		currentTest: "",
 		isComplete: false,
 	});
-	const [consumerId] = useState(
-		`consumer-mobile-${Constants.deviceName || Constants.sessionId || "unknown"}-${Date.now()}`
-	);
+	const [consumerId] = useState(() => {
+		const base = `consumer-mobile-${Constants.deviceName || Constants.sessionId || "unknown"}`;
+		return env.CONTINUE_ON_RESTART ? base : `${base}-${Date.now()}`;
+	});
 	const [runId] = useState(env.RUN_ID);
 	const consumerRef = useRef<MobileConsumer | null>(null);
 

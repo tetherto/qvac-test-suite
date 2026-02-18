@@ -8,7 +8,8 @@ export class BatchConsumer {
 	private consumer: DesktopConsumer;
 
 	constructor(brokerUrl: string, runId: string, platform: string = "desktop") {
-		const consumerId = `consumer-${platform}-${os.hostname()}-${Date.now()}`;
+		const base = `consumer-${platform}-${os.hostname()}`;
+		const consumerId = env.CONTINUE_ON_RESTART ? base : `${base}-${Date.now()}`;
 		const client = mqtt.connect(brokerUrl);
 		const executor = new TestExecutor();
 

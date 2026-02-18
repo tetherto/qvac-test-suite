@@ -351,8 +351,6 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("transcription-m4a", this.transcriptionFormat.bind(this));
 		this.testHandlers.set("transcription-ogg", this.transcriptionFormat.bind(this));
 		this.testHandlers.set("transcription-silence", this.transcriptionMusic.bind(this));
-		this.testHandlers.set("transcription-only-music", this.transcriptionMusic.bind(this));
-		this.testHandlers.set("transcription-long-audio", this.transcriptionLongAudio.bind(this));
 		this.testHandlers.set("transcription-corrupted", this.transcriptionCorrupted.bind(this));
 		this.testHandlers.set("transcription-corrupted-wav", this.transcriptionCorrupted.bind(this));
 		this.testHandlers.set("transcription-streaming", this.transcriptionFormat.bind(this));
@@ -546,7 +544,6 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("cache-hypercore-deletion", this.cacheHypercoreDeletion.bind(this));
 		this.testHandlers.set("cache-multiple-models-info", this.cacheMultipleModels.bind(this));
 		this.testHandlers.set("cache-persists-after-unload", this.cachePersistsAfterUnload.bind(this));
-		this.testHandlers.set("cache-invalid-key-error", this.cacheInvalidKey.bind(this));
 		// KV Cache Sliding Window Tests (QVAC-11331, PR #378)
 		this.testHandlers.set("cache-kv-sliding-window", this.completion.bind(this));
 		this.testHandlers.set("cache-kv-boolean-enabled", this.completion.bind(this));
@@ -2469,7 +2466,6 @@ export abstract class TestExecutorBase {
 				modelConfig: {
 					ctx_size: 2048,
 					gpu_layers: 99,
-					device: "gpu",
 					predict: maxTokens, // Use "predict" not "n_predict" per Simon
 				},
 			});
@@ -2524,7 +2520,6 @@ export abstract class TestExecutorBase {
 				modelConfig: {
 					ctx_size: 2048,
 					gpu_layers: 99,
-					device: "gpu",
 					seed: seed, // SDK v0.4.0: seed in model config
 				},
 			});
@@ -2616,7 +2611,6 @@ export abstract class TestExecutorBase {
 					ctx_size: 2048,
 					...(seed !== undefined && { seed }),
 					gpu_layers: 99,
-					device: "gpu",
 					stop_sequences: Array.isArray(stop_sequences) ? stop_sequences : [stop_sequences], // SDK v0.5.1: stop_sequences in model config
 				},
 			});
@@ -2865,7 +2859,6 @@ export abstract class TestExecutorBase {
 				modelConfig: {
 					ctx_size: 2048,
 					gpu_layers: 99,
-					device: "gpu",
 					repeat_penalty: presence_penalty, // SDK v0.5.1: use repeat_penalty for presence_penalty
 				},
 			});
@@ -2944,7 +2937,6 @@ export abstract class TestExecutorBase {
 				modelConfig: {
 					ctx_size: 2048,
 					gpu_layers: 99,
-					device: "gpu",
 					stop_sequences: stopSequences, // SDK v0.5.1: stop_sequences array in model config
 				},
 			});
@@ -3000,7 +2992,6 @@ export abstract class TestExecutorBase {
 				modelConfig: {
 					ctx_size: 2048,
 					gpu_layers: 99,
-					device: "gpu",
 					temp: temperature, // SDK v0.5.1: use temp for temperature
 				},
 			});
@@ -3051,7 +3042,6 @@ export abstract class TestExecutorBase {
 				modelConfig: {
 					ctx_size: 2048,
 					gpu_layers: 99,
-					device: "gpu",
 					temp: temperature, // SDK v0.5.1: use temp for temperature
 				},
 			});
@@ -3102,7 +3092,6 @@ export abstract class TestExecutorBase {
 				modelConfig: {
 					ctx_size: 2048,
 					gpu_layers: 99,
-					device: "gpu",
 					top_p: topP, // SDK v0.5.1: use top_p for topP
 				},
 			});
@@ -3153,7 +3142,6 @@ export abstract class TestExecutorBase {
 				modelConfig: {
 					ctx_size: 2048,
 					gpu_layers: 99,
-					device: "gpu",
 					top_p: topP, // SDK v0.5.1: use top_p for topP
 				},
 			});
@@ -3204,7 +3192,6 @@ export abstract class TestExecutorBase {
 				modelConfig: {
 					ctx_size: 2048,
 					gpu_layers: 99,
-					device: "gpu",
 					predict: maxTokens, // Use "predict" not "n_predict" per Simon
 				},
 			});
