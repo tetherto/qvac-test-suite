@@ -1,9 +1,9 @@
 import { ConsumerBase, type ConsumerCallbacks } from "../shared-consumer/consumer-base";
 import type { MqttClient } from "mqtt";
 import {
-	loadModel,
 	unloadModel,
 	cancel,
+	type LoadModelOptions,
 	LLAMA_3_2_1B_INST_Q4_0,
 	WHISPER_TINY,
 	VAD_SILERO_5_1_2,
@@ -27,6 +27,10 @@ import {
 } from "@tetherto/sdk-mono";
 
 export class DesktopConsumer extends ConsumerBase {
+	protected loadModel(opts: LoadModelOptions): Promise<string> {
+		return this.loadModelTracked(opts);
+	}
+
 	constructor(
 		client: MqttClient,
 		consumerId: string,
@@ -39,7 +43,7 @@ export class DesktopConsumer extends ConsumerBase {
 	}
 
 	protected async loadLlmModel(): Promise<string> {
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: LLAMA_3_2_1B_INST_Q4_0,
 			modelType: "llm",
 			modelConfig: {
@@ -51,7 +55,7 @@ export class DesktopConsumer extends ConsumerBase {
 	}
 
 	protected async loadWhisperModel(): Promise<string> {
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: WHISPER_TINY,
 			modelType: "whisper",
 			vadModelSrc: VAD_SILERO_5_1_2,
@@ -78,14 +82,14 @@ export class DesktopConsumer extends ConsumerBase {
 	}
 
 	protected async loadEmbeddingModel(): Promise<string> {
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: GTE_LARGE_FP16,
 			modelType: "embeddings",
 		});
 	}
 
 	protected async loadToolsModel(): Promise<string> {
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: QWEN3_1_7B_INST_Q4,
 			modelType: "llm",
 			modelConfig: {
@@ -96,7 +100,7 @@ export class DesktopConsumer extends ConsumerBase {
 	}
 
 	protected async loadVisionModel(): Promise<string> {
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: SMOLVLM2_500M_MULTIMODAL_Q8_0,
 			modelType: "llm",
 			projectionModelSrc: MMPROJ_SMOLVLM2_500M_MULTIMODAL_Q8_0,
@@ -108,7 +112,7 @@ export class DesktopConsumer extends ConsumerBase {
 
 	protected async loadTtsChatterboxModel(): Promise<string> {
 		const referenceAudioSrc = await this.executor.getAudioFilePath("transcription-short.wav");
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: TTS_TOKENIZER_EN_CHATTERBOX.src,
 			modelType: "tts",
 			modelConfig: {
@@ -125,7 +129,7 @@ export class DesktopConsumer extends ConsumerBase {
 	}
 
 	protected async loadTtsSupertonicModel(): Promise<string> {
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: TTS_TOKENIZER_SUPERTONIC.src,
 			modelType: "tts",
 			modelConfig: {
@@ -141,9 +145,7 @@ export class DesktopConsumer extends ConsumerBase {
 	}
 
 	protected async loadNmtModel(): Promise<string> {
-		// QVAC-9401: NMT model with generation parameters
-		// QVAC-10524: Added engine: "Opus" (required after QVAC-9526)
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: MARIAN_OPUS_DE_EN_Q4_0,
 			modelType: "nmt",
 			modelConfig: {
@@ -161,8 +163,7 @@ export class DesktopConsumer extends ConsumerBase {
 	}
 
 	protected async loadBergamotModel(): Promise<string> {
-		// QVAC-10524: Bergamot translation engine support
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: BERGAMOT_EN_FR,
 			modelType: "nmt",
 			modelConfig: {
@@ -174,8 +175,7 @@ export class DesktopConsumer extends ConsumerBase {
 	}
 
 	protected async loadOcrModel(): Promise<string> {
-		// Only need to pass the recognizer - detector is auto-derived
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: OCR_LATIN_RECOGNIZER_1,
 			modelType: "ocr",
 			modelConfig: {

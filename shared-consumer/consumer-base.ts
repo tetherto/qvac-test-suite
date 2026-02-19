@@ -1,5 +1,6 @@
 import type { MqttClient } from "mqtt";
 import type { TestExecutor } from "./types";
+import { SDKProxy } from "./sdk-proxy";
 
 export interface TestMessage {
 	testId: string;
@@ -47,6 +48,7 @@ export abstract class ConsumerBase {
 	protected ttsChatterboxModelId: string | null = null;
 	protected ttsSupertonicModelId: string | null = null;
 	protected executor: any; // TestExecutor type
+	protected sdkProxy: SDKProxy | null = null;
 	protected registered = false;
 	protected testsCompleted = 0;
 	protected testsPassed = 0;
@@ -77,6 +79,56 @@ export abstract class ConsumerBase {
 
 	protected log(message: string) {
 		this.callbacks.log(message);
+	}
+
+	protected getEvictionThreshold(): number {
+		return 3;
+	}
+
+	private async initProxy() {
+		if (this.sdkProxy) return;
+		const { cancel } = await this.getSDKFunctions();
+		this.sdkProxy = new SDKProxy(this.executor.sdk, cancel, this.log.bind(this));
+		this.executor.sdk = this.sdkProxy.createProxy();
+	}
+
+	protected async loadModelTracked(opts: Record<string, unknown>): Promise<string> {
+		await this.initProxy();
+		return this.executor.sdk.loadModel(opts);
+	}
+
+	private async runEviction() {
+		if (!this.sdkProxy) return;
+		const evicted = await this.sdkProxy.evictStaleModels(this.getEvictionThreshold());
+		for (const modelId of evicted) {
+			this.clearModelIdField(modelId);
+		}
+	}
+
+	private clearModelIdField(modelId: string) {
+		const fields = [
+			'llmModelId', 'whisperModelId', 'embeddingModelId', 'translationModelId',
+			'nmtModelId', 'bergamotModelId', 'ocrModelId', 'toolsModelId',
+			'visionModelId', 'ttsChatterboxModelId', 'ttsSupertonicModelId',
+		] as const;
+		const executorSetters: Record<string, string> = {
+			nmtModelId: 'setNmtModelId',
+			bergamotModelId: 'setBergamotModelId',
+			ocrModelId: 'setOcrModelId',
+			toolsModelId: 'setToolsModelId',
+			visionModelId: 'setVisionModelId',
+			ttsChatterboxModelId: 'setTtsChatterboxModelId',
+			ttsSupertonicModelId: 'setTtsSupertonicModelId',
+		};
+		for (const field of fields) {
+			if ((this as any)[field] === modelId) {
+				(this as any)[field] = null;
+				const setter = executorSetters[field];
+				if (setter && typeof this.executor[setter] === 'function') {
+					this.executor[setter](null);
+				}
+			}
+		}
 	}
 
 	protected updateStats(update: Parameters<ConsumerCallbacks['updateStats']>[0]) {
@@ -474,10 +526,15 @@ export abstract class ConsumerBase {
 		}
 
 		this.testCount++;
-		if(this.testCount % 10 === 0 || uniqueTestId.includes("model-load-ocr")) {
-			this.log(`   🔄 Resetting models (test #${this.testCount})...`);
-			await this.reset();
+		await this.initProxy();
+		this.sdkProxy!.setTestCount(this.testCount);
+
+		if (testId.startsWith("http-") && this.sdkProxy) {
+			this.log(`   🔄 Evicting all models before HTTP download test...`);
+			const evicted = await this.sdkProxy.evictAll();
+			for (const id of evicted) this.clearModelIdField(id);
 		}
+
 		const startTime = Date.now();
 
 		try {
@@ -626,6 +683,12 @@ export abstract class ConsumerBase {
 		} finally {
 			this.isProcessingTest = false;
 
+			try {
+				await this.runEviction();
+			} catch (err: any) {
+				this.log(`   ⚠️  Eviction error: ${err.message}`);
+			}
+
 			if (!this.shutdownRequested) {
 				setTimeout(() => this.requestNextTest(), 100);
 			}
@@ -694,20 +757,27 @@ export abstract class ConsumerBase {
 	}
 
 	protected async reset() {
-		const { unloadModel, cancel } = await this.getSDKFunctions();
-
-		type ModelIdKey = 'llmModelId' | 'whisperModelId' | 'embeddingModelId' | 'translationModelId' | 'nmtModelId' | 'bergamotModelId' | 'ocrModelId' | 'toolsModelId' | 'visionModelId' | 'ttsChatterboxModelId' | 'ttsSupertonicModelId';
-		const modelKeys: ModelIdKey[] = ['llmModelId', 'whisperModelId', 'embeddingModelId', 'translationModelId', 'nmtModelId', 'bergamotModelId', 'ocrModelId', 'toolsModelId', 'visionModelId', 'ttsChatterboxModelId', 'ttsSupertonicModelId'];
-		for (const modelKey of modelKeys) {
-			const modelId = this[modelKey];
-			if (modelId) {
-				try {
-					await cancel({ operation: "inference", modelId }).catch(() => {});
-					await unloadModel({ modelId });
-					this[modelKey] = null;
-					this.log(`   🔄 Unloaded ${modelId} model. ${modelKey} = ${this[modelKey as keyof ConsumerBase]}`);
-				} catch (error: any) {
-					this.log(`   ⚠️  Error unloading ${modelId} model: ${error.message}`);
+		if (this.sdkProxy) {
+			const evicted = await this.sdkProxy.evictAll();
+			for (const modelId of evicted) {
+				this.clearModelIdField(modelId);
+				this.log(`   🔄 Unloaded ${modelId}`);
+			}
+		} else {
+			// Fallback if proxy not yet initialized
+			const { unloadModel, cancel } = await this.getSDKFunctions();
+			type ModelIdKey = 'llmModelId' | 'whisperModelId' | 'embeddingModelId' | 'translationModelId' | 'nmtModelId' | 'bergamotModelId' | 'ocrModelId' | 'toolsModelId' | 'visionModelId' | 'ttsChatterboxModelId' | 'ttsSupertonicModelId';
+			const modelKeys: ModelIdKey[] = ['llmModelId', 'whisperModelId', 'embeddingModelId', 'translationModelId', 'nmtModelId', 'bergamotModelId', 'ocrModelId', 'toolsModelId', 'visionModelId', 'ttsChatterboxModelId', 'ttsSupertonicModelId'];
+			for (const modelKey of modelKeys) {
+				const modelId = this[modelKey];
+				if (modelId) {
+					try {
+						await cancel({ operation: "inference", modelId }).catch(() => {});
+						await unloadModel({ modelId });
+						this[modelKey] = null;
+					} catch (error: any) {
+						this.log(`   ⚠️  Error unloading ${modelId}: ${error.message}`);
+					}
 				}
 			}
 		}

@@ -49,7 +49,7 @@ export abstract class TestExecutorBase {
 	protected nmtModelId: string | null = null;
 	protected ocrModelId: string | null = null;
 	protected bergamotModelId: string | null = null; // QVAC-10524
-	protected sdk: SDKFunctions;
+	public sdk: SDKFunctions;
 	protected platform: PlatformFunctions;
 
 	constructor(sdk: SDKFunctions, platform: PlatformFunctions) {
@@ -1161,7 +1161,6 @@ export abstract class TestExecutorBase {
 	// ========== HTTP PATTERN-BASED/ARCHIVE SHARDED EMBEDDING TESTS ==========
 	// Generic handlers that serve both pattern-based sharded and archive tests with URL-based detection
 
-	protected httpEmbedModelCache: Map<string, string> = new Map();
 
 	/** Utility to determine test type from model URL */
 	protected getHttpTestType(modelUrl?: string): { isArchive: boolean; testType: string } {
@@ -1186,8 +1185,6 @@ export abstract class TestExecutorBase {
 				modelSrc: modelUrl,
 				modelType: modelType,
 			});
-
-			this.httpEmbedModelCache.set(modelUrl, loadedModelId);
 
 			const passed = typeof loadedModelId === "string" && loadedModelId.length > 0;
 			return {
@@ -1232,8 +1229,6 @@ export abstract class TestExecutorBase {
 				},
 			});
 
-			this.httpEmbedModelCache.set(modelUrl, loadedModelId);
-
 			// For pattern-based sharded models, require shardInfo; for archives, just progress events
 			const passed = isArchive ? progressEvents.length > 0 : hasShardInfo && progressEvents.length > 0;
 			const shardDetail = isArchive ? '' : `, shardInfo present: ${hasShardInfo}, shards: ${shardCount}`;
@@ -1257,15 +1252,10 @@ export abstract class TestExecutorBase {
 		const { testType } = this.getHttpTestType(modelUrl);
 
 		try {
-			// Use cached model if available, otherwise load
-			let activeModelId = this.httpEmbedModelCache.get(modelUrl);
-			if (!activeModelId) {
-				activeModelId = await this.sdk.loadModel({
-					modelSrc: modelUrl,
-					modelType: "embeddings",
-				});
-				this.httpEmbedModelCache.set(modelUrl, activeModelId);
-			}
+			const activeModelId = await this.sdk.loadModel({
+				modelSrc: modelUrl,
+				modelType: "embeddings",
+			});
 
 			const embeddings = await this.sdk.embed({
 				modelId: activeModelId,

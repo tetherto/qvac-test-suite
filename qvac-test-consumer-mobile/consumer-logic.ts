@@ -1,9 +1,9 @@
 import { ConsumerBase, type ConsumerCallbacks } from "../shared-consumer/consumer-base";
 import type { MqttClient } from "mqtt";
 import {
-	loadModel,
 	unloadModel,
 	cancel,
+	type LoadModelOptions,
 	LLAMA_3_2_1B_INST_Q4_0,
 	WHISPER_TINY,
 	VAD_SILERO_5_1_2,
@@ -33,6 +33,14 @@ const MOBILE_TOOLS_ALLOWED = new Set([
 ]);
 
 export class MobileConsumer extends ConsumerBase {
+	protected loadModel(opts: LoadModelOptions): Promise<string> {
+		return this.loadModelTracked(opts);
+	}
+
+	protected getEvictionThreshold(): number {
+		return this.platform === "mobile-ios" ? 2 : 3;
+	}
+
 	constructor(
 		client: MqttClient,
 		consumerId: string,
@@ -49,6 +57,14 @@ export class MobileConsumer extends ConsumerBase {
 		"ocr-basic-png",
 	]);
 
+	private static readonly IOS_HTTP_BLACKLIST = new Set([
+		"http-archive-embed-load",
+		"http-archive-embed-progress",
+		"http-archive-embed-inference",
+		"http-sharded-embed-load",
+		"http-sharded-embed-progress",
+	]);
+
 	protected getTestSkipReason(testId: string): string | null {
 		if (testId.startsWith("tools-") && !MOBILE_TOOLS_ALLOWED.has(testId)) {
 			return "SKIP: Tools test disabled on mobile";
@@ -61,18 +77,21 @@ export class MobileConsumer extends ConsumerBase {
 				return "SKIP: OCR test disabled on iOS (OOM)";
 			}
 		}
+		if (this.platform === "mobile-ios" && MobileConsumer.IOS_HTTP_BLACKLIST.has(testId)) {
+			return "SKIP: HTTP test disabled on iOS (OOM)";
+		}
 		return null;
 	}
 
 	protected async loadLlmModel(): Promise<string> {
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: LLAMA_3_2_1B_INST_Q4_0,
 			modelType: "llm",
 		});
 	}
 
 	protected async loadWhisperModel(): Promise<string> {
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: WHISPER_TINY,
 			modelType: "whisper",
 			vadModelSrc: VAD_SILERO_5_1_2,
@@ -99,14 +118,14 @@ export class MobileConsumer extends ConsumerBase {
 	}
 
 	protected async loadEmbeddingModel(): Promise<string> {
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: GTE_LARGE_FP16,
 			modelType: "embeddings",
 		});
 	}
 
 	protected async loadToolsModel(): Promise<string> {
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: QWEN3_1_7B_INST_Q4,
 			modelType: "llm",
 			modelConfig: {
@@ -117,7 +136,7 @@ export class MobileConsumer extends ConsumerBase {
 	}
 
 	protected async loadVisionModel(): Promise<string> {
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: SMOLVLM2_500M_MULTIMODAL_Q8_0,
 			modelType: "llm",
 			projectionModelSrc: MMPROJ_SMOLVLM2_500M_MULTIMODAL_Q8_0,
@@ -129,7 +148,7 @@ export class MobileConsumer extends ConsumerBase {
 
 	protected async loadTtsChatterboxModel(): Promise<string> {
 		const referenceAudioSrc = await this.executor.getAudioFilePath("transcription-short.wav");
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: TTS_TOKENIZER_EN_CHATTERBOX.src,
 			modelType: "tts",
 			modelConfig: {
@@ -146,7 +165,7 @@ export class MobileConsumer extends ConsumerBase {
 	}
 
 	protected async loadTtsSupertonicModel(): Promise<string> {
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: TTS_TOKENIZER_SUPERTONIC.src,
 			modelType: "tts",
 			modelConfig: {
@@ -164,7 +183,7 @@ export class MobileConsumer extends ConsumerBase {
 	protected async loadNmtModel(): Promise<string> {
 		// QVAC-9401: NMT model with generation parameters
 		// QVAC-10524: Added engine: "Opus" (required after QVAC-9526)
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: MARIAN_OPUS_DE_EN_Q4_0,
 			modelType: "nmt",
 			modelConfig: {
@@ -183,7 +202,7 @@ export class MobileConsumer extends ConsumerBase {
 
 	protected async loadBergamotModel(): Promise<string> {
 		// QVAC-10524: Bergamot translation engine support
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: BERGAMOT_EN_FR,
 			modelType: "nmt",
 			modelConfig: {
@@ -196,7 +215,7 @@ export class MobileConsumer extends ConsumerBase {
 
 	protected async loadOcrModel(): Promise<string> {
 		// Only need to pass the recognizer - detector is auto-derived
-		return await loadModel({
+		return await this.loadModel({
 			modelSrc: OCR_LATIN_RECOGNIZER_1,
 			modelType: "ocr",
 			modelConfig: {
