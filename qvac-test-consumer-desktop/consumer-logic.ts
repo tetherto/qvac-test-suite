@@ -12,8 +12,18 @@ import {
 	SMOLVLM2_500M_MULTIMODAL_Q8_0,
 	MMPROJ_SMOLVLM2_500M_MULTIMODAL_Q8_0,
 	MARIAN_OPUS_DE_EN_Q4_0,
-	BERGAMOT_EN_FR, // QVAC-10524: Bergamot translation engine
+	BERGAMOT_EN_FR,
 	OCR_LATIN_RECOGNIZER_1,
+	TTS_TOKENIZER_EN_CHATTERBOX,
+	TTS_SPEECH_ENCODER_EN_CHATTERBOX_FP32,
+	TTS_EMBED_TOKENS_EN_CHATTERBOX_FP32,
+	TTS_CONDITIONAL_DECODER_EN_CHATTERBOX_FP32,
+	TTS_LANGUAGE_MODEL_EN_CHATTERBOX_FP32,
+	TTS_TOKENIZER_SUPERTONIC,
+	TTS_TEXT_ENCODER_SUPERTONIC_FP32,
+	TTS_LATENT_DENOISER_SUPERTONIC_FP32,
+	TTS_VOICE_DECODER_SUPERTONIC_FP32,
+	TTS_VOICE_STYLE_SUPERTONIC,
 } from "@tetherto/sdk-mono";
 
 export class DesktopConsumer extends ConsumerBase {
@@ -96,8 +106,38 @@ export class DesktopConsumer extends ConsumerBase {
 		});
 	}
 
-	protected async loadTtsModel(): Promise<string> {
-		throw new Error("TTS tests are disabled");
+	protected async loadTtsChatterboxModel(): Promise<string> {
+		const referenceAudioSrc = await this.executor.getAudioFilePath("transcription-short.wav");
+		return await loadModel({
+			modelSrc: TTS_TOKENIZER_EN_CHATTERBOX.src,
+			modelType: "tts",
+			modelConfig: {
+				ttsEngine: "chatterbox",
+				language: "en",
+				ttsTokenizerSrc: TTS_TOKENIZER_EN_CHATTERBOX.src,
+				ttsSpeechEncoderSrc: TTS_SPEECH_ENCODER_EN_CHATTERBOX_FP32.src,
+				ttsEmbedTokensSrc: TTS_EMBED_TOKENS_EN_CHATTERBOX_FP32.src,
+				ttsConditionalDecoderSrc: TTS_CONDITIONAL_DECODER_EN_CHATTERBOX_FP32.src,
+				ttsLanguageModelSrc: TTS_LANGUAGE_MODEL_EN_CHATTERBOX_FP32.src,
+				referenceAudioSrc,
+			},
+		});
+	}
+
+	protected async loadTtsSupertonicModel(): Promise<string> {
+		return await loadModel({
+			modelSrc: TTS_TOKENIZER_SUPERTONIC.src,
+			modelType: "tts",
+			modelConfig: {
+				ttsEngine: "supertonic",
+				language: "en",
+				ttsTokenizerSrc: TTS_TOKENIZER_SUPERTONIC.src,
+				ttsTextEncoderSrc: TTS_TEXT_ENCODER_SUPERTONIC_FP32.src,
+				ttsLatentDenoiserSrc: TTS_LATENT_DENOISER_SUPERTONIC_FP32.src,
+				ttsVoiceDecoderSrc: TTS_VOICE_DECODER_SUPERTONIC_FP32.src,
+				ttsVoiceSrc: TTS_VOICE_STYLE_SUPERTONIC.src,
+			},
+		});
 	}
 
 	protected async loadNmtModel(): Promise<string> {

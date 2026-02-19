@@ -1995,7 +1995,7 @@ export class TestBuilder {
 				},
 				expectedOutcome: "pass",
 			}),
-			dependency: "tts",
+			dependency: "tts-supertonic",
 			estimatedDurationMs: 10000,
 		};
 	}
@@ -2845,13 +2845,13 @@ export class TestBuilder {
 		};
 	}
 
-	// ========== QVAC-9403: TTS STACK OVERFLOW PREVENTION TESTS ==========
+	// ========== TTS TESTS - Chatterbox (voice cloning) ==========
 
-	buildTtsShortTextTest(): TestDefinition {
+	buildTtsChatterboxShortTextTest(): TestDefinition {
 		return {
-			testId: "tts-short-text",
+			testId: "tts-chatterbox-short-text",
 			payload: JSON.stringify({
-				testId: "tts-short-text",
+				testId: "tts-chatterbox-short-text",
 				params: {
 					text: "Hello, how are you today?",
 					stream: false,
@@ -2862,431 +2862,150 @@ export class TestBuilder {
 				},
 				expectedOutcome: "pass",
 			}),
-			dependency: "tts",
-			estimatedDurationMs: 15000,
-		};
-	}
-
-	buildTtsMediumTextTest(): TestDefinition {
-		return {
-			testId: "tts-medium-text",
-			payload: JSON.stringify({
-				testId: "tts-medium-text",
-				params: {
-					text: "This is a test of the Text-to-Speech system. It should generate clear and natural sounding audio output from the provided text input.",
-					stream: false,
-				},
-				expectation: {
-					validation: "audio-generated",
-					minSamples: 500,
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 20000,
-		};
-	}
-
-	buildTtsLongTextTest(): TestDefinition {
-		return {
-			testId: "tts-long-text",
-			payload: JSON.stringify({
-				testId: "tts-long-text",
-				params: {
-					text: "QVAC SDK is the canonical entry point to QVAC. Written in TypeScript, it provides all QVAC capabilities through a unified interface while also abstracting away the complexity of running your application in a JS environment other than Bare. Supported JS environments include Bare, Node.js, Expo and Bun. The SDK is designed to be flexible and extensible, allowing developers to integrate advanced AI capabilities into their applications with minimal effort.",
-					stream: false,
-				},
-				expectation: {
-					validation: "audio-generated",
-					minSamples: 1000,
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
+			dependency: "tts-chatterbox",
 			estimatedDurationMs: 30000,
 		};
 	}
 
-	buildTtsVeryLongTextTest(): TestDefinition {
+	buildTtsChatterboxMediumTextTest(): TestDefinition {
 		return {
-			testId: "tts-very-long-text",
+			testId: "tts-chatterbox-medium-text",
 			payload: JSON.stringify({
-				testId: "tts-very-long-text",
+				testId: "tts-chatterbox-medium-text",
 				params: {
-					text: "The QVAC SDK provides a comprehensive suite of tools and capabilities for building intelligent applications. It includes support for natural language processing, speech recognition, text-to-speech synthesis, machine translation, and much more. The SDK is designed with developer experience in mind, offering clear documentation, extensive examples, and robust error handling. Whether you're building a chatbot, a voice assistant, or a content analysis tool, the QVAC SDK has the features you need to succeed. The architecture is modular and scalable, allowing you to start small and grow your application as your needs evolve. Integration with existing systems is straightforward, thanks to the SDK's flexible API design and comprehensive type definitions.",
+					text: "This is a test of the Chatterbox Text-to-Speech engine. It uses voice cloning with a reference audio file to generate natural sounding speech output.",
 					stream: false,
 				},
 				expectation: {
 					validation: "audio-generated",
-					minSamples: 2000,
+					minSamples: 500,
 				},
 				expectedOutcome: "pass",
 			}),
-			dependency: "tts",
+			dependency: "tts-chatterbox",
 			estimatedDurationMs: 45000,
 		};
 	}
 
-	buildTtsStackOverflowPreventionTest(): TestDefinition {
+	buildTtsChatterboxStreamingTest(): TestDefinition {
 		return {
-			testId: "tts-stack-overflow-prevention",
+			testId: "tts-chatterbox-streaming",
 			payload: JSON.stringify({
-				testId: "tts-stack-overflow-prevention",
+				testId: "tts-chatterbox-streaming",
 				params: {
-					text: "The QVAC SDK is a powerful platform for building intelligent applications with advanced AI capabilities. It provides a comprehensive suite of tools including natural language processing, speech recognition and synthesis, machine translation, and computer vision. The SDK is designed to be developer-friendly with clear documentation and extensive examples. It supports multiple JavaScript environments including Bare, Node.js, Bun, and Expo. The architecture is modular and scalable, allowing applications to start small and grow as needs evolve. Performance optimizations ensure efficient operation even with large-scale workloads. The SDK handles complex AI workflows seamlessly, abstracting away infrastructure complexity while maintaining flexibility and control. Developers can focus on building great user experiences rather than managing AI infrastructure. The text-to-speech system specifically has been optimized to handle long text inputs without stack overflow errors, using efficient buffer management techniques.",
-					stream: false,
-				},
-				expectation: {
-					validation: "audio-generated",
-					minSamples: 3000,
-					noStackOverflow: true,
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 60000,
-		};
-	}
-
-	buildTtsParagraphTextTest(): TestDefinition {
-		return {
-			testId: "tts-paragraph-text",
-			payload: JSON.stringify({
-				testId: "tts-paragraph-text",
-				params: {
-					text: "Text-to-speech technology has come a long way in recent years. Modern systems can produce highly natural sounding speech that is nearly indistinguishable from human voices. This is achieved through advanced neural network architectures and large-scale training on diverse speech datasets. The QVAC SDK leverages these advances to provide high-quality speech synthesis capabilities.",
-					stream: false,
-				},
-				expectation: {
-					validation: "audio-generated",
-					minSamples: 1500,
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 35000,
-		};
-	}
-
-	buildTtsTechnicalTextTest(): TestDefinition {
-		return {
-			testId: "tts-technical-text",
-			payload: JSON.stringify({
-				testId: "tts-technical-text",
-				params: {
-					text: "API endpoints support REST and GraphQL protocols. Authentication uses OAuth 2.0 with JWT tokens. Database queries are optimized with indexes and caching. TypeScript provides static type checking and improved IDE support.",
-					stream: false,
-				},
-				expectation: {
-					validation: "audio-generated",
-					minSamples: 800,
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 25000,
-		};
-	}
-
-	buildTtsStreamingTest(): TestDefinition {
-		return {
-			testId: "tts-streaming",
-			payload: JSON.stringify({
-				testId: "tts-streaming",
-				params: {
-					text: "This is a streaming test for the Text-to-Speech system. The audio should be generated in chunks rather than all at once.",
+					text: "This is a streaming test for the Chatterbox engine.",
 					stream: true,
 				},
 				expectation: {
 					validation: "audio-streamed",
-					minChunks: 2,
+					minChunks: 1,
 				},
 				expectedOutcome: "pass",
 			}),
-			dependency: "tts",
-			estimatedDurationMs: 25000,
+			dependency: "tts-chatterbox",
+			estimatedDurationMs: 30000,
 		};
 	}
 
-	buildTtsNonStreamingTest(): TestDefinition {
+	buildTtsChatterboxEmptyTextErrorTest(): TestDefinition {
 		return {
-			testId: "tts-non-streaming",
+			testId: "tts-chatterbox-empty-text-error",
 			payload: JSON.stringify({
-				testId: "tts-non-streaming",
-				params: {
-					text: "This tests non-streaming mode which should return the complete audio buffer at once.",
-					stream: false,
-				},
-				expectation: {
-					validation: "audio-generated",
-					minSamples: 500,
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 20000,
-		};
-	}
-
-	buildTtsSpecialCharactersTest(): TestDefinition {
-		return {
-			testId: "tts-special-characters",
-			payload: JSON.stringify({
-				testId: "tts-special-characters",
-				params: {
-					text: "Hello! How are you? I'm fine, thanks. Let's test: numbers (123), symbols (@#$), and punctuation...",
-					stream: false,
-				},
-				expectation: {
-					validation: "audio-generated",
-					minSamples: 500,
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 20000,
-		};
-	}
-
-	buildTtsEmptyTextErrorTest(): TestDefinition {
-		return {
-			testId: "tts-empty-text-error",
-			payload: JSON.stringify({
-				testId: "tts-empty-text-error",
+				testId: "tts-chatterbox-empty-text-error",
 				params: {
 					text: "",
 					stream: false,
 				},
 				expectation: {
 					validation: "empty-text-error",
-					// Empty text should either produce an error or handle gracefully
 					allowError: true,
-					errorContains: "append",
 				},
 				expectedOutcome: "pass",
-				debugInfo: "QVAC-9403: Verifies empty text doesn't cause stack overflow or crash",
 			}),
-			dependency: "tts",
+			dependency: "tts-chatterbox",
 			estimatedDurationMs: 5000,
 		};
 	}
 
-	// ========== ADDITIONAL TTS TESTS (QVAC-9403: Comprehensive Coverage) ==========
+	// ========== TTS TESTS - Supertonic (general-purpose) ==========
 
-	buildTtsExtremelyLongTextTest(): TestDefinition {
-		// ~2000 character text to stress test buffer management
-		const extremelyLongText = "The QVAC SDK represents a major advancement in AI development tools. " +
-			"It provides developers with powerful capabilities for building intelligent applications " +
-			"that can understand, process, and generate human language. The SDK supports multiple " +
-			"modalities including text, speech, and images. Text-to-speech functionality allows " +
-			"applications to convert written content into natural sounding audio output. This is " +
-			"achieved through advanced neural network models that have been trained on large datasets " +
-			"of human speech. The resulting audio is highly intelligible and sounds remarkably natural. " +
-			"Performance optimizations ensure that even long text passages can be converted to speech " +
-			"efficiently without causing memory issues or stack overflows. The buffer management system " +
-			"has been carefully designed to handle large audio outputs in a streaming fashion when " +
-			"needed, or to efficiently concatenate smaller chunks for non-streaming mode. This allows " +
-			"developers to choose the approach that best fits their application requirements. Whether " +
-			"building a voice assistant, an audiobook reader, or an accessibility tool, the QVAC SDK " +
-			"provides the foundation for high-quality speech synthesis. The text processing pipeline " +
-			"handles various input types gracefully, including technical content, numbers, special " +
-			"characters, and multilingual text. Error handling is robust, ensuring that edge cases " +
-			"do not cause crashes or unexpected behavior. The SDK continues to evolve with regular " +
-			"updates that improve performance, add new features, and enhance compatibility across " +
-			"different platforms and environments including desktop, mobile, and embedded systems.";
+	buildTtsSupertonicShortTextTest(): TestDefinition {
 		return {
-			testId: "tts-extremely-long-text",
+			testId: "tts-supertonic-short-text",
 			payload: JSON.stringify({
-				testId: "tts-extremely-long-text",
+				testId: "tts-supertonic-short-text",
 				params: {
-					text: extremelyLongText,
+					text: "Hello, how are you today?",
 					stream: false,
 				},
 				expectation: {
 					validation: "audio-generated",
-					minSamples: 5000,
-					noStackOverflow: true,
+					minSamples: 100,
 				},
 				expectedOutcome: "pass",
-				debugInfo: "QVAC-9403: Tests extremely long text without stack overflow",
 			}),
-			dependency: "tts",
-			estimatedDurationMs: 90000,
+			dependency: "tts-supertonic",
+			estimatedDurationMs: 30000,
 		};
 	}
 
-	buildTtsWhitespaceOnlyTest(): TestDefinition {
+	buildTtsSupertonicMediumTextTest(): TestDefinition {
 		return {
-			testId: "tts-whitespace-only",
+			testId: "tts-supertonic-medium-text",
 			payload: JSON.stringify({
-				testId: "tts-whitespace-only",
+				testId: "tts-supertonic-medium-text",
 				params: {
-					text: "   \t\n   ",
+					text: "This is a test of the Supertonic Text-to-Speech engine. It provides general-purpose speech synthesis without requiring a reference audio file for voice cloning.",
 					stream: false,
 				},
 				expectation: {
-					validation: "whitespace-handled",
+					validation: "audio-generated",
+					minSamples: 500,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts-supertonic",
+			estimatedDurationMs: 45000,
+		};
+	}
+
+	buildTtsSupertonicStreamingTest(): TestDefinition {
+		return {
+			testId: "tts-supertonic-streaming",
+			payload: JSON.stringify({
+				testId: "tts-supertonic-streaming",
+				params: {
+					text: "This is a streaming test for the Supertonic engine.",
+					stream: true,
+				},
+				expectation: {
+					validation: "audio-streamed",
+					minChunks: 1,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "tts-supertonic",
+			estimatedDurationMs: 30000,
+		};
+	}
+
+	buildTtsSupertonicEmptyTextErrorTest(): TestDefinition {
+		return {
+			testId: "tts-supertonic-empty-text-error",
+			payload: JSON.stringify({
+				testId: "tts-supertonic-empty-text-error",
+				params: {
+					text: "",
+					stream: false,
+				},
+				expectation: {
+					validation: "empty-text-error",
 					allowError: true,
 				},
 				expectedOutcome: "pass",
-				debugInfo: "QVAC-9403: Verifies whitespace-only doesn't cause stack overflow",
 			}),
-			dependency: "tts",
+			dependency: "tts-supertonic",
 			estimatedDurationMs: 5000,
-		};
-	}
-
-	buildTtsUnicodeTextTest(): TestDefinition {
-		return {
-			testId: "tts-unicode-text",
-			payload: JSON.stringify({
-				testId: "tts-unicode-text",
-				params: {
-					text: "Testing unicode: café, naïve, résumé, über, and emoji 👍",
-					stream: false,
-				},
-				expectation: {
-					validation: "audio-generated",
-					minSamples: 200,
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 20000,
-		};
-	}
-
-	buildTtsNumbersOnlyTest(): TestDefinition {
-		return {
-			testId: "tts-numbers-only",
-			payload: JSON.stringify({
-				testId: "tts-numbers-only",
-				params: {
-					text: "1234567890 42 3.14159 1000000",
-					stream: false,
-				},
-				expectation: {
-					validation: "audio-generated",
-					minSamples: 200,
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 15000,
-		};
-	}
-
-	buildTtsMixedPunctuationTest(): TestDefinition {
-		return {
-			testId: "tts-mixed-punctuation",
-			payload: JSON.stringify({
-				testId: "tts-mixed-punctuation",
-				params: {
-					text: "Wait... what?! Really?? Yes! No. Maybe... okay.",
-					stream: false,
-				},
-				expectation: {
-					validation: "audio-generated",
-					minSamples: 300,
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 15000,
-		};
-	}
-
-	buildTtsRepeatedWordsTest(): TestDefinition {
-		return {
-			testId: "tts-repeated-words",
-			payload: JSON.stringify({
-				testId: "tts-repeated-words",
-				params: {
-					text: "Hello hello hello hello hello. Testing testing testing. One two three.",
-					stream: false,
-				},
-				expectation: {
-					validation: "audio-generated",
-					minSamples: 400,
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 20000,
-		};
-	}
-
-	buildTtsSingleWordTest(): TestDefinition {
-		return {
-			testId: "tts-single-word",
-			payload: JSON.stringify({
-				testId: "tts-single-word",
-				params: {
-					text: "Hello",
-					stream: false,
-				},
-				expectation: {
-					validation: "audio-generated",
-					minSamples: 50,
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 10000,
-		};
-	}
-
-	buildTtsSentenceBoundariesTest(): TestDefinition {
-		return {
-			testId: "tts-sentence-boundaries",
-			payload: JSON.stringify({
-				testId: "tts-sentence-boundaries",
-				params: {
-					text: "First sentence. Second sentence! Third sentence? Fourth sentence. Fifth sentence.",
-					stream: false,
-				},
-				expectation: {
-					validation: "audio-generated",
-					minSamples: 400,
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 20000,
-		};
-	}
-
-	buildTtsLargeBufferNonStreamingTest(): TestDefinition {
-		// ~1500 character text - specifically tests the stack overflow prevention in non-streaming mode
-		const largeBufferText = "This is a comprehensive test of the text-to-speech system's ability to handle " +
-			"large audio buffer generation in non-streaming mode. The system must efficiently manage " +
-			"memory and avoid stack overflow errors when generating extended audio content. Modern " +
-			"speech synthesis systems use neural networks to produce natural sounding voices. These " +
-			"networks process text input through multiple stages including text normalization, phoneme " +
-			"conversion, and acoustic feature generation. The final audio waveform is synthesized " +
-			"from these features using vocoders or direct waveform prediction. Buffer management is " +
-			"critical for handling long texts because the audio output can be significantly larger " +
-			"than the input text. Efficient algorithms must be used to prevent memory exhaustion " +
-			"and stack overflow conditions. The QVAC SDK implements these optimizations to ensure " +
-			"reliable operation across different platforms and device capabilities.";
-		return {
-			testId: "tts-large-buffer-non-streaming",
-			payload: JSON.stringify({
-				testId: "tts-large-buffer-non-streaming",
-				params: {
-					text: largeBufferText,
-					stream: false,
-				},
-				expectation: {
-					validation: "audio-generated",
-					minSamples: 4000,
-					noStackOverflow: true,
-				},
-				expectedOutcome: "pass",
-				debugInfo: "QVAC-9403: Critical test for large buffer handling without stack overflow",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 75000,
 		};
 	}
 
@@ -5089,29 +4808,19 @@ export class TestBuilder {
 	// tests.push(this.buildVisionErrorMissingImageTest());
 	// tests.push(this.buildVisionImageBase64Test());
 
-	// ========== TEXT-TO-SPEECH (TTS) TESTS ==========
-	// Skipped: incoming SDK has different TTS implementation, will be handled separately
-	// if (section === "all" || section === "tts") {
-	// 	tests.push(this.buildTtsShortTextTest());
-	// 	tests.push(this.buildTtsMediumTextTest());
-	// 	tests.push(this.buildTtsLongTextTest());
-	// 	tests.push(this.buildTtsVeryLongTextTest());
-	// 	tests.push(this.buildTtsStackOverflowPreventionTest());
-	// 	tests.push(this.buildTtsExtremelyLongTextTest());
-	// 	tests.push(this.buildTtsLargeBufferNonStreamingTest());
-	// 	tests.push(this.buildTtsParagraphTextTest());
-	// 	tests.push(this.buildTtsTechnicalTextTest());
-	// 	tests.push(this.buildTtsNonStreamingTest());
-	// 	tests.push(this.buildTtsSpecialCharactersTest());
-	// 	tests.push(this.buildTtsUnicodeTextTest());
-	// 	tests.push(this.buildTtsNumbersOnlyTest());
-	// 	tests.push(this.buildTtsMixedPunctuationTest());
-	// 	tests.push(this.buildTtsSingleWordTest());
-	// 	tests.push(this.buildTtsRepeatedWordsTest());
-	// 	tests.push(this.buildTtsSentenceBoundariesTest());
-	// 	tests.push(this.buildTtsEmptyTextErrorTest());
-	// 	tests.push(this.buildTtsWhitespaceOnlyTest());
-	// }
+	// ========== TEXT-TO-SPEECH (TTS) TESTS - Chatterbox + Supertonic engines ==========
+	if (section === "all" || section === "tts") {
+		console.log("\n🔊 Adding Text-to-Speech Tests (Chatterbox + Supertonic)");
+		tests.push(this.buildTtsChatterboxShortTextTest());
+		tests.push(this.buildTtsChatterboxMediumTextTest());
+		tests.push(this.buildTtsChatterboxStreamingTest());
+		tests.push(this.buildTtsChatterboxEmptyTextErrorTest());
+		tests.push(this.buildTtsSupertonicShortTextTest());
+		tests.push(this.buildTtsSupertonicMediumTextTest());
+		tests.push(this.buildTtsSupertonicStreamingTest());
+		tests.push(this.buildTtsSupertonicEmptyTextErrorTest());
+		console.log("   ✅ Added 8 TTS tests (4 Chatterbox + 4 Supertonic)");
+	}
 
 	// Embedding tests
 		if (section === "all" || section === "embedding") {
@@ -9041,324 +8750,5 @@ export class TestBuilder {
 		};
 	}
 
-	// ========== TEXT-TO-SPEECH (TTS) TESTS (P1 - High Priority) ==========
-	// Audio generation from text
-
-	buildTtsSimpleTextTest(): TestDefinition {
-		return {
-			testId: "tts-simple-text",
-			payload: JSON.stringify({
-				testId: "tts-simple-text",
-				params: {
-					text: "Hello, world!",
-					voice: "default"
-				},
-				expectation: {
-					validation: "audio-generated",
-					minDuration: 0.5,
-					maxDuration: 10
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 15000,
-		};
-	}
-
-	buildTtsLongTextOldTest(): TestDefinition {
-		const longText = "The quick brown fox jumps over the lazy dog. ".repeat(20);
-		return {
-			testId: "tts-long-text-old",
-			payload: JSON.stringify({
-				testId: "tts-long-text",
-				params: {
-					text: longText,
-					voice: "default"
-				},
-				expectation: {
-					validation: "audio-generated",
-					minDuration: 10,
-					maxDuration: 120
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 60000,
-		};
-	}
-
-	buildTtsMultipleVoicesTest(): TestDefinition {
-		return {
-			testId: "tts-multiple-voices",
-			payload: JSON.stringify({
-				testId: "tts-multiple-voices",
-				params: {
-					text: "Testing different voices.",
-					voices: ["male", "female", "neutral"]
-				},
-				expectation: {
-					validation: "multiple-audio-outputs",
-					count: 3
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 30000,
-		};
-	}
-
-	buildTtsSpeechRateTest(): TestDefinition {
-		return {
-			testId: "tts-speech-rate",
-			payload: JSON.stringify({
-				testId: "tts-speech-rate",
-				params: {
-					text: "This is a test of speech rate control.",
-					voice: "default",
-					rate: 1.5  // 1.5x faster
-				},
-				expectation: {
-					validation: "audio-generated",
-					minDuration: 0.5,
-					maxDuration: 10
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 15000,
-		};
-	}
-
-	buildTtsPitchControlTest(): TestDefinition {
-		return {
-			testId: "tts-pitch-control",
-			payload: JSON.stringify({
-				testId: "tts-pitch-control",
-				params: {
-					text: "Testing pitch control.",
-					voice: "default",
-					pitch: 1.2  // 20% higher pitch
-				},
-				expectation: {
-					validation: "audio-generated",
-					minDuration: 0.5,
-					maxDuration: 10
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 15000,
-		};
-	}
-
-	buildTtsSpecialCharactersOldTest(): TestDefinition {
-		return {
-			testId: "tts-special-characters-old",
-			payload: JSON.stringify({
-				testId: "tts-special-characters-old",
-				params: {
-					text: "Hello! How are you? I'm fine, thanks... What about $100 or 50%?",
-					voice: "default"
-				},
-				expectation: {
-					validation: "audio-generated",
-					minDuration: 1,
-					maxDuration: 15
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 20000,
-		};
-	}
-
-	buildTtsNumbersAndDatesTest(): TestDefinition {
-		return {
-			testId: "tts-numbers-and-dates",
-			payload: JSON.stringify({
-				testId: "tts-numbers-and-dates",
-				params: {
-					text: "The meeting is on January 15th, 2024 at 3:30 PM. Please call 555-1234.",
-					voice: "default"
-				},
-				expectation: {
-					validation: "audio-generated",
-					minDuration: 2,
-					maxDuration: 15
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 20000,
-		};
-	}
-
-	buildTtsMultilingualTest(): TestDefinition {
-		return {
-			testId: "tts-multilingual",
-			payload: JSON.stringify({
-				testId: "tts-multilingual",
-				params: {
-					text: "Hello. Bonjour. Hola. こんにちは。",
-					voice: "default",
-					language: "auto"
-				},
-				expectation: {
-					validation: "audio-generated",
-					minDuration: 1,
-					maxDuration: 15
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 25000,
-		};
-	}
-
-	buildTtsOutputFormatWavTest(): TestDefinition {
-		return {
-			testId: "tts-output-format-wav",
-			payload: JSON.stringify({
-				testId: "tts-output-format-wav",
-				params: {
-					text: "Testing WAV output.",
-					voice: "default",
-					format: "wav"
-				},
-				expectation: {
-					validation: "audio-format",
-					format: "wav"
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 15000,
-		};
-	}
-
-	buildTtsOutputFormatMp3Test(): TestDefinition {
-		return {
-			testId: "tts-output-format-mp3",
-			payload: JSON.stringify({
-				testId: "tts-output-format-mp3",
-				params: {
-					text: "Testing MP3 output.",
-					voice: "default",
-					format: "mp3"
-				},
-				expectation: {
-					validation: "audio-format",
-					format: "mp3"
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 15000,
-		};
-	}
-
-	buildTtsStreamingOldTest(): TestDefinition {
-		return {
-			testId: "tts-streaming-old",
-			payload: JSON.stringify({
-				testId: "tts-streaming-old",
-				params: {
-					text: "This is a test of streaming text-to-speech.",
-					voice: "default",
-					stream: true
-				},
-				expectation: {
-					validation: "streaming-audio",
-					minChunks: 5
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 20000,
-		};
-	}
-
-	buildTtsErrorEmptyTextTest(): TestDefinition {
-		return {
-			testId: "tts-error-empty-text",
-			payload: JSON.stringify({
-				testId: "tts-error-empty-text",
-				params: {
-					text: "",
-					voice: "default"
-				},
-				expectation: {
-					validation: "throws-error",
-					errorContains: "text"
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 5000,
-		};
-	}
-
-	buildTtsErrorInvalidVoiceTest(): TestDefinition {
-		return {
-			testId: "tts-error-invalid-voice",
-			payload: JSON.stringify({
-				testId: "tts-error-invalid-voice",
-				params: {
-					text: "Testing invalid voice.",
-					voice: "nonexistent-voice-xyz"
-				},
-				expectation: {
-					validation: "throws-error",
-					errorContains: "voice"
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 5000,
-		};
-	}
-
-	buildTtsErrorExtremeRateTest(): TestDefinition {
-		return {
-			testId: "tts-error-extreme-rate",
-			payload: JSON.stringify({
-				testId: "tts-error-extreme-rate",
-				params: {
-					text: "Testing extreme speech rate.",
-					voice: "default",
-					rate: 10.0  // Unrealistically fast
-				},
-				expectation: {
-					validation: "throws-error",
-					errorContains: "rate"
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 5000,
-		};
-	}
-
-	buildTtsSSMLSupportTest(): TestDefinition {
-		return {
-			testId: "tts-ssml-support",
-			payload: JSON.stringify({
-				testId: "tts-ssml-support",
-				params: {
-					text: "<speak><prosody rate='slow'>Hello</prosody> <break time='500ms'/> <prosody rate='fast'>world</prosody></speak>",
-					voice: "default",
-					format: "ssml"
-				},
-				expectation: {
-					validation: "audio-generated",
-					minDuration: 1,
-					maxDuration: 10
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "tts",
-			estimatedDurationMs: 20000,
-		};
-	}
 }
 

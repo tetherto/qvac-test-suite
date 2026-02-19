@@ -53,3 +53,6 @@ bare/backup/backup-share.bundle.js
 # Expo prebuild auto-generated folders
 android/
 ios/
+
+# QVAC SDK bundler outputs
+qvac/

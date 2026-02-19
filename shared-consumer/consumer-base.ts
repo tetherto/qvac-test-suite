@@ -21,6 +21,7 @@ export interface ConsumerCallbacks {
 		testsCompleted?: number;
 		testsPassed?: number;
 		testsFailed?: number;
+		testsSkipped?: number;
 		totalTests?: number;
 		currentTest?: string;
 		isComplete?: boolean;
@@ -43,12 +44,14 @@ export abstract class ConsumerBase {
 	protected ocrModelId: string | null = null;
 	protected toolsModelId: string | null = null;
 	protected visionModelId: string | null = null;
-	protected ttsModelId: string | null = null;
+	protected ttsChatterboxModelId: string | null = null;
+	protected ttsSupertonicModelId: string | null = null;
 	protected executor: any; // TestExecutor type
 	protected registered = false;
 	protected testsCompleted = 0;
 	protected testsPassed = 0;
 	protected testsFailed = 0;
+	protected testsSkipped = 0;
 	protected isProcessingTest = false;
 	protected shutdownRequested = false;
 	protected callbacks: ConsumerCallbacks;
@@ -80,84 +83,47 @@ export abstract class ConsumerBase {
 		this.callbacks.updateStats(update);
 	}
 
-	/**
-	 * Get platform-specific eSpeak-ng-data path
-	 * First checks ESPEAK_DATA_PATH environment variable, then falls back to platform defaults
-	 */
-	protected getESpeakDataPath(): string {
-		// Check environment variable first
-		if (process.env.ESPEAK_DATA_PATH) {
-			return process.env.ESPEAK_DATA_PATH;
-		}
-
-		// Platform-specific default paths
-		const platform = process.platform;
-		const arch = process.arch;
-
-		if (platform === 'win32') {
-			// Windows
-			return 'C:/Program Files/eSpeak NG/espeak-ng-data';
-		} else if (platform === 'darwin') {
-			// macOS - different paths for Intel vs Apple Silicon
-			if (arch === 'arm64') {
-				return '/opt/homebrew/share/espeak-ng-data'; // Apple Silicon (M1/M2/M3)
-			} else {
-				return '/usr/local/share/espeak-ng-data'; // Intel Mac
-			}
-		} else if (platform === 'linux') {
-			// Linux
-			return '/usr/share/espeak-ng-data';
-		} else if (platform === 'android') {
-			// Android - app-specific path (adjust package name as needed)
-			return '/data/data/com.tetherto.qvac/files/espeak-ng-data';
-		} else {
-			// iOS or unknown - fallback to relative path (iOS resolves from app bundle)
-			return 'espeak-ng-data';
-		}
-	}
-
 	// Abstract methods that platforms must implement
 	protected abstract loadLlmModel(): Promise<string>;
 	protected abstract loadWhisperModel(): Promise<string>;
 	protected abstract loadEmbeddingModel(): Promise<string>;
 	protected abstract loadToolsModel(): Promise<string>;
 	protected abstract loadVisionModel(): Promise<string>;
-	protected abstract loadTtsModel(): Promise<string>;
+	protected abstract loadTtsChatterboxModel(): Promise<string>;
+	protected abstract loadTtsSupertonicModel(): Promise<string>;
 	protected abstract loadNmtModel(): Promise<string>;
 	protected abstract loadBergamotModel(): Promise<string>; // QVAC-10524
 	protected abstract loadOcrModel(): Promise<string>;
 
 	// Determine which model type a test needs
-	protected getRequiredModelType(testId: string): 'llm' | 'whisper' | 'embedding' | 'translation' | 'nmt' | 'bergamot' | 'ocr' | 'tools' | 'vision' | 'tts' | null {
+	protected getRequiredModelType(testId: string): 'llm' | 'whisper' | 'embedding' | 'translation' | 'nmt' | 'bergamot' | 'ocr' | 'tools' | 'vision' | 'tts-chatterbox' | 'tts-supertonic' | null {
 		if (testId.startsWith("ocr-") || testId === "model-load-ocr") {
 			return 'ocr';
 		} else if (testId.startsWith("transcription") || testId.startsWith("config-reload")) {
-			// Config reload tests (QVAC-9409) require Whisper model
 			return 'whisper';
 		} else if (testId.startsWith("addon-logging-")) {
-			// Addon logging tests (QVAC-9206) and SDK logging tests (QVAC-9211)
 			if (testId === "addon-logging-llm") return 'llm';
 			if (testId === "addon-logging-embed") return 'embedding';
 			if (testId === "addon-logging-whisper") return 'whisper';
-			if (testId === "addon-logging-tts") return 'tts';
-			if (testId === "addon-logging-sdk-server") return 'llm'; // SDK logs need worker running
-			return 'llm'; // fallback
+			if (testId === "addon-logging-tts") return 'tts-supertonic';
+			if (testId === "addon-logging-sdk-server") return 'llm';
+			return 'llm';
 		} else if (testId.startsWith("bergamot-")) {
-			// QVAC-10524: Bergamot translation tests
 			return 'bergamot';
 		} else if (testId.startsWith("nmt-")) {
 			return 'nmt';
 		} else if (testId.startsWith("translation")) {
 			return 'translation';
 		} else if (testId.startsWith("embed") || testId.startsWith("rag-") || testId.startsWith("http-")) {
-			// http-sharded-embed and http-archive-embed tests load their own model from URL
 			return 'embedding';
 		} else if (testId.startsWith("tools-")) {
 			return 'tools';
 		} else if (testId.startsWith("vision-")) {
 			return 'vision';
-		} else if (testId.startsWith("tts-")) {
-			return 'tts';
+		} else if (testId.startsWith("tts-chatterbox-")) {
+			return 'tts-chatterbox';
+		} else if (testId.startsWith("tts-supertonic-")) {
+			return 'tts-supertonic';
 		} else if (
 			testId.startsWith("completion") ||
 			testId.startsWith("model-load") ||
@@ -286,16 +252,26 @@ export abstract class ConsumerBase {
 			return this.visionModelId;
 		}
 
-		if (requiredModelType === 'tts') {
-			if (!this.ttsModelId) {
-				this.log(`   📦 Loading TTS model (Piper)...`);
-				this.ttsModelId = await this.loadTtsModel();
-				// Set the TTS model ID in the executor
-				if (this.executor.setTtsModelId) {
-					this.executor.setTtsModelId(this.ttsModelId);
+		if (requiredModelType === 'tts-chatterbox') {
+			if (!this.ttsChatterboxModelId) {
+				this.log(`   📦 Loading TTS model (Chatterbox)...`);
+				this.ttsChatterboxModelId = await this.loadTtsChatterboxModel();
+				if (this.executor.setTtsChatterboxModelId) {
+					this.executor.setTtsChatterboxModelId(this.ttsChatterboxModelId);
 				}
 			}
-			return this.ttsModelId;
+			return this.ttsChatterboxModelId;
+		}
+
+		if (requiredModelType === 'tts-supertonic') {
+			if (!this.ttsSupertonicModelId) {
+				this.log(`   📦 Loading TTS model (Supertonic)...`);
+				this.ttsSupertonicModelId = await this.loadTtsSupertonicModel();
+				if (this.executor.setTtsSupertonicModelId) {
+					this.executor.setTtsSupertonicModelId(this.ttsSupertonicModelId);
+				}
+			}
+			return this.ttsSupertonicModelId;
 		}
 
 		return null;
@@ -391,9 +367,27 @@ export abstract class ConsumerBase {
 	}
 
 	protected handleRegistrationAck(message: any) {
-		this.log(`🔌 Registration ack - ${message.totalTests} tests in queue\n`);
 		this.registered = true;
-		this.updateStats({ totalTests: message.totalTests });
+
+		// Restore counters from previously completed tests (crash recovery)
+		if (message.prevCompleted > 0) {
+			this.testsCompleted = message.prevCompleted;
+			this.testsPassed = message.prevPassed || 0;
+			this.testsFailed = message.prevFailed || 0;
+			this.testsSkipped = message.prevSkipped || 0;
+			this.log(`🔌 Reconnected - restored ${message.prevCompleted} previously completed tests`);
+			this.log(`   (${this.testsPassed} passed, ${this.testsFailed} failed, ${this.testsSkipped} skipped)\n`);
+		} else {
+			this.log(`🔌 Registration ack - ${message.totalTests} tests in queue\n`);
+		}
+
+		this.updateStats({
+			totalTests: message.totalTests,
+			testsCompleted: this.testsCompleted,
+			testsPassed: this.testsPassed,
+			testsFailed: this.testsFailed,
+			testsSkipped: this.testsSkipped,
+		});
 		this.requestNextTest();
 	}
 
@@ -453,10 +447,10 @@ export abstract class ConsumerBase {
 		if (skipReason) {
 			this.log(`⏭️  ${testId}: ${skipReason}`);
 			this.testsCompleted++;
-			this.testsPassed++;
+			this.testsSkipped++;
 			this.updateStats({
 				testsCompleted: this.testsCompleted,
-				testsPassed: this.testsPassed,
+				testsSkipped: this.testsSkipped,
 			});
 			this.client.publish(
 				"qvac/results",
@@ -465,10 +459,10 @@ export abstract class ConsumerBase {
 					consumerId: this.consumerId,
 					testId,
 					uniqueTestId,
-					outcome: "success",
+					outcome: "skipped",
 					duration: 0,
 					timestamp: new Date().toISOString(),
-					error: undefined,
+					error: skipReason,
 				}),
 				{ qos: 1 }
 			);
@@ -530,7 +524,8 @@ export abstract class ConsumerBase {
 				else if (modelType === 'nmt') this.nmtModelId = null;
 				else if (modelType === 'bergamot') this.bergamotModelId = null;
 				else if (modelType === 'vision') this.visionModelId = null;
-				else if (modelType === 'tts') this.ttsModelId = null;
+				else if (modelType === 'tts-chatterbox') this.ttsChatterboxModelId = null;
+				else if (modelType === 'tts-supertonic') this.ttsSupertonicModelId = null;
 
 				// Reload model
 				modelId = await this.ensureModelForTest(testId);
@@ -649,7 +644,7 @@ export abstract class ConsumerBase {
 		const isTranscriptionTest = testId.startsWith("transcription-");
 		const isToolsTest = testId.startsWith("tools-");
 		const isEmbeddingTest = testId.startsWith("embed-") || testId.startsWith("rag-");
-		const isTtsTest = testId.startsWith("tts-");
+		const isTtsTest = testId.startsWith("tts-chatterbox-") || testId.startsWith("tts-supertonic-");
 		const isHttpDownloadTest = testId.startsWith("http-sharded-") || testId.startsWith("http-archive-");
 
 		// Mobile devices need more time for heavy operations
@@ -701,8 +696,8 @@ export abstract class ConsumerBase {
 	protected async reset() {
 		const { unloadModel, cancel } = await this.getSDKFunctions();
 
-		type ModelIdKey = 'llmModelId' | 'whisperModelId' | 'embeddingModelId' | 'translationModelId' | 'nmtModelId' | 'bergamotModelId' | 'ocrModelId' | 'toolsModelId' | 'visionModelId' | 'ttsModelId' |'ocrModelId';
-		const modelKeys: ModelIdKey[] = ['llmModelId', 'whisperModelId', 'embeddingModelId', 'translationModelId', 'nmtModelId', 'bergamotModelId', 'ocrModelId', 'toolsModelId', 'visionModelId', 'ttsModelId', 'ocrModelId'];
+		type ModelIdKey = 'llmModelId' | 'whisperModelId' | 'embeddingModelId' | 'translationModelId' | 'nmtModelId' | 'bergamotModelId' | 'ocrModelId' | 'toolsModelId' | 'visionModelId' | 'ttsChatterboxModelId' | 'ttsSupertonicModelId';
+		const modelKeys: ModelIdKey[] = ['llmModelId', 'whisperModelId', 'embeddingModelId', 'translationModelId', 'nmtModelId', 'bergamotModelId', 'ocrModelId', 'toolsModelId', 'visionModelId', 'ttsChatterboxModelId', 'ttsSupertonicModelId'];
 		for (const modelKey of modelKeys) {
 			const modelId = this[modelKey];
 			if (modelId) {

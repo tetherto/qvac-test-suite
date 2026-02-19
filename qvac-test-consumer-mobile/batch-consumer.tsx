@@ -9,6 +9,7 @@ interface BatchStats {
 	testsCompleted: number;
 	testsPassed: number;
 	testsFailed: number;
+	testsSkipped: number;
 	totalTests: number;
 	currentTest: string;
 	isComplete: boolean;
@@ -20,6 +21,7 @@ export default function BatchConsumer() {
 		testsCompleted: 0,
 		testsPassed: 0,
 		testsFailed: 0,
+		testsSkipped: 0,
 		totalTests: 0,
 		currentTest: "",
 		isComplete: false,
@@ -120,16 +122,22 @@ export default function BatchConsumer() {
 			<View style={styles.statsContainer}>
 				<View style={styles.statBox}>
 					<Text style={styles.statValue}>{stats.testsCompleted}</Text>
-					<Text style={styles.statLabel}>Completed</Text>
+					<Text style={styles.statLabel}>Done</Text>
 				</View>
 				<View style={styles.statBox}>
 					<Text style={[styles.statValue, { color: "#4ade80" }]}>{stats.testsPassed}</Text>
-					<Text style={styles.statLabel}>Passed</Text>
+					<Text style={styles.statLabel}>Pass</Text>
 				</View>
 				<View style={styles.statBox}>
 					<Text style={[styles.statValue, { color: "#f87171" }]}>{stats.testsFailed}</Text>
-					<Text style={styles.statLabel}>Failed</Text>
+					<Text style={styles.statLabel}>Fail</Text>
 				</View>
+				{stats.testsSkipped > 0 && (
+					<View style={styles.statBox}>
+						<Text style={[styles.statValue, { color: "#fbbf24" }]}>{stats.testsSkipped}</Text>
+						<Text style={styles.statLabel}>Skip</Text>
+					</View>
+				)}
 				<View style={styles.statBox}>
 					<Text style={styles.statValue}>{stats.totalTests}</Text>
 					<Text style={styles.statLabel}>Total</Text>

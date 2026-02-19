@@ -5,7 +5,7 @@ import * as os from "os";
 export interface ReportTestResult {
 	testId: string;
 	consumerId: string;
-	outcome: "success" | "failure";
+	outcome: "success" | "failure" | "skipped";
 	duration: number;
 	error?: string;
 	output?: string;
@@ -56,7 +56,9 @@ export function generateHtmlReport(data: ReportData): string {
 	const elapsed = (Date.now() - data.startTime) / 1000;
 	const successCount = data.completedTests.filter(t => t.outcome === "success").length;
 	const failureCount = data.completedTests.filter(t => t.outcome === "failure").length;
-	const successRate = data.completedTests.length > 0 ? ((successCount / data.completedTests.length) * 100).toFixed(1) : "0.0";
+	const skippedCount = data.completedTests.filter(t => t.outcome === "skipped").length;
+	const executedCount = successCount + failureCount;
+	const successRate = executedCount > 0 ? ((successCount / executedCount) * 100).toFixed(1) : "0.0";
 	
 	// Group tests by consumer
 	const testsByConsumer = new Map<string, ReportTestResult[]>();
@@ -194,6 +196,8 @@ export function generateHtmlReport(data: ReportData): string {
 		}
 		.badge.success { background: #d1fae5; color: #065f46; }
 		.badge.failure { background: #fee2e2; color: #991b1b; }
+		.badge.skipped { background: #fef3c7; color: #92400e; }
+		.skipped-highlight { background: #fffbeb !important; }
 		.consumer-section { margin-bottom: 30px; }
 		.consumer-header {
 			background: #f3f4f6;
@@ -355,6 +359,10 @@ export function generateHtmlReport(data: ReportData): string {
 				<h3>Failed</h3>
 				<div class="value">${failureCount}</div>
 			</div>
+			${skippedCount > 0 ? `<div class="stat-card" style="border-left: 4px solid #f59e0b;">
+				<h3>Skipped</h3>
+				<div class="value" style="color: #92400e;">${skippedCount}</div>
+			</div>` : ''}
 			<div class="stat-card info">
 				<h3>Success Rate</h3>
 				<div class="value">${successRate}%</div>
@@ -389,6 +397,7 @@ export function generateHtmlReport(data: ReportData): string {
 							<th>Total</th>
 							<th>Passed</th>
 							<th>Failed</th>
+							<th>Skipped</th>
 							<th>Rate</th>
 						</tr>
 					</thead>
@@ -396,13 +405,16 @@ export function generateHtmlReport(data: ReportData): string {
 						${Array.from(testsByCategory.entries()).map(([category, tests]) => {
 							const passed = tests.filter(t => t.outcome === "success").length;
 							const failed = tests.filter(t => t.outcome === "failure").length;
-							const rate = ((passed / tests.length) * 100).toFixed(0);
+							const skipped = tests.filter(t => t.outcome === "skipped").length;
+							const executed = passed + failed;
+							const rate = executed > 0 ? ((passed / executed) * 100).toFixed(0) : "N/A";
 							return `
 							<tr>
 								<td><strong>${category}</strong></td>
 								<td>${tests.length}</td>
 								<td>${passed}</td>
 								<td>${failed}</td>
+								<td>${skipped}</td>
 								<td>${rate}%</td>
 							</tr>`;
 						}).join('')}
@@ -490,6 +502,30 @@ export function generateHtmlReport(data: ReportData): string {
 					</tbody>
 				</table>
 				` : '<p style="margin-top: 20px; color: #10b981; font-weight: 600;">✅ All tests passed!</p>'}
+
+				${skippedCount > 0 ? `
+				<h2 style="margin-top: 30px;">⏭️ Skipped Tests (${skippedCount})</h2>
+				<table>
+					<thead>
+						<tr>
+							<th>Test</th>
+							<th>Consumer</th>
+							<th>Reason</th>
+						</tr>
+					</thead>
+					<tbody>
+						${data.completedTests.filter(t => t.outcome === "skipped").map((test) => {
+							const reason = (test.error || 'No reason given').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+							return `
+						<tr class="skipped-highlight">
+							<td>${test.testId}</td>
+							<td title="${test.consumerId}">${test.consumerId.split('-').slice(1, 3).join('-')}</td>
+							<td>${reason}</td>
+						</tr>`;
+						}).join('')}
+					</tbody>
+				</table>
+				` : ''}
 			</div>
 
 			<!-- Consumer Tabs -->
@@ -497,7 +533,9 @@ export function generateHtmlReport(data: ReportData): string {
 				const consumer = data.consumers.get(consumerId);
 				const passed = tests.filter(t => t.outcome === "success").length;
 				const failed = tests.filter(t => t.outcome === "failure").length;
-				const avgDuration = tests.reduce((sum, t) => sum + t.duration, 0) / tests.length;
+				const skipped = tests.filter(t => t.outcome === "skipped").length;
+				const executed = passed + failed;
+				const avgDuration = executed > 0 ? tests.filter(t => t.outcome !== "skipped").reduce((sum, t) => sum + t.duration, 0) / executed : 0;
 				const shortId = consumerId.split('-').slice(1, 3).join('-');
 				
 				return `
@@ -510,7 +548,8 @@ export function generateHtmlReport(data: ReportData): string {
 							<span>Total Tests: ${tests.length}</span>
 							<span>✅ Passed: ${passed}</span>
 							<span>❌ Failed: ${failed}</span>
-							<span>Success Rate: ${((passed / tests.length) * 100).toFixed(1)}%</span>
+							${skipped > 0 ? `<span>⏭️ Skipped: ${skipped}</span>` : ''}
+							<span>Success Rate: ${executed > 0 ? ((passed / executed) * 100).toFixed(1) : "N/A"}%</span>
 							<span>Avg Duration: ${(avgDuration / 1000).toFixed(1)}s</span>
 						</div>
 					</div>
@@ -567,9 +606,11 @@ export function generateHtmlReport(data: ReportData): string {
 								
 								const detailsCell = test.outcome === 'failure' ? 
 									'<span class="details-toggle" onclick="toggleDetails(\'' + detailsId + '\')">📋 View Complete Log</span>' +
-									'<div id="' + detailsId + '" class="details-content">' + errorDetailsHtml + '</div>' : '✅';
+									'<div id="' + detailsId + '" class="details-content">' + errorDetailsHtml + '</div>' : 
+									test.outcome === 'skipped' ? ('⏭️ ' + (test.error || 'Skipped').replace(/</g, '&lt;').replace(/>/g, '&gt;')) : '✅';
+								const rowClass = test.outcome === 'failure' ? 'failure-highlight' : test.outcome === 'skipped' ? 'skipped-highlight' : '';
 								return `
-							<tr class="${test.outcome === 'failure' ? 'failure-highlight' : ''}">
+							<tr class="${rowClass}">
 								<td>${test.testId}</td>
 								<td><span class="badge ${test.outcome}">${test.outcome.toUpperCase()}</span></td>
 								<td>${(test.duration / 1000).toFixed(2)}s</td>
@@ -641,9 +682,11 @@ export function generateHtmlReport(data: ReportData): string {
 							
 							const detailsCell = test.outcome === 'failure' ? 
 								'<span class="details-toggle" onclick="toggleDetails(\'' + detailsId + '\')">📋 View Complete Log</span>' +
-								'<div id="' + detailsId + '" class="details-content">' + errorDetailsHtml + '</div>' : '✅';
+								'<div id="' + detailsId + '" class="details-content">' + errorDetailsHtml + '</div>' :
+								test.outcome === 'skipped' ? ('⏭️ ' + (test.error || 'Skipped').replace(/</g, '&lt;').replace(/>/g, '&gt;')) : '✅';
+							const rowClass = test.outcome === 'failure' ? 'failure-highlight' : test.outcome === 'skipped' ? 'skipped-highlight' : '';
 							return `
-						<tr class="${test.outcome === 'failure' ? 'failure-highlight' : ''}">
+						<tr class="${rowClass}">
 							<td>${test.testId}</td>
 							<td title="${test.consumerId}">${test.consumerId.split('-').slice(1, 3).join('-')}</td>
 							<td><span class="badge ${test.outcome}">${test.outcome.toUpperCase()}</span></td>

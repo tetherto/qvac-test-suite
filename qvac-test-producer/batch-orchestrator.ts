@@ -34,7 +34,7 @@ interface TestResult {
 	consumerId: string;
 	testId: string;
 	uniqueTestId: string;
-	outcome: "success" | "failure";
+	outcome: "success" | "failure" | "skipped";
 	duration: number;
 	timestamp: string;
 	error?: string;
@@ -156,10 +156,29 @@ export class BatchOrchestrator {
 		console.log(`   ${remaining} tests remaining of ${this.allTestIds.length}`);
 		this.displayStatus();
 
-		// Send acknowledgment
+		// Compute previously completed stats for this consumer (for crash recovery)
+		let prevPassed = 0, prevFailed = 0, prevSkipped = 0;
+		for (const [, result] of this.completedTests) {
+			if (result.consumerId === consumerId) {
+				if (result.outcome === "success") prevPassed++;
+				else if (result.outcome === "failure") prevFailed++;
+				else if (result.outcome === "skipped") prevSkipped++;
+			}
+		}
+		const prevCompleted = prevPassed + prevFailed + prevSkipped;
+
+		// Send acknowledgment with recovery stats
 		this.client.publish(
 			`qvac/register-ack/${consumerId}`,
-			JSON.stringify({ runId: this.runId, status: "registered", totalTests: this.testQueue.length }),
+			JSON.stringify({
+				runId: this.runId,
+				status: "registered",
+				totalTests: this.allTestIds.length,
+				prevCompleted,
+				prevPassed,
+				prevFailed,
+				prevSkipped,
+			}),
 			{ qos: 1 },
 		);
 	}
@@ -273,13 +292,15 @@ export class BatchOrchestrator {
 		this.completedTests.set(consumerSpecificKey, message);
 		this.assignedTests.delete(assignmentKey);
 
-		const statusIcon = outcome === "success" ? "✅" : "❌";
+		const statusIcon = outcome === "success" ? "✅" : outcome === "skipped" ? "⏭️" : "❌";
 		console.log(
 			`${statusIcon} Test ${assignment.testCase.testId} ${outcome} (${duration}ms) - ${consumerId}`,
 		);
 
-		if (message.error) {
+		if (message.error && outcome !== "skipped") {
 			console.log(`   Error: ${message.error.substring(0, 100)}`);
+		} else if (outcome === "skipped") {
+			console.log(`   Reason: ${message.error || "No reason given"}`);
 		}
 
 		this.displayStatus();
@@ -378,8 +399,15 @@ export class BatchOrchestrator {
 		const timeouts: string[] = [];
 
 		for (const [uniqueTestId, assignment] of this.assignedTests) {
-			const elapsed = now - assignment.assignedAt;
-			if (elapsed > assignment.timeoutMs) {
+			// Use startedAt (when consumer began execution) if available,
+			// so model loading/download time doesn't count toward the timeout.
+			// Fall back to assignedAt with a generous multiplier for unstarted tests.
+			const baseTime = assignment.startedAt ?? assignment.assignedAt;
+			const effectiveTimeout = assignment.startedAt
+				? assignment.timeoutMs
+				: assignment.timeoutMs * 5;
+			const elapsed = now - baseTime;
+			if (elapsed > effectiveTimeout) {
 				timeouts.push(uniqueTestId);
 			}
 		}
@@ -445,10 +473,11 @@ export class BatchOrchestrator {
 
 		const duration = Date.now() - this.startTime;
 		const totalTests = this.completedTests.size;
-		const successCount = Array.from(this.completedTests.values()).filter(
-			r => r.outcome === "success",
-		).length;
-		const failureCount = totalTests - successCount;
+		const results = Array.from(this.completedTests.values());
+		const successCount = results.filter(r => r.outcome === "success").length;
+		const skippedCount = results.filter(r => r.outcome === "skipped").length;
+		const failureCount = results.filter(r => r.outcome === "failure").length;
+		const executedCount = totalTests - skippedCount;
 
 		console.log("\n" + "=".repeat(80));
 		console.log("🎉 BATCH COMPLETE");
@@ -457,7 +486,8 @@ export class BatchOrchestrator {
 		console.log(`📝 Total Tests: ${totalTests}`);
 		console.log(`✅ Passed: ${successCount}`);
 		console.log(`❌ Failed: ${failureCount}`);
-		console.log(`📈 Success Rate: ${((successCount / totalTests) * 100).toFixed(1)}%`);
+		if (skippedCount > 0) console.log(`⏭️  Skipped: ${skippedCount}`);
+		console.log(`📈 Success Rate: ${executedCount > 0 ? ((successCount / executedCount) * 100).toFixed(1) : "0.0"}%`);
 		console.log("\n👥 Consumer Stats:");
 		
 		for (const consumer of this.consumers.values()) {
@@ -501,6 +531,7 @@ export class BatchOrchestrator {
 			totalTests,
 			successCount,
 			failureCount,
+			skippedCount,
 			duration,
 		}), { qos: 1 });
 
@@ -512,32 +543,34 @@ export class BatchOrchestrator {
 	}
 
 	private displayResultsByCategory() {
-		const categories = new Map<string, { passed: number; failed: number }>();
+		const categories = new Map<string, { passed: number; failed: number; skipped: number }>();
 
 		for (const result of this.completedTests.values()) {
-			// Extract category from testId
 			let category = result.testId;
 			if (category.includes("-")) {
 				category = category.split("-")[0] ?? category;
 			}
 
 			if (!categories.has(category)) {
-				categories.set(category, { passed: 0, failed: 0 });
+				categories.set(category, { passed: 0, failed: 0, skipped: 0 });
 			}
 
 			const stats = categories.get(category)!;
 			if (result.outcome === "success") {
 				stats.passed++;
+			} else if (result.outcome === "skipped") {
+				stats.skipped++;
 			} else {
 				stats.failed++;
 			}
 		}
 
 		for (const [category, stats] of categories) {
-			const total = stats.passed + stats.failed;
-			const rate = ((stats.passed / total) * 100).toFixed(0);
+			const executed = stats.passed + stats.failed;
+			const rate = executed > 0 ? ((stats.passed / executed) * 100).toFixed(0) : "N/A";
+			const skippedStr = stats.skipped > 0 ? ` (${stats.skipped} skipped)` : "";
 			console.log(
-				`   ${category.padEnd(20)} ${stats.passed}/${total} (${rate}%)`,
+				`   ${category.padEnd(20)} ${stats.passed}/${executed} (${rate}%)${skippedStr}`,
 			);
 		}
 	}
