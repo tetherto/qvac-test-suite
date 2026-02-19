@@ -129,21 +129,31 @@ export class BatchOrchestrator {
 		const { consumerId, platform } = message;
 		const now = Date.now();
 		
-		this.consumers.set(consumerId, {
-			consumerId,
-			platform,
-			registeredAt: now,
-			lastSeen: now,
-			testsCompleted: 0,
-			testsRunning: 0,
-			completedTestIds: new Set<string>(), // Track which tests this consumer has completed
-		});
+		const existing = this.consumers.get(consumerId);
+		if (existing) {
+			existing.platform = platform;
+			existing.lastSeen = now;
+			existing.testsRunning = 0;
+			console.log(`\n🔌 Consumer re-registered: ${consumerId} (${platform}), preserving ${existing.completedTestIds.size} completed tests`);
+		} else {
+			this.consumers.set(consumerId, {
+				consumerId,
+				platform,
+				registeredAt: now,
+				lastSeen: now,
+				testsCompleted: 0,
+				testsRunning: 0,
+				completedTestIds: new Set<string>(),
+			});
+			console.log(`\n🔌 Consumer registered: ${consumerId} (${platform})`);
+		}
 
 		// Reset queue-empty notification status for this consumer (in case of re-registration)
 		this.consumersNotifiedQueueEmpty.delete(consumerId);
 
-		console.log(`\n🔌 Consumer registered: ${consumerId} (${platform})`);
-		console.log(`   This consumer will run ALL ${this.allTestIds.length} tests`);
+		const consumer = this.consumers.get(consumerId)!;
+		const remaining = this.allTestIds.length - consumer.completedTestIds.size;
+		console.log(`   ${remaining} tests remaining of ${this.allTestIds.length}`);
 		this.displayStatus();
 
 		// Send acknowledgment

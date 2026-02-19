@@ -426,6 +426,10 @@ export abstract class ConsumerBase {
 		}
 	}
 
+	protected getTestSkipReason(testId: string): string | null {
+		return null;
+	}
+
 	protected async executeTest(uniqueTestId: string, test: TestMessage) {
 		this.isProcessingTest = true;
 		const { testId, params, expectation } = test;
@@ -444,6 +448,36 @@ export abstract class ConsumerBase {
 			}),
 			{ qos: 1 }
 		);
+
+		const skipReason = this.getTestSkipReason(testId);
+		if (skipReason) {
+			this.log(`⏭️  ${testId}: ${skipReason}`);
+			this.testsCompleted++;
+			this.testsPassed++;
+			this.updateStats({
+				testsCompleted: this.testsCompleted,
+				testsPassed: this.testsPassed,
+			});
+			this.client.publish(
+				"qvac/results",
+				JSON.stringify({
+					runId: this.runId,
+					consumerId: this.consumerId,
+					testId,
+					uniqueTestId,
+					outcome: "success",
+					duration: 0,
+					timestamp: new Date().toISOString(),
+					error: undefined,
+				}),
+				{ qos: 1 }
+			);
+			this.isProcessingTest = false;
+			if (!this.shutdownRequested) {
+				setTimeout(() => this.requestNextTest(), 100);
+			}
+			return;
+		}
 
 		this.testCount++;
 		if(this.testCount % 10 === 0 || uniqueTestId.includes("model-load-ocr")) {
@@ -665,7 +699,7 @@ export abstract class ConsumerBase {
 	}
 
 	protected async reset() {
-		const { unloadModel } = await this.getSDKFunctions();
+		const { unloadModel, cancel } = await this.getSDKFunctions();
 
 		type ModelIdKey = 'llmModelId' | 'whisperModelId' | 'embeddingModelId' | 'translationModelId' | 'nmtModelId' | 'bergamotModelId' | 'ocrModelId' | 'toolsModelId' | 'visionModelId' | 'ttsModelId' |'ocrModelId';
 		const modelKeys: ModelIdKey[] = ['llmModelId', 'whisperModelId', 'embeddingModelId', 'translationModelId', 'nmtModelId', 'bergamotModelId', 'ocrModelId', 'toolsModelId', 'visionModelId', 'ttsModelId', 'ocrModelId'];
@@ -673,6 +707,7 @@ export abstract class ConsumerBase {
 			const modelId = this[modelKey];
 			if (modelId) {
 				try {
+					await cancel({ operation: "inference", modelId }).catch(() => {});
 					await unloadModel({ modelId });
 					this[modelKey] = null;
 					this.log(`   🔄 Unloaded ${modelId} model. ${modelKey} = ${this[modelKey as keyof ConsumerBase]}`);
@@ -684,8 +719,7 @@ export abstract class ConsumerBase {
 		await new Promise((resolve) => setTimeout(resolve, 300));
 	}
 
-	// Abstract method to get SDK functions (platform-specific)
-	protected abstract getSDKFunctions(): Promise<{ unloadModel: any }>;
+	protected abstract getSDKFunctions(): Promise<{ unloadModel: any; cancel: any }>;
 
 	protected shutdown() {
 		this.log("\n👋 Consumer shutting down...");

@@ -23,6 +23,7 @@ const envSchema = z.object({
   EXPO_PUBLIC_MQTT_PATH: z.string().default(""),
   EXPO_PUBLIC_MQTT_TOPICS: z.string().default("qvac/test"),
   EXPO_PUBLIC_RUN_ID: z.string().default("*"),
+  EXPO_PUBLIC_CONTINUE_ON_RESTART: z.enum(["true", "false"]).default("true"),
 });
 
 const parsed = envSchema.parse({
@@ -36,6 +37,7 @@ const parsed = envSchema.parse({
   EXPO_PUBLIC_MQTT_TOPICS:
     process.env.EXPO_PUBLIC_MQTT_TOPICS ?? process.env.EXPO_PUBLIC_MQTT_TOPIC,
   EXPO_PUBLIC_RUN_ID: process.env.EXPO_PUBLIC_RUN_ID,
+  EXPO_PUBLIC_CONTINUE_ON_RESTART: process.env.EXPO_PUBLIC_CONTINUE_ON_RESTART,
 });
 
 const topics = parsed.EXPO_PUBLIC_MQTT_TOPICS.split(",")
@@ -47,6 +49,7 @@ export const env = {
   topics,
   useSsl: parsed.EXPO_PUBLIC_MQTT_SSL === "true",
   RUN_ID: parsed.EXPO_PUBLIC_RUN_ID,
+  CONTINUE_ON_RESTART: parsed.EXPO_PUBLIC_CONTINUE_ON_RESTART === "true",
 };
 
 export type Env = typeof env;

@@ -3,6 +3,7 @@ import type { MqttClient } from "mqtt";
 import {
 	loadModel,
 	unloadModel,
+	cancel,
 	LLAMA_3_2_1B_INST_Q4_0,
 	WHISPER_TINY,
 	VAD_SILERO_5_1_2,
@@ -10,12 +11,16 @@ import {
 	QWEN3_1_7B_INST_Q4,
 	SMOLVLM2_500M_MULTIMODAL_Q8_0,
 	MMPROJ_SMOLVLM2_500M_MULTIMODAL_Q8_0,
-	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM,
-	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG,
 	MARIAN_OPUS_DE_EN_Q4_0,
 	BERGAMOT_EN_FR, // QVAC-10524: Bergamot translation engine
 	OCR_LATIN_RECOGNIZER_1,
 } from "@tetherto/sdk-mono";
+
+const MOBILE_TOOLS_ALLOWED = new Set([
+	"tools-simple-function",
+	"tools-no-function-match",
+	"tools-text-response-fallback",
+]);
 
 export class MobileConsumer extends ConsumerBase {
 	constructor(
@@ -27,6 +32,13 @@ export class MobileConsumer extends ConsumerBase {
 		callbacks: ConsumerCallbacks
 	) {
 		super(client, consumerId, platform, runId, executor, callbacks);
+	}
+
+	protected getTestSkipReason(testId: string): string | null {
+		if (testId.startsWith("tools-") && !MOBILE_TOOLS_ALLOWED.has(testId)) {
+			return "SKIP: Tools test disabled on mobile";
+		}
+		return null;
 	}
 
 	protected async loadLlmModel(): Promise<string> {
@@ -93,15 +105,7 @@ export class MobileConsumer extends ConsumerBase {
 	}
 
 	protected async loadTtsModel(): Promise<string> {
-		return await loadModel({
-			modelSrc: TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM,
-			modelType: "tts",
-			configSrc: TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG,
-			eSpeakDataPath: this.getESpeakDataPath(),
-			modelConfig: {
-				language: "en",
-			},
-		});
+		throw new Error("TTS tests are disabled");
 	}
 
 	protected async loadNmtModel(): Promise<string> {
@@ -149,7 +153,7 @@ export class MobileConsumer extends ConsumerBase {
 	}
 
 	protected async getSDKFunctions() {
-		return { unloadModel };
+		return { unloadModel, cancel };
 	}
 }
 

@@ -3,6 +3,7 @@ import type { MqttClient } from "mqtt";
 import {
 	loadModel,
 	unloadModel,
+	cancel,
 	LLAMA_3_2_1B_INST_Q4_0,
 	WHISPER_TINY,
 	VAD_SILERO_5_1_2,
@@ -10,8 +11,6 @@ import {
 	QWEN3_1_7B_INST_Q4,
 	SMOLVLM2_500M_MULTIMODAL_Q8_0,
 	MMPROJ_SMOLVLM2_500M_MULTIMODAL_Q8_0,
-	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM,
-	TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG,
 	MARIAN_OPUS_DE_EN_Q4_0,
 	BERGAMOT_EN_FR, // QVAC-10524: Bergamot translation engine
 	OCR_LATIN_RECOGNIZER_1,
@@ -98,15 +97,7 @@ export class DesktopConsumer extends ConsumerBase {
 	}
 
 	protected async loadTtsModel(): Promise<string> {
-		return await loadModel({
-			modelSrc: TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM,
-			modelType: "tts",
-			configSrc: TTS_PIPER_NORMAN_EN_US_ONNX_MEDIUM_CONFIG,
-			eSpeakDataPath: this.getESpeakDataPath(),
-			modelConfig: {
-				language: "en",
-			},
-		});
+		throw new Error("TTS tests are disabled");
 	}
 
 	protected async loadNmtModel(): Promise<string> {
@@ -154,7 +145,7 @@ export class DesktopConsumer extends ConsumerBase {
 	}
 
 	protected async getSDKFunctions() {
-		return { unloadModel };
+		return { unloadModel, cancel };
 	}
 }
 
