@@ -448,8 +448,8 @@ export class TestBuilder {
 				expectation: {
 					type: "error",
 					validation: "throws-structured-error",
-					errorCode: 52401, // EMBED_FAILED - SDK returns this when model doesn't exist
-					errorName: "EMBED_FAILED",
+					errorCode: 52002,
+					errorName: "MODEL_NOT_FOUND",
 				},
 				expectedOutcome: "pass",
 			}),
