@@ -119,28 +119,24 @@ export default function BatchConsumer() {
 				<Text style={styles.consumerId}>{consumerId.substring(0, 40)}...</Text>
 			</View>
 
-			<View style={styles.statsContainer}>
-				<View style={styles.statBox}>
-					<Text style={styles.statValue}>{stats.testsCompleted}</Text>
-					<Text style={styles.statLabel}>Done</Text>
+			<View style={styles.statsRow}>
+				<View style={styles.statBoxWide}>
+					<Text style={styles.statValue}>{stats.testsCompleted} / {stats.totalTests}</Text>
+					<Text style={styles.statLabel}>Progress</Text>
 				</View>
+			</View>
+			<View style={styles.statsRow}>
 				<View style={styles.statBox}>
 					<Text style={[styles.statValue, { color: "#4ade80" }]}>{stats.testsPassed}</Text>
 					<Text style={styles.statLabel}>Pass</Text>
 				</View>
 				<View style={styles.statBox}>
+					<Text style={[styles.statValue, { color: "#fbbf24" }]}>{stats.testsSkipped}</Text>
+					<Text style={styles.statLabel}>Skip</Text>
+				</View>
+				<View style={styles.statBox}>
 					<Text style={[styles.statValue, { color: "#f87171" }]}>{stats.testsFailed}</Text>
 					<Text style={styles.statLabel}>Fail</Text>
-				</View>
-				{stats.testsSkipped > 0 && (
-					<View style={styles.statBox}>
-						<Text style={[styles.statValue, { color: "#fbbf24" }]}>{stats.testsSkipped}</Text>
-						<Text style={styles.statLabel}>Skip</Text>
-					</View>
-				)}
-				<View style={styles.statBox}>
-					<Text style={styles.statValue}>{stats.totalTests}</Text>
-					<Text style={styles.statLabel}>Total</Text>
 				</View>
 			</View>
 
@@ -176,8 +172,9 @@ const styles = StyleSheet.create({
 	header: { marginBottom: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: "#333" },
 	title: { fontSize: 20, fontWeight: "bold", color: "#fff", marginBottom: 4 },
 	consumerId: { fontSize: 10, color: "#888", fontFamily: "monospace" },
-	statsContainer: { flexDirection: "row", justifyContent: "space-around", marginBottom: 20, gap: 8 },
+	statsRow: { flexDirection: "row", justifyContent: "space-around", marginBottom: 8, gap: 8 },
 	statBox: { flex: 1, backgroundColor: "#1a1a1a", padding: 12, borderRadius: 8, alignItems: "center" },
+	statBoxWide: { flex: 2, backgroundColor: "#1a1a1a", padding: 12, borderRadius: 8, alignItems: "center" },
 	statValue: { fontSize: 24, fontWeight: "bold", color: "#60a5fa", marginBottom: 4 },
 	statLabel: { fontSize: 10, color: "#888", textTransform: "uppercase" },
 	currentTestContainer: { backgroundColor: "#1a1a1a", padding: 12, borderRadius: 8, marginBottom: 16 },
