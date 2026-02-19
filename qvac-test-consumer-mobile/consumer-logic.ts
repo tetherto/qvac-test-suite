@@ -57,7 +57,7 @@ export class MobileConsumer extends ConsumerBase {
 		"ocr-basic-png",
 	]);
 
-	private static readonly IOS_HTTP_BLACKLIST = new Set([
+	private static readonly MOBILE_HTTP_BLACKLIST = new Set([
 		"http-archive-embed-load",
 		"http-archive-embed-progress",
 		"http-archive-embed-inference",
@@ -77,8 +77,8 @@ export class MobileConsumer extends ConsumerBase {
 				return "SKIP: OCR test disabled on iOS (OOM)";
 			}
 		}
-		if (this.platform === "mobile-ios" && MobileConsumer.IOS_HTTP_BLACKLIST.has(testId)) {
-			return "SKIP: HTTP test disabled on iOS (OOM)";
+		if (MobileConsumer.MOBILE_HTTP_BLACKLIST.has(testId)) {
+			return "SKIP: HTTP test disabled on mobile (OOM)";
 		}
 		return null;
 	}

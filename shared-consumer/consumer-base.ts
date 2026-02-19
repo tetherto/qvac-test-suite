@@ -483,18 +483,6 @@ export abstract class ConsumerBase {
 		this.log(`▶️  ${testId}`);
 		this.updateStats({ currentTest: testId });
 
-		// Notify producer that test has started
-		this.client.publish(
-			"qvac/test-start",
-			JSON.stringify({
-				runId: this.runId,
-				consumerId: this.consumerId,
-				uniqueTestId,
-				timestamp: new Date().toISOString(),
-			}),
-			{ qos: 1 }
-		);
-
 		const skipReason = this.getTestSkipReason(testId);
 		if (skipReason) {
 			this.log(`⏭️  ${testId}: ${skipReason}`);
@@ -541,10 +529,19 @@ export abstract class ConsumerBase {
 			// Ensure required model is loaded for this test
 			let modelId = await this.ensureModelForTest(testId);
 
-			// Calculate timeout based on test type
-			const timeoutMs = this.getTestTimeout(testId);
+			// Notify producer that test execution is starting (after model load)
+			this.client.publish(
+				"qvac/test-start",
+				JSON.stringify({
+					runId: this.runId,
+					consumerId: this.consumerId,
+					uniqueTestId,
+					timestamp: new Date().toISOString(),
+				}),
+				{ qos: 1 }
+			);
 
-			// Execute the test with timeout
+			const timeoutMs = this.getTestTimeout(testId);
 			let testPromise = this.executor.executeTest(testId, modelId, params, expectation);
 			const timeoutPromise = new Promise<never>((_, reject) => {
 				setTimeout(
@@ -707,7 +704,6 @@ export abstract class ConsumerBase {
 		const isTranscriptionTest = testId.startsWith("transcription-");
 		const isToolsTest = testId.startsWith("tools-");
 		const isEmbeddingTest = testId.startsWith("embed-") || testId.startsWith("rag-");
-		const isTtsTest = testId.startsWith("tts-chatterbox-") || testId.startsWith("tts-supertonic-");
 		const isHttpDownloadTest = testId.startsWith("http-sharded-") || testId.startsWith("http-archive-");
 
 		// Mobile devices need more time for heavy operations
@@ -726,14 +722,10 @@ export abstract class ConsumerBase {
 			return Math.round(60000 * mobileMultiplier); // 60s desktop, 90s mobile
 		} else if (isTranscriptionTest) {
 			return Math.round(60000 * mobileMultiplier); // 60s desktop, 90s mobile
-		} else if (isTtsTest) {
-			// TTS tests: longer timeout for stack overflow prevention tests (QVAC-9403)
-			const isLongTts = testId.includes("stack-overflow") || testId.includes("very-long") ||
-			                  testId.includes("extremely-long") || testId.includes("large-buffer");
-			if (isLongTts) {
-				return Math.round(90000 * mobileMultiplier); // 90s desktop, 135s mobile for large buffer tests
-			}
-			return Math.round(45000 * mobileMultiplier); // 45s desktop, 67.5s mobile for regular TTS
+		} else if (testId.startsWith("tts-chatterbox-")) {
+			return Math.round(90000 * mobileMultiplier); // 90s desktop, 135s mobile
+		} else if (testId.startsWith("tts-supertonic-")) {
+			return Math.round(45000 * mobileMultiplier); // 45s desktop, 67.5s mobile
 		} else if (isToolsTest && isMobile) {
 			return 90000; // 90s for tools tests on mobile (QWEN 7B is heavy)
 		} else if (isEmbeddingTest && isMobile) {

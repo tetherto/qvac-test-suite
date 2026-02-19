@@ -2863,7 +2863,7 @@ export class TestBuilder {
 				expectedOutcome: "pass",
 			}),
 			dependency: "tts-chatterbox",
-			estimatedDurationMs: 30000,
+			estimatedDurationMs: 50000,
 		};
 	}
 
@@ -2883,7 +2883,7 @@ export class TestBuilder {
 				expectedOutcome: "pass",
 			}),
 			dependency: "tts-chatterbox",
-			estimatedDurationMs: 45000,
+			estimatedDurationMs: 60000,
 		};
 	}
 
@@ -2903,7 +2903,7 @@ export class TestBuilder {
 				expectedOutcome: "pass",
 			}),
 			dependency: "tts-chatterbox",
-			estimatedDurationMs: 30000,
+			estimatedDurationMs: 50000,
 		};
 	}
 
@@ -2923,7 +2923,7 @@ export class TestBuilder {
 				expectedOutcome: "pass",
 			}),
 			dependency: "tts-chatterbox",
-			estimatedDurationMs: 5000,
+			estimatedDurationMs: 10000,
 		};
 	}
 
