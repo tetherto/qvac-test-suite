@@ -78,7 +78,7 @@ export class TestExecutor extends TestExecutorBase {
 		return await file.text();
 	}
 
-	protected async getAudioFilePath(filename: string): Promise<string> {
+	public async getAudioFilePath(filename: string): Promise<string> {
 		const audioModule = audio[filename as keyof typeof audio];
 		if (!audioModule) {
 			throw new Error(`Audio file not found: ${filename}`);

@@ -1,5 +1,6 @@
 import type { MqttClient } from "mqtt";
 import type { TestExecutor } from "./types";
+import { SDKProxy } from "./sdk-proxy";
 
 export interface TestMessage {
 	testId: string;
@@ -21,6 +22,7 @@ export interface ConsumerCallbacks {
 		testsCompleted?: number;
 		testsPassed?: number;
 		testsFailed?: number;
+		testsSkipped?: number;
 		totalTests?: number;
 		currentTest?: string;
 		isComplete?: boolean;
@@ -43,12 +45,15 @@ export abstract class ConsumerBase {
 	protected ocrModelId: string | null = null;
 	protected toolsModelId: string | null = null;
 	protected visionModelId: string | null = null;
-	protected ttsModelId: string | null = null;
+	protected ttsChatterboxModelId: string | null = null;
+	protected ttsSupertonicModelId: string | null = null;
 	protected executor: any; // TestExecutor type
+	protected sdkProxy: SDKProxy | null = null;
 	protected registered = false;
 	protected testsCompleted = 0;
 	protected testsPassed = 0;
 	protected testsFailed = 0;
+	protected testsSkipped = 0;
 	protected isProcessingTest = false;
 	protected shutdownRequested = false;
 	protected callbacks: ConsumerCallbacks;
@@ -76,44 +81,58 @@ export abstract class ConsumerBase {
 		this.callbacks.log(message);
 	}
 
-	protected updateStats(update: Parameters<ConsumerCallbacks['updateStats']>[0]) {
-		this.callbacks.updateStats(update);
+	protected getEvictionThreshold(): number {
+		return 3;
 	}
 
-	/**
-	 * Get platform-specific eSpeak-ng-data path
-	 * First checks ESPEAK_DATA_PATH environment variable, then falls back to platform defaults
-	 */
-	protected getESpeakDataPath(): string {
-		// Check environment variable first
-		if (process.env.ESPEAK_DATA_PATH) {
-			return process.env.ESPEAK_DATA_PATH;
+	private async initProxy() {
+		if (this.sdkProxy) return;
+		const { cancel } = await this.getSDKFunctions();
+		this.sdkProxy = new SDKProxy(this.executor.sdk, cancel, this.log.bind(this));
+		this.executor.sdk = this.sdkProxy.createProxy();
+	}
+
+	protected async loadModelTracked(opts: Record<string, unknown>): Promise<string> {
+		await this.initProxy();
+		return this.executor.sdk.loadModel(opts);
+	}
+
+	private async runEviction() {
+		if (!this.sdkProxy) return;
+		const evicted = await this.sdkProxy.evictStaleModels(this.getEvictionThreshold());
+		for (const modelId of evicted) {
+			this.clearModelIdField(modelId);
 		}
+	}
 
-		// Platform-specific default paths
-		const platform = process.platform;
-		const arch = process.arch;
-
-		if (platform === 'win32') {
-			// Windows
-			return 'C:/Program Files/eSpeak NG/espeak-ng-data';
-		} else if (platform === 'darwin') {
-			// macOS - different paths for Intel vs Apple Silicon
-			if (arch === 'arm64') {
-				return '/opt/homebrew/share/espeak-ng-data'; // Apple Silicon (M1/M2/M3)
-			} else {
-				return '/usr/local/share/espeak-ng-data'; // Intel Mac
+	private clearModelIdField(modelId: string) {
+		const fields = [
+			'llmModelId', 'whisperModelId', 'embeddingModelId', 'translationModelId',
+			'nmtModelId', 'bergamotModelId', 'ocrModelId', 'toolsModelId',
+			'visionModelId', 'ttsChatterboxModelId', 'ttsSupertonicModelId',
+		] as const;
+		const executorSetters: Record<string, string> = {
+			nmtModelId: 'setNmtModelId',
+			bergamotModelId: 'setBergamotModelId',
+			ocrModelId: 'setOcrModelId',
+			toolsModelId: 'setToolsModelId',
+			visionModelId: 'setVisionModelId',
+			ttsChatterboxModelId: 'setTtsChatterboxModelId',
+			ttsSupertonicModelId: 'setTtsSupertonicModelId',
+		};
+		for (const field of fields) {
+			if ((this as any)[field] === modelId) {
+				(this as any)[field] = null;
+				const setter = executorSetters[field];
+				if (setter && typeof this.executor[setter] === 'function') {
+					this.executor[setter](null);
+				}
 			}
-		} else if (platform === 'linux') {
-			// Linux
-			return '/usr/share/espeak-ng-data';
-		} else if (platform === 'android') {
-			// Android - app-specific path (adjust package name as needed)
-			return '/data/data/com.tetherto.qvac/files/espeak-ng-data';
-		} else {
-			// iOS or unknown - fallback to relative path (iOS resolves from app bundle)
-			return 'espeak-ng-data';
 		}
+	}
+
+	protected updateStats(update: Parameters<ConsumerCallbacks['updateStats']>[0]) {
+		this.callbacks.updateStats(update);
 	}
 
 	// Abstract methods that platforms must implement
@@ -122,42 +141,41 @@ export abstract class ConsumerBase {
 	protected abstract loadEmbeddingModel(): Promise<string>;
 	protected abstract loadToolsModel(): Promise<string>;
 	protected abstract loadVisionModel(): Promise<string>;
-	protected abstract loadTtsModel(): Promise<string>;
+	protected abstract loadTtsChatterboxModel(): Promise<string>;
+	protected abstract loadTtsSupertonicModel(): Promise<string>;
 	protected abstract loadNmtModel(): Promise<string>;
 	protected abstract loadBergamotModel(): Promise<string>; // QVAC-10524
 	protected abstract loadOcrModel(): Promise<string>;
 
 	// Determine which model type a test needs
-	protected getRequiredModelType(testId: string): 'llm' | 'whisper' | 'embedding' | 'translation' | 'nmt' | 'bergamot' | 'ocr' | 'tools' | 'vision' | 'tts' | null {
+	protected getRequiredModelType(testId: string): 'llm' | 'whisper' | 'embedding' | 'translation' | 'nmt' | 'bergamot' | 'ocr' | 'tools' | 'vision' | 'tts-chatterbox' | 'tts-supertonic' | null {
 		if (testId.startsWith("ocr-") || testId === "model-load-ocr") {
 			return 'ocr';
 		} else if (testId.startsWith("transcription") || testId.startsWith("config-reload")) {
-			// Config reload tests (QVAC-9409) require Whisper model
 			return 'whisper';
 		} else if (testId.startsWith("addon-logging-")) {
-			// Addon logging tests (QVAC-9206) and SDK logging tests (QVAC-9211)
 			if (testId === "addon-logging-llm") return 'llm';
 			if (testId === "addon-logging-embed") return 'embedding';
 			if (testId === "addon-logging-whisper") return 'whisper';
-			if (testId === "addon-logging-tts") return 'tts';
-			if (testId === "addon-logging-sdk-server") return 'llm'; // SDK logs need worker running
-			return 'llm'; // fallback
+			if (testId === "addon-logging-tts") return 'tts-supertonic';
+			if (testId === "addon-logging-sdk-server") return 'llm';
+			return 'llm';
 		} else if (testId.startsWith("bergamot-")) {
-			// QVAC-10524: Bergamot translation tests
 			return 'bergamot';
 		} else if (testId.startsWith("nmt-")) {
 			return 'nmt';
 		} else if (testId.startsWith("translation")) {
 			return 'translation';
 		} else if (testId.startsWith("embed") || testId.startsWith("rag-") || testId.startsWith("http-")) {
-			// http-sharded-embed and http-archive-embed tests load their own model from URL
 			return 'embedding';
 		} else if (testId.startsWith("tools-")) {
 			return 'tools';
 		} else if (testId.startsWith("vision-")) {
 			return 'vision';
-		} else if (testId.startsWith("tts-")) {
-			return 'tts';
+		} else if (testId.startsWith("tts-chatterbox-")) {
+			return 'tts-chatterbox';
+		} else if (testId.startsWith("tts-supertonic-")) {
+			return 'tts-supertonic';
 		} else if (
 			testId.startsWith("completion") ||
 			testId.startsWith("model-load") ||
@@ -286,16 +304,26 @@ export abstract class ConsumerBase {
 			return this.visionModelId;
 		}
 
-		if (requiredModelType === 'tts') {
-			if (!this.ttsModelId) {
-				this.log(`   📦 Loading TTS model (Piper)...`);
-				this.ttsModelId = await this.loadTtsModel();
-				// Set the TTS model ID in the executor
-				if (this.executor.setTtsModelId) {
-					this.executor.setTtsModelId(this.ttsModelId);
+		if (requiredModelType === 'tts-chatterbox') {
+			if (!this.ttsChatterboxModelId) {
+				this.log(`   📦 Loading TTS model (Chatterbox)...`);
+				this.ttsChatterboxModelId = await this.loadTtsChatterboxModel();
+				if (this.executor.setTtsChatterboxModelId) {
+					this.executor.setTtsChatterboxModelId(this.ttsChatterboxModelId);
 				}
 			}
-			return this.ttsModelId;
+			return this.ttsChatterboxModelId;
+		}
+
+		if (requiredModelType === 'tts-supertonic') {
+			if (!this.ttsSupertonicModelId) {
+				this.log(`   📦 Loading TTS model (Supertonic)...`);
+				this.ttsSupertonicModelId = await this.loadTtsSupertonicModel();
+				if (this.executor.setTtsSupertonicModelId) {
+					this.executor.setTtsSupertonicModelId(this.ttsSupertonicModelId);
+				}
+			}
+			return this.ttsSupertonicModelId;
 		}
 
 		return null;
@@ -391,9 +419,27 @@ export abstract class ConsumerBase {
 	}
 
 	protected handleRegistrationAck(message: any) {
-		this.log(`🔌 Registration ack - ${message.totalTests} tests in queue\n`);
 		this.registered = true;
-		this.updateStats({ totalTests: message.totalTests });
+
+		// Restore counters from previously completed tests (crash recovery)
+		if (message.prevCompleted > 0) {
+			this.testsCompleted = message.prevCompleted;
+			this.testsPassed = message.prevPassed || 0;
+			this.testsFailed = message.prevFailed || 0;
+			this.testsSkipped = message.prevSkipped || 0;
+			this.log(`🔌 Reconnected - restored ${message.prevCompleted} previously completed tests`);
+			this.log(`   (${this.testsPassed} passed, ${this.testsFailed} failed, ${this.testsSkipped} skipped)\n`);
+		} else {
+			this.log(`🔌 Registration ack - ${message.totalTests} tests in queue\n`);
+		}
+
+		this.updateStats({
+			totalTests: message.totalTests,
+			testsCompleted: this.testsCompleted,
+			testsPassed: this.testsPassed,
+			testsFailed: this.testsFailed,
+			testsSkipped: this.testsSkipped,
+		});
 		this.requestNextTest();
 	}
 
@@ -437,26 +483,14 @@ export abstract class ConsumerBase {
 		this.log(`▶️  ${testId}`);
 		this.updateStats({ currentTest: testId });
 
-		// Notify producer that test has started
-		this.client.publish(
-			"qvac/test-start",
-			JSON.stringify({
-				runId: this.runId,
-				consumerId: this.consumerId,
-				uniqueTestId,
-				timestamp: new Date().toISOString(),
-			}),
-			{ qos: 1 }
-		);
-
 		const skipReason = this.getTestSkipReason(testId);
 		if (skipReason) {
 			this.log(`⏭️  ${testId}: ${skipReason}`);
 			this.testsCompleted++;
-			this.testsPassed++;
+			this.testsSkipped++;
 			this.updateStats({
 				testsCompleted: this.testsCompleted,
-				testsPassed: this.testsPassed,
+				testsSkipped: this.testsSkipped,
 			});
 			this.client.publish(
 				"qvac/results",
@@ -465,10 +499,10 @@ export abstract class ConsumerBase {
 					consumerId: this.consumerId,
 					testId,
 					uniqueTestId,
-					outcome: "success",
+					outcome: "skipped",
 					duration: 0,
 					timestamp: new Date().toISOString(),
-					error: undefined,
+					error: skipReason,
 				}),
 				{ qos: 1 }
 			);
@@ -480,20 +514,34 @@ export abstract class ConsumerBase {
 		}
 
 		this.testCount++;
-		if(this.testCount % 10 === 0 || uniqueTestId.includes("model-load-ocr")) {
-			this.log(`   🔄 Resetting models (test #${this.testCount})...`);
-			await this.reset();
+		await this.initProxy();
+		this.sdkProxy!.setTestCount(this.testCount);
+
+		if (testId.startsWith("http-") && this.sdkProxy) {
+			this.log(`   🔄 Evicting all models before HTTP download test...`);
+			const evicted = await this.sdkProxy.evictAll();
+			for (const id of evicted) this.clearModelIdField(id);
 		}
+
 		const startTime = Date.now();
 
 		try {
 			// Ensure required model is loaded for this test
 			let modelId = await this.ensureModelForTest(testId);
 
-			// Calculate timeout based on test type
-			const timeoutMs = this.getTestTimeout(testId);
+			// Notify producer that test execution is starting (after model load)
+			this.client.publish(
+				"qvac/test-start",
+				JSON.stringify({
+					runId: this.runId,
+					consumerId: this.consumerId,
+					uniqueTestId,
+					timestamp: new Date().toISOString(),
+				}),
+				{ qos: 1 }
+			);
 
-			// Execute the test with timeout
+			const timeoutMs = this.getTestTimeout(testId);
 			let testPromise = this.executor.executeTest(testId, modelId, params, expectation);
 			const timeoutPromise = new Promise<never>((_, reject) => {
 				setTimeout(
@@ -530,7 +578,8 @@ export abstract class ConsumerBase {
 				else if (modelType === 'nmt') this.nmtModelId = null;
 				else if (modelType === 'bergamot') this.bergamotModelId = null;
 				else if (modelType === 'vision') this.visionModelId = null;
-				else if (modelType === 'tts') this.ttsModelId = null;
+				else if (modelType === 'tts-chatterbox') this.ttsChatterboxModelId = null;
+				else if (modelType === 'tts-supertonic') this.ttsSupertonicModelId = null;
 
 				// Reload model
 				modelId = await this.ensureModelForTest(testId);
@@ -631,6 +680,12 @@ export abstract class ConsumerBase {
 		} finally {
 			this.isProcessingTest = false;
 
+			try {
+				await this.runEviction();
+			} catch (err: any) {
+				this.log(`   ⚠️  Eviction error: ${err.message}`);
+			}
+
 			if (!this.shutdownRequested) {
 				setTimeout(() => this.requestNextTest(), 100);
 			}
@@ -649,7 +704,6 @@ export abstract class ConsumerBase {
 		const isTranscriptionTest = testId.startsWith("transcription-");
 		const isToolsTest = testId.startsWith("tools-");
 		const isEmbeddingTest = testId.startsWith("embed-") || testId.startsWith("rag-");
-		const isTtsTest = testId.startsWith("tts-");
 		const isHttpDownloadTest = testId.startsWith("http-sharded-") || testId.startsWith("http-archive-");
 
 		// Mobile devices need more time for heavy operations
@@ -668,14 +722,10 @@ export abstract class ConsumerBase {
 			return Math.round(60000 * mobileMultiplier); // 60s desktop, 90s mobile
 		} else if (isTranscriptionTest) {
 			return Math.round(60000 * mobileMultiplier); // 60s desktop, 90s mobile
-		} else if (isTtsTest) {
-			// TTS tests: longer timeout for stack overflow prevention tests (QVAC-9403)
-			const isLongTts = testId.includes("stack-overflow") || testId.includes("very-long") ||
-			                  testId.includes("extremely-long") || testId.includes("large-buffer");
-			if (isLongTts) {
-				return Math.round(90000 * mobileMultiplier); // 90s desktop, 135s mobile for large buffer tests
-			}
-			return Math.round(45000 * mobileMultiplier); // 45s desktop, 67.5s mobile for regular TTS
+		} else if (testId.startsWith("tts-chatterbox-")) {
+			return Math.round(90000 * mobileMultiplier); // 90s desktop, 135s mobile
+		} else if (testId.startsWith("tts-supertonic-")) {
+			return Math.round(45000 * mobileMultiplier); // 45s desktop, 67.5s mobile
 		} else if (isToolsTest && isMobile) {
 			return 90000; // 90s for tools tests on mobile (QWEN 7B is heavy)
 		} else if (isEmbeddingTest && isMobile) {
@@ -699,20 +749,27 @@ export abstract class ConsumerBase {
 	}
 
 	protected async reset() {
-		const { unloadModel, cancel } = await this.getSDKFunctions();
-
-		type ModelIdKey = 'llmModelId' | 'whisperModelId' | 'embeddingModelId' | 'translationModelId' | 'nmtModelId' | 'bergamotModelId' | 'ocrModelId' | 'toolsModelId' | 'visionModelId' | 'ttsModelId' |'ocrModelId';
-		const modelKeys: ModelIdKey[] = ['llmModelId', 'whisperModelId', 'embeddingModelId', 'translationModelId', 'nmtModelId', 'bergamotModelId', 'ocrModelId', 'toolsModelId', 'visionModelId', 'ttsModelId', 'ocrModelId'];
-		for (const modelKey of modelKeys) {
-			const modelId = this[modelKey];
-			if (modelId) {
-				try {
-					await cancel({ operation: "inference", modelId }).catch(() => {});
-					await unloadModel({ modelId });
-					this[modelKey] = null;
-					this.log(`   🔄 Unloaded ${modelId} model. ${modelKey} = ${this[modelKey as keyof ConsumerBase]}`);
-				} catch (error: any) {
-					this.log(`   ⚠️  Error unloading ${modelId} model: ${error.message}`);
+		if (this.sdkProxy) {
+			const evicted = await this.sdkProxy.evictAll();
+			for (const modelId of evicted) {
+				this.clearModelIdField(modelId);
+				this.log(`   🔄 Unloaded ${modelId}`);
+			}
+		} else {
+			// Fallback if proxy not yet initialized
+			const { unloadModel, cancel } = await this.getSDKFunctions();
+			type ModelIdKey = 'llmModelId' | 'whisperModelId' | 'embeddingModelId' | 'translationModelId' | 'nmtModelId' | 'bergamotModelId' | 'ocrModelId' | 'toolsModelId' | 'visionModelId' | 'ttsChatterboxModelId' | 'ttsSupertonicModelId';
+			const modelKeys: ModelIdKey[] = ['llmModelId', 'whisperModelId', 'embeddingModelId', 'translationModelId', 'nmtModelId', 'bergamotModelId', 'ocrModelId', 'toolsModelId', 'visionModelId', 'ttsChatterboxModelId', 'ttsSupertonicModelId'];
+			for (const modelKey of modelKeys) {
+				const modelId = this[modelKey];
+				if (modelId) {
+					try {
+						await cancel({ operation: "inference", modelId }).catch(() => {});
+						await unloadModel({ modelId });
+						this[modelKey] = null;
+					} catch (error: any) {
+						this.log(`   ⚠️  Error unloading ${modelId}: ${error.message}`);
+					}
 				}
 			}
 		}

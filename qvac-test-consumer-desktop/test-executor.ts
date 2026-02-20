@@ -64,7 +64,7 @@ export class TestExecutor extends TestExecutorBase {
 		return fs.readFileSync(filePath, "utf-8");
 	}
 
-	protected async getAudioFilePath(filename: string): Promise<string> {
+	public async getAudioFilePath(filename: string): Promise<string> {
 		// Desktop uses direct file path
 		return this.platform.pathResolve(this.platform.getCwd(), "../shared-test-data/audio", filename);
 	}

@@ -44,11 +44,12 @@ export abstract class TestExecutorBase {
 	protected testHandlers: Map<string, (modelId: string | null, params: any, expectation: any) => Promise<TestResult>>;
 	protected visionModelId: string | null = null;
 	protected toolsModelId: string | null = null;
-	protected ttsModelId: string | null = null;
+	protected ttsChatterboxModelId: string | null = null;
+	protected ttsSupertonicModelId: string | null = null;
 	protected nmtModelId: string | null = null;
 	protected ocrModelId: string | null = null;
 	protected bergamotModelId: string | null = null; // QVAC-10524
-	protected sdk: SDKFunctions;
+	public sdk: SDKFunctions;
 	protected platform: PlatformFunctions;
 
 	constructor(sdk: SDKFunctions, platform: PlatformFunctions) {
@@ -60,7 +61,7 @@ export abstract class TestExecutorBase {
 
 	// Abstract methods for platform-specific implementation
 	protected abstract readDocumentFile(filename: string, category: 'documents' | 'code'): Promise<string>;
-	protected abstract getAudioFilePath(filename: string): Promise<string>;
+	public abstract getAudioFilePath(filename: string): Promise<string>;
 	protected abstract getImageFilePath(filename: string): Promise<string>;
 
 	// Set model IDs after they're loaded
@@ -80,8 +81,12 @@ export abstract class TestExecutorBase {
 		this.bergamotModelId = modelId;
 	}
 
-	setTtsModelId(modelId: string) {
-		this.ttsModelId = modelId;
+	setTtsChatterboxModelId(modelId: string) {
+		this.ttsChatterboxModelId = modelId;
+	}
+
+	setTtsSupertonicModelId(modelId: string) {
+		this.ttsSupertonicModelId = modelId;
 	}
 
 	setOcrModelId(modelId: string) {
@@ -318,30 +323,15 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("vision-error-missing-image", this.visionMultimodal.bind(this));
 		this.testHandlers.set("vision-image-base64", this.visionMultimodal.bind(this));
 
-		// ========== TTS (Text-to-Speech) Tests (QVAC-9403: Stack Overflow Prevention) ==========
-		// All TTS tests use 2 consolidated handlers with expectation.validation
-		// Non-streaming: ttsNonStreaming (validation: has-output, empty-or-error, no-stack-overflow)
-		// Streaming: ttsStreaming
-		this.testHandlers.set("tts-short-text", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-medium-text", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-long-text", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-very-long-text", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-stack-overflow-prevention", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-paragraph-text", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-technical-text", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-non-streaming", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-streaming", this.ttsStreaming.bind(this));
-		this.testHandlers.set("tts-special-characters", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-empty-text-error", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-extremely-long-text", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-whitespace-only", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-unicode-text", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-numbers-only", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-mixed-punctuation", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-repeated-words", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-single-word", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-sentence-boundaries", this.ttsNonStreaming.bind(this));
-		this.testHandlers.set("tts-large-buffer-non-streaming", this.ttsNonStreaming.bind(this));
+		// ========== TTS (Text-to-Speech) Tests - Chatterbox + Supertonic engines ==========
+		this.testHandlers.set("tts-chatterbox-short-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-chatterbox-medium-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-chatterbox-streaming", this.ttsStreaming.bind(this));
+		this.testHandlers.set("tts-chatterbox-empty-text-error", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-supertonic-short-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-supertonic-medium-text", this.ttsNonStreaming.bind(this));
+		this.testHandlers.set("tts-supertonic-streaming", this.ttsStreaming.bind(this));
+		this.testHandlers.set("tts-supertonic-empty-text-error", this.ttsNonStreaming.bind(this));
 
 		// Transcription tests
 		this.testHandlers.set("transcription", this.transcription.bind(this));
@@ -1171,7 +1161,6 @@ export abstract class TestExecutorBase {
 	// ========== HTTP PATTERN-BASED/ARCHIVE SHARDED EMBEDDING TESTS ==========
 	// Generic handlers that serve both pattern-based sharded and archive tests with URL-based detection
 
-	protected httpEmbedModelCache: Map<string, string> = new Map();
 
 	/** Utility to determine test type from model URL */
 	protected getHttpTestType(modelUrl?: string): { isArchive: boolean; testType: string } {
@@ -1196,8 +1185,6 @@ export abstract class TestExecutorBase {
 				modelSrc: modelUrl,
 				modelType: modelType,
 			});
-
-			this.httpEmbedModelCache.set(modelUrl, loadedModelId);
 
 			const passed = typeof loadedModelId === "string" && loadedModelId.length > 0;
 			return {
@@ -1242,8 +1229,6 @@ export abstract class TestExecutorBase {
 				},
 			});
 
-			this.httpEmbedModelCache.set(modelUrl, loadedModelId);
-
 			// For pattern-based sharded models, require shardInfo; for archives, just progress events
 			const passed = isArchive ? progressEvents.length > 0 : hasShardInfo && progressEvents.length > 0;
 			const shardDetail = isArchive ? '' : `, shardInfo present: ${hasShardInfo}, shards: ${shardCount}`;
@@ -1267,15 +1252,10 @@ export abstract class TestExecutorBase {
 		const { testType } = this.getHttpTestType(modelUrl);
 
 		try {
-			// Use cached model if available, otherwise load
-			let activeModelId = this.httpEmbedModelCache.get(modelUrl);
-			if (!activeModelId) {
-				activeModelId = await this.sdk.loadModel({
-					modelSrc: modelUrl,
-					modelType: "embeddings",
-				});
-				this.httpEmbedModelCache.set(modelUrl, activeModelId);
-			}
+			const activeModelId = await this.sdk.loadModel({
+				modelSrc: modelUrl,
+				modelType: "embeddings",
+			});
 
 			const embeddings = await this.sdk.embed({
 				modelId: activeModelId,
@@ -4154,7 +4134,7 @@ export abstract class TestExecutorBase {
 					targetId = modelId;
 					break;
 				case "tts":
-					targetId = this.ttsModelId;
+					targetId = this.ttsSupertonicModelId || this.ttsChatterboxModelId;
 					break;
 				case "sdk":
 					// QVAC-9211: SDK server logs use special SDK_LOG_ID
@@ -4207,9 +4187,9 @@ export abstract class TestExecutorBase {
 						await this.sdk.embed({ modelId, content: "test" });
 					} else if (modelType === "whisper" && modelId) {
 						// Whisper needs audio - skip triggering, rely on buffered logs
-					} else if (modelType === "tts" && this.ttsModelId) {
-						// TTS - do a small synthesis
-						const result = this.sdk.textToSpeech({ modelId: this.ttsModelId, text: "hi" });
+					} else if (modelType === "tts" && (this.ttsSupertonicModelId || this.ttsChatterboxModelId)) {
+						const ttsId = this.ttsSupertonicModelId || this.ttsChatterboxModelId;
+						const result = this.sdk.textToSpeech({ modelId: ttsId, text: "hi" });
 						for await (const _ of result.audioStream) { break; }
 					}
 				} catch (e) {
@@ -6032,7 +6012,7 @@ export abstract class TestExecutorBase {
 	 * - "no-stack-overflow": test large text completes without stack overflow (uses noStackOverflow flag)
 	 */
 	protected async ttsNonStreaming(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
-		const ttsModel = this.ttsModelId;
+		const ttsModel = modelId || this.ttsChatterboxModelId || this.ttsSupertonicModelId;
 		if (!ttsModel) {
 			return { output: "No TTS model loaded", passed: false };
 		}
@@ -6106,7 +6086,7 @@ export abstract class TestExecutorBase {
 	 * Tests text-to-speech in streaming mode where audio is generated in chunks.
 	 */
 	protected async ttsStreaming(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
-		const ttsModel = this.ttsModelId;
+		const ttsModel = modelId || this.ttsChatterboxModelId || this.ttsSupertonicModelId;
 		if (!ttsModel) {
 			return { output: "No TTS model loaded", passed: false };
 		}
@@ -6121,26 +6101,19 @@ export abstract class TestExecutorBase {
 				stream: true,
 			});
 
-			let chunkCount = 0;
 			let totalSamples = 0;
 
-			if (result && typeof result[Symbol.asyncIterator] === 'function') {
-				for await (const chunk of result) {
-					chunkCount++;
-					if (chunk.buffer) {
-						totalSamples += chunk.buffer.length || 0;
-					} else if (chunk.length) {
-						totalSamples += chunk.length;
-					}
+			if (result && result.bufferStream && typeof result.bufferStream[Symbol.asyncIterator] === 'function') {
+				for await (const _sample of result.bufferStream) {
+					totalSamples++;
 				}
 			} else if (result && result.buffer) {
 				const audioBuffer = await result.buffer;
-				chunkCount = 1;
 				totalSamples = audioBuffer?.length || 0;
 			}
 
 			return {
-				output: `Received ${chunkCount} chunks with ${totalSamples} total samples`,
+				output: `Streamed ${totalSamples} total samples`,
 				passed: totalSamples > 0
 			};
 		} catch (error: any) {
