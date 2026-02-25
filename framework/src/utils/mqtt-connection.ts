@@ -79,6 +79,8 @@ export function buildMqttOptions(config: MqttConnectionConfig, configDir?: strin
     const resolvedCaPath = resolvePath(caPath);
     if (fs.existsSync(resolvedCaPath)) {
       options.ca = fs.readFileSync(resolvedCaPath);
+    } else {
+      console.warn(`MQTT CA certificate not found at: ${resolvedCaPath}`);
     }
   }
 
@@ -86,6 +88,8 @@ export function buildMqttOptions(config: MqttConnectionConfig, configDir?: strin
     const resolvedCertPath = resolvePath(certPath);
     if (fs.existsSync(resolvedCertPath)) {
       options.cert = fs.readFileSync(resolvedCertPath);
+    } else {
+      console.warn(`MQTT client certificate not found at: ${resolvedCertPath}`);
     }
   }
 
@@ -93,6 +97,8 @@ export function buildMqttOptions(config: MqttConnectionConfig, configDir?: strin
     const resolvedKeyPath = resolvePath(keyPath);
     if (fs.existsSync(resolvedKeyPath)) {
       options.key = fs.readFileSync(resolvedKeyPath);
+    } else {
+      console.warn(`MQTT client key not found at: ${resolvedKeyPath}`);
     }
   }
 
