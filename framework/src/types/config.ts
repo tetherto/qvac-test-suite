@@ -1,14 +1,10 @@
 import { z } from 'zod';
 
 /**
- * Consumer platform configuration schema
+ * Base consumer configuration (shared fields)
  */
-const consumerPlatformSchema = z.object({
-  platforms: z
-    .array(z.enum(['macos', 'windows', 'linux', 'ios', 'android']))
-    .describe('Target platforms for this consumer type'),
-
-  entry: z.string().describe('Entry point file for the consumer (e.g., ./tests/desktop/consumer.ts)'),
+const baseConsumerSchema = z.object({
+  entry: z.string().describe('Entry point file for the consumer'),
 
   include: z.array(z.string()).describe('Glob patterns for files to bundle (e.g., ["./src/**", "./tests/**"])'),
 
@@ -16,6 +12,50 @@ const consumerPlatformSchema = z.object({
     .union([z.literal('auto'), z.record(z.string())])
     .optional()
     .describe('Dependencies to install: "auto" reads from package.json, or provide manual map of package@version'),
+});
+
+/**
+ * Desktop consumer configuration schema
+ */
+const desktopConsumerSchema = baseConsumerSchema.extend({
+  platforms: z.array(z.enum(['macos', 'windows', 'linux'])).describe('Target desktop platforms'),
+});
+
+/**
+ * Mobile consumer configuration schema
+ */
+const mobileConsumerSchema = baseConsumerSchema.extend({
+  platforms: z.array(z.enum(['ios', 'android'])).describe('Target mobile platforms'),
+
+  mobileInit: z
+    .string()
+    .optional()
+    .describe('Optional mobile initialization file (e.g., "./mobile-init.ts") for platform-specific setup'),
+
+  metroConfig: z
+    .string()
+    .optional()
+    .describe('Optional Metro config file (e.g., "./metro.config.js") to override default Metro configuration'),
+
+  assets: z
+    .object({
+      patterns: z
+        .array(z.string())
+        .describe('Glob patterns for assets to bundle (e.g., ["./assets/audio/**/*", "./assets/documents/**/*"])'),
+    })
+    .optional()
+    .describe('Asset bundling configuration'),
+
+  expoPlugins: z
+    .array(z.union([z.string(), z.tuple([z.string(), z.any()])]))
+    .optional()
+    .describe('Additional Expo plugins to include (e.g., ["@qvac/sdk/expo-plugin"])'),
+
+  copyArtifact: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe('Whether to copy built APK/IPA to root of consumer directory (default: true)'),
 });
 
 /**
@@ -38,6 +78,11 @@ const mqttBrokerSchema = z.object({
     .describe(
       'MQTT broker port. Provide directly or { env: "VAR_NAME" }. Defaults: mqtt=1883, mqtts=8883, ws=8080, wss=8081'
     ),
+
+  path: z
+    .union([z.string(), z.object({ env: z.string() })])
+    .optional()
+    .describe('MQTT broker path for WebSocket (e.g., "/mqtt"). Provide directly or { env: "VAR_NAME" }'),
 });
 
 /**
@@ -107,9 +152,13 @@ export const qvacTestConfigSchema = z.object({
 
   consumers: z
     .object({
-      desktop: consumerPlatformSchema.optional().describe('Desktop consumer configuration for Node.js platforms'),
+      desktop: desktopConsumerSchema
+        .optional()
+        .describe('Desktop consumer configuration for Node.js platforms (macOS, Windows, Linux)'),
 
-      mobile: consumerPlatformSchema.optional().describe('Mobile consumer configuration for React Native platforms'),
+      mobile: mobileConsumerSchema
+        .optional()
+        .describe('Mobile consumer configuration for React Native platforms (iOS, Android)'),
     })
     .refine((data) => data.desktop || data.mobile, {
       message: 'At least one consumer type (desktop or mobile) must be configured',

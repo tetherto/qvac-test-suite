@@ -17,6 +17,7 @@ export interface TestAssignment {
 export interface TestResult {
   passed: boolean;
   output: string;
+  skipped?: boolean;
 }
 
 export interface TestExecutor {
@@ -340,7 +341,10 @@ export class ConsumerBase {
       if (this.callbacks.onShutdown) {
         this.callbacks.onShutdown();
       }
-      process.exit(0);
+      // Only call process.exit in Node.js environment, not React Native
+      if (typeof process !== 'undefined' && typeof process.exit === 'function') {
+        process.exit(0);
+      }
     });
   }
 

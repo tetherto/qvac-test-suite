@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "{{APP_NAME}}",
+    "slug": "{{APP_SLUG}}",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "{{IOS_BUNDLE_ID}}"
+    },
+    "android": {
+      "package": "{{ANDROID_PACKAGE}}",
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "usesCleartextTraffic": true
+    },
+  "plugins": [
+    [
+      "./plugins/withAndroidArchitecture.js",
+      ["arm64-v8a"]
+    ],
+    [
+      "./plugins/withAndroidNdkVersion.js",
+      "29.0.14206865"
+    ],
+    [
+      "expo-build-properties",
+      {
+        "android": {
+          "minSdkVersion": 31,
+          "ndkVersion": "29.0.14206865",
+          "enableProguardInReleaseBuilds": false,
+          "enableShrinkResourcesInReleaseBuilds": false,
+          "enableMinifyInReleaseBuilds": false
+        }
+      }
+    ],
+    "./plugins/withCleartextTraffic.js",
+    "./plugins/withNetworkSecurityConfig.js",
+    "expo-asset"
+  ],
+    "assetBundlePatterns": [
+      "**/*"
+    ]
+  }
+}
+

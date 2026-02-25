@@ -4,6 +4,7 @@ export type { Expectation } from './schemas/expectations.js';
 export type { TestDefinition } from './types/test-definition.js';
 export type { TestExecutor, TestResult } from './core/consumer-base.js';
 export type { TestHandler, TestExecutorConfig } from './types/test-handler.js';
+export type { TestDefinitions, ExtractTest, HandlerFn } from './core/base-executor.js';
 
 // Schema exports (for validation)
 export { expectationSchema } from './schemas/expectations.js';
@@ -29,6 +30,9 @@ export { defineConfig } from './types/config.js';
 export { BatchOrchestrator } from './core/batch-orchestrator.js';
 export { ConsumerBase } from './core/consumer-base.js';
 export { createExecutor } from './core/test-executor.js';
+
+// Executor base classes (desktop-compatible)
+export { BaseExecutor, SkipExecutor } from './core/base-executor.js';
 
 // Utility exports
 export { findConfig, loadConfig } from './utils/config-loader.js';

@@ -52,7 +52,7 @@ export async function runProducer(options: ProducerOptions) {
 
     const consumerTimeoutSec = parseInt(options.consumerTimeout || '30', 10);
 
-    const client = createMqttClient(mqttConfig);
+    const client = createMqttClient(mqttConfig, configDir);
     const orchestrator = new BatchOrchestrator(client, runId, false, consumerTimeoutSec);
 
     orchestrator.buildTestQueue(tests);

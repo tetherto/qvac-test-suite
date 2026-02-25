@@ -1,6 +1,7 @@
 import mqtt, { type IClientOptions } from 'mqtt';
-import * as fs from 'node:fs';
 import { mqttConnectionSchema, type MqttConnectionConfig } from '../schemas/mqtt-config.js';
+import * as path from 'node:path';
+import * as fs from 'node:fs';
 
 export type { MqttConnectionConfig } from '../schemas/mqtt-config.js';
 
@@ -50,7 +51,7 @@ export function buildMqttConnectionConfig(config: any): MqttConnectionConfig {
   });
 }
 
-export function buildMqttOptions(config: MqttConnectionConfig): IClientOptions {
+export function buildMqttOptions(config: MqttConnectionConfig, configDir?: string): IClientOptions {
   const options: IClientOptions = {};
 
   const username = config.username || process.env.MQTT_USERNAME;
@@ -65,16 +66,40 @@ export function buildMqttOptions(config: MqttConnectionConfig): IClientOptions {
   const certPath = config.certPath || process.env.MQTT_CERT_PATH;
   const keyPath = config.keyPath || process.env.MQTT_KEY_PATH;
 
-  if (caPath && fs.existsSync(caPath)) {
-    options.ca = fs.readFileSync(caPath);
+  // Helper to resolve paths relative to config directory
+  const resolvePath = (filePath: string): string => {
+    if (path.isAbsolute(filePath)) {
+      return filePath;
+    }
+    return configDir ? path.resolve(configDir, filePath) : path.resolve(filePath);
+  };
+
+  // Load certificates if paths are provided
+  if (caPath) {
+    const resolvedCaPath = resolvePath(caPath);
+    if (fs.existsSync(resolvedCaPath)) {
+      options.ca = fs.readFileSync(resolvedCaPath);
+    } else {
+      console.warn(`MQTT CA certificate not found at: ${resolvedCaPath}`);
+    }
   }
 
-  if (certPath && fs.existsSync(certPath)) {
-    options.cert = fs.readFileSync(certPath);
+  if (certPath) {
+    const resolvedCertPath = resolvePath(certPath);
+    if (fs.existsSync(resolvedCertPath)) {
+      options.cert = fs.readFileSync(resolvedCertPath);
+    } else {
+      console.warn(`MQTT client certificate not found at: ${resolvedCertPath}`);
+    }
   }
 
-  if (keyPath && fs.existsSync(keyPath)) {
-    options.key = fs.readFileSync(keyPath);
+  if (keyPath) {
+    const resolvedKeyPath = resolvePath(keyPath);
+    if (fs.existsSync(resolvedKeyPath)) {
+      options.key = fs.readFileSync(resolvedKeyPath);
+    } else {
+      console.warn(`MQTT client key not found at: ${resolvedKeyPath}`);
+    }
   }
 
   if (config.rejectUnauthorized !== undefined) {
@@ -104,8 +129,8 @@ export function logMqttConnectionSecurity(brokerUrl: string, options: IClientOpt
   console.log('');
 }
 
-export function createMqttClient(config: MqttConnectionConfig) {
-  const options = buildMqttOptions(config);
+export function createMqttClient(config: MqttConnectionConfig, configDir?: string) {
+  const options = buildMqttOptions(config, configDir);
   logMqttConnectionSecurity(config.brokerUrl, options);
   return mqtt.connect(config.brokerUrl, options);
 }
