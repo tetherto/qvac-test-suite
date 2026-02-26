@@ -129,6 +129,15 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
     // Create output directory
     fs.mkdirSync(outputDir, { recursive: true });
 
+    // Clean generated files to ensure fresh config from current env
+    const generatedFiles = ['consumer-config.ts', 'app.json', 'executor.js', 'assets.ts'];
+    for (const file of generatedFiles) {
+      const filePath = path.join(outputDir, file);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+
     // Copy template files
     console.log('📋 Copying template files...');
     copyTemplateFiles(templateDir, outputDir, mobileConfig.mobileInit, mobileConfig.metroConfig, configDir);
@@ -175,9 +184,9 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
     console.log('📥 Installing dependencies...');
     execSync('npm install', { cwd: outputDir, stdio: 'inherit' });
 
-    // Run expo prebuild
+    // Run expo prebuild (--clean ensures native project reflects current config)
     console.log('\n🔧 Running expo prebuild...');
-    execSync(`npx expo prebuild --platform ${options.platform}`, {
+    execSync(`npx expo prebuild --clean --platform ${options.platform}`, {
       cwd: outputDir,
       stdio: 'inherit',
     });
