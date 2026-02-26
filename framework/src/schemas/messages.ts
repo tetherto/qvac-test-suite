@@ -105,6 +105,7 @@ export const testAssignmentSchema = z.union([
       testId: z.string(),
       params: z.unknown(),
       expectation: z.unknown(),
+      metadata: z.record(z.unknown()).optional(),
     }),
   }),
 ]);

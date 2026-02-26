@@ -4,6 +4,7 @@ export interface TestMessage {
   testId: string;
   params: unknown;
   expectation: unknown;
+  metadata?: Record<string, unknown>;
 }
 
 export interface TestAssignment {
@@ -225,11 +226,7 @@ export class ConsumerBase {
     this.log(`▶️  ${testId}`);
     this.updateStats({ currentTest: testId });
 
-    // Pass test metadata as context
-    const context =
-      (typeof test === 'object' && test !== null && 'metadata' in test
-        ? (test as { metadata?: unknown }).metadata
-        : {}) || {};
+    const context = test.metadata || {};
 
     // Setup phase: runs BEFORE timeout and test-start notification
     if (this.executor.setup) {
@@ -278,7 +275,9 @@ export class ConsumerBase {
     const startTime = Date.now();
 
     try {
-      const timeoutMs = 60000;
+      const metadata = test.metadata || (context as Record<string, unknown>) || {};
+      const estimatedMs = typeof metadata.estimatedDurationMs === 'number' ? metadata.estimatedDurationMs : 0;
+      const timeoutMs = Math.max(estimatedMs * 2, 120000);
 
       const testPromise = this.executor.executeTest(testId, context, params, expectation);
       const timeoutPromise = new Promise<never>((_, reject) => {

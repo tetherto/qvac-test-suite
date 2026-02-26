@@ -185,8 +185,8 @@ export class BatchOrchestrator {
       testCase: nextTest,
       consumerId,
       assignedAt: Date.now(),
-      // Use max of: 2x estimate OR 70s (to match consumer 60s + 10s MQTT buffer)
-      timeoutMs: Math.max(nextTest.estimatedDurationMs * 2, 70000),
+      // 3x estimate min 180s: accounts for setup phase (model loading) + test + buffer
+      timeoutMs: Math.max(nextTest.estimatedDurationMs * 3, 180000),
     };
 
     this.assignedTests.set(nextTest.id, assignment);
@@ -480,6 +480,7 @@ export class BatchOrchestrator {
           testId: test.testId,
           params: test.params,
           expectation: test.expectation,
+          metadata: test.metadata || {},
         }),
         metadata: test.metadata || {},
         estimatedDurationMs: test.metadata?.estimatedDurationMs || 10000,
