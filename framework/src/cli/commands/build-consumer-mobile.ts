@@ -158,9 +158,10 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
       await generateAssetDeclarations(configDir, outputDir, mobileConfig.assets.patterns);
     }
 
-    // Bundle user's executor
+    // Bundle user's executor (include shared code if configured)
     console.log('📦 Bundling executor...');
-    await bundleExecutor(entryPath, outputDir, configDir, mobileConfig.include);
+    const allIncludes = [...mobileConfig.include, ...(config.consumers?.shared?.include ?? [])];
+    await bundleExecutor(entryPath, outputDir, configDir, allIncludes);
 
     // Generate package.json with dependencies
     console.log('📦 Setting up dependencies...');

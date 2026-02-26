@@ -159,6 +159,17 @@ export const qvacTestConfigSchema = z.object({
       mobile: mobileConsumerSchema
         .optional()
         .describe('Mobile consumer configuration for React Native platforms (iOS, Android)'),
+
+      shared: z
+        .object({
+          include: z
+            .array(z.string())
+            .describe(
+              'Glob patterns for shared code included in both desktop and mobile builds (e.g., ["./tests/shared/**"])'
+            ),
+        })
+        .optional()
+        .describe('Shared code configuration included in both desktop and mobile consumer builds'),
     })
     .refine((data) => data.desktop || data.mobile, {
       message: 'At least one consumer type (desktop or mobile) must be configured',
