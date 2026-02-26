@@ -14,6 +14,7 @@ interface BatchStats {
 }
 
 export default function BatchConsumer() {
+  const scrollViewRef = useRef<ScrollView>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [stats, setStats] = useState<BatchStats>({
     testsCompleted: 0,
@@ -33,6 +34,10 @@ export default function BatchConsumer() {
   const updateStats = (update: Partial<BatchStats>) => {
     setStats((prev) => ({ ...prev, ...update }));
   };
+
+  useEffect(() => {
+    scrollViewRef.current?.scrollToEnd({ animated: false });
+  }, [logs]);
 
   return (
     <View style={styles.container}>
@@ -80,6 +85,7 @@ export default function BatchConsumer() {
       <View style={styles.logsContainer}>
         <Text style={styles.logsTitle}>Console Logs</Text>
         <ScrollView
+          ref={scrollViewRef}
           style={styles.logsScroll}
           contentContainerStyle={styles.logsContent}
         >

@@ -32,11 +32,16 @@ export default function BatchConsumer() {
 	});
 	const [runId] = useState(env.RUN_ID);
 	const consumerRef = useRef<MobileConsumer | null>(null);
+	const scrollViewRef = useRef<ScrollView>(null);
 
 	const addLog = (message: string) => {
 		console.log(message);
 		setLogs((prev) => [...prev.slice(-50), message]);
 	};
+
+	useEffect(() => {
+		scrollViewRef.current?.scrollToEnd({ animated: false });
+	}, [logs]);
 
 	useEffect(() => {
 		let client: any;
@@ -155,7 +160,7 @@ export default function BatchConsumer() {
 
 			<View style={styles.logsContainer}>
 				<Text style={styles.logsTitle}>Console Logs</Text>
-				<ScrollView style={styles.logsScroll} contentContainerStyle={styles.logsContent}>
+				<ScrollView ref={scrollViewRef} style={styles.logsScroll} contentContainerStyle={styles.logsContent}>
 					{logs.map((log, index) => (
 						<Text key={index} style={styles.logLine}>
 							{log}
