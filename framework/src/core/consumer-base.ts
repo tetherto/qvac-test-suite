@@ -21,7 +21,9 @@ export interface TestResult {
 }
 
 export interface TestExecutor {
+  setup?(testId: string, context: unknown): Promise<void>;
   executeTest(testId: string, context: unknown, params: unknown, expectation: unknown): Promise<TestResult>;
+  teardown?(testId: string, context: unknown): Promise<void>;
 }
 
 export interface ConsumerCallbacks {
@@ -223,7 +225,45 @@ export class ConsumerBase {
     this.log(`▶️  ${testId}`);
     this.updateStats({ currentTest: testId });
 
-    // Notify producer that test has started
+    // Pass test metadata as context
+    const context =
+      (typeof test === 'object' && test !== null && 'metadata' in test
+        ? (test as { metadata?: unknown }).metadata
+        : {}) || {};
+
+    // Setup phase: runs BEFORE timeout and test-start notification
+    if (this.executor.setup) {
+      try {
+        await this.executor.setup(testId, context);
+      } catch (error: unknown) {
+        const errorMsg = error instanceof Error ? error.message : 'Setup failed';
+        this.log(`❌ ${testId} setup failed: ${errorMsg}`);
+        this.testsCompleted++;
+        this.testsFailed++;
+        this.updateStats({ testsCompleted: this.testsCompleted, testsFailed: this.testsFailed });
+        this.client.publish(
+          'qvac/results',
+          JSON.stringify({
+            runId: this.runId,
+            consumerId: this.consumerId,
+            testId,
+            uniqueTestId,
+            outcome: 'failure',
+            duration: 0,
+            timestamp: new Date().toISOString(),
+            error: `Setup failed: ${errorMsg}`,
+          }),
+          { qos: 1 }
+        );
+        this.isProcessingTest = false;
+        if (!this.shutdownRequested) {
+          setTimeout(() => this.requestNextTest(), 100);
+        }
+        return;
+      }
+    }
+
+    // Notify producer that test execution is starting (after setup)
     this.client.publish(
       'qvac/test-start',
       JSON.stringify({
@@ -238,16 +278,8 @@ export class ConsumerBase {
     const startTime = Date.now();
 
     try {
-      // Default timeout: 60 seconds (could be in metadata if needed)
       const timeoutMs = 60000;
 
-      // Pass test metadata as context
-      const context =
-        (typeof test === 'object' && test !== null && 'metadata' in test
-          ? (test as { metadata?: unknown }).metadata
-          : {}) || {};
-
-      // Execute the test with timeout
       const testPromise = this.executor.executeTest(testId, context, params, expectation);
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error(`Test timeout after ${timeoutMs / 1000}s`)), timeoutMs);
@@ -334,6 +366,16 @@ export class ConsumerBase {
         { qos: 1 }
       );
     } finally {
+      // Teardown phase: runs after test execution regardless of outcome
+      if (this.executor.teardown) {
+        try {
+          await this.executor.teardown(testId, context);
+        } catch (teardownError: unknown) {
+          const msg = teardownError instanceof Error ? teardownError.message : String(teardownError);
+          this.log(`⚠️  ${testId} teardown error: ${msg}`);
+        }
+      }
+
       this.isProcessingTest = false;
 
       if (!this.shutdownRequested) {

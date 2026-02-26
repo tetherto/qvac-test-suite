@@ -19,9 +19,20 @@ class DefaultTestExecutor implements TestExecutor {
     this.handlers = handlers;
   }
 
+  private findHandler(testId: string): TestHandler | undefined {
+    return this.handlers.find((h) => h.pattern.test(testId));
+  }
+
+  async setup(testId: string, context: unknown): Promise<void> {
+    const handler = this.findHandler(testId);
+    if (handler?.setup) {
+      const handlerContext = (context && typeof context === 'object' ? context : {}) as Record<string, unknown>;
+      await handler.setup(testId, handlerContext);
+    }
+  }
+
   async executeTest(testId: string, context: unknown, params: unknown, expectation: Expectation): Promise<TestResult> {
-    // Find matching handler
-    const handler = this.handlers.find((h) => h.pattern.test(testId));
+    const handler = this.findHandler(testId);
 
     if (!handler) {
       return {
@@ -31,7 +42,6 @@ class DefaultTestExecutor implements TestExecutor {
     }
 
     try {
-      // Context is metadata from test definition (Record or empty object)
       const handlerContext = (context && typeof context === 'object' ? context : {}) as Record<string, unknown>;
       return await handler.execute(testId, handlerContext, params, expectation);
     } catch (error: unknown) {
@@ -40,6 +50,14 @@ class DefaultTestExecutor implements TestExecutor {
         passed: false,
         output: `Handler execution failed: ${errorMessage}`,
       };
+    }
+  }
+
+  async teardown(testId: string, context: unknown): Promise<void> {
+    const handler = this.findHandler(testId);
+    if (handler?.teardown) {
+      const handlerContext = (context && typeof context === 'object' ? context : {}) as Record<string, unknown>;
+      await handler.teardown(testId, handlerContext);
     }
   }
 }
