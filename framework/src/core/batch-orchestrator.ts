@@ -247,7 +247,7 @@ export class BatchOrchestrator {
     this.completedTests.set(uniqueTestId, message);
     this.assignedTests.delete(uniqueTestId);
 
-    const statusIcon = outcome === 'success' ? '✅' : '❌';
+    const statusIcon = outcome === 'skipped' ? '⏭️' : outcome === 'success' ? '✅' : '❌';
     console.log(`${statusIcon} Test ${assignment.testCase.testId} ${outcome} (${duration}ms) - ${consumerId}`);
 
     if (message.error) {
@@ -350,8 +350,10 @@ export class BatchOrchestrator {
 
     const duration = Date.now() - this.startTime;
     const totalTests = this.completedTests.size;
-    const successCount = Array.from(this.completedTests.values()).filter((r) => r.outcome === 'success').length;
-    const failureCount = totalTests - successCount;
+    const results = Array.from(this.completedTests.values());
+    const successCount = results.filter((r) => r.outcome === 'success').length;
+    const skippedCount = results.filter((r) => r.outcome === 'skipped').length;
+    const failureCount = results.filter((r) => r.outcome === 'failure').length;
 
     console.log(`\n${'='.repeat(80)}`);
     console.log('🎉 BATCH COMPLETE');
@@ -359,8 +361,9 @@ export class BatchOrchestrator {
     console.log(`⏱️  Total Duration: ${(duration / 1000).toFixed(2)}s`);
     console.log(`📝 Total Tests: ${totalTests}`);
     console.log(`✅ Passed: ${successCount}`);
+    console.log(`⏭️  Skipped: ${skippedCount}`);
     console.log(`❌ Failed: ${failureCount}`);
-    console.log(`📈 Success Rate: ${((successCount / totalTests) * 100).toFixed(1)}%`);
+    console.log(`📈 Success Rate: ${((successCount / Math.max(totalTests - skippedCount, 1)) * 100).toFixed(1)}%`);
     console.log('\n👥 Consumer Stats:');
 
     for (const consumer of this.consumers.values()) {
@@ -398,6 +401,7 @@ export class BatchOrchestrator {
         totalTests,
         successCount,
         failureCount,
+        skippedCount,
         duration,
       }),
       { qos: 1 }
@@ -411,31 +415,33 @@ export class BatchOrchestrator {
   }
 
   private displayResultsByCategory() {
-    const categories = new Map<string, { passed: number; failed: number }>();
+    const categories = new Map<string, { passed: number; failed: number; skipped: number }>();
 
     for (const result of this.completedTests.values()) {
-      // Extract category from testId
       let category = result.testId;
       if (category.includes('-')) {
         category = category.split('-')[0];
       }
 
       if (!categories.has(category)) {
-        categories.set(category, { passed: 0, failed: 0 });
+        categories.set(category, { passed: 0, failed: 0, skipped: 0 });
       }
 
       const stats = categories.get(category)!;
       if (result.outcome === 'success') {
         stats.passed++;
+      } else if (result.outcome === 'skipped') {
+        stats.skipped++;
       } else {
         stats.failed++;
       }
     }
 
     for (const [category, stats] of categories) {
-      const total = stats.passed + stats.failed;
-      const rate = ((stats.passed / total) * 100).toFixed(0);
-      console.log(`   ${category.padEnd(20)} ${stats.passed}/${total} (${rate}%)`);
+      const total = stats.passed + stats.failed + stats.skipped;
+      const rate = ((stats.passed / Math.max(total - stats.skipped, 1)) * 100).toFixed(0);
+      const skipStr = stats.skipped > 0 ? `, ${stats.skipped} skipped` : '';
+      console.log(`   ${category.padEnd(20)} ${stats.passed}/${total} (${rate}%${skipStr})`);
     }
   }
 
@@ -446,12 +452,24 @@ export class BatchOrchestrator {
     let skippedCount = 0;
 
     for (const test of tests) {
-      // Skip tests with skip field
       if (test.skip) {
         skippedCount++;
         console.log(
           `⏭️  Skipping ${test.testId}: ${test.skip.reason}${test.skip.issue ? ` (${test.skip.issue})` : ''}`
         );
+
+        // Record as skipped result so it appears in reports
+        const skipId = `skip-${Date.now()}-${counter++}`;
+        this.completedTests.set(skipId, {
+          runId: this.runId,
+          consumerId: 'producer',
+          testId: test.testId,
+          uniqueTestId: skipId,
+          outcome: 'skipped',
+          duration: 0,
+          timestamp: new Date().toISOString(),
+          error: `${test.skip.reason}${test.skip.issue ? ` (${test.skip.issue})` : ''}`,
+        });
         continue;
       }
 

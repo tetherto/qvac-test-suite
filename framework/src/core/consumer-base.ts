@@ -30,6 +30,7 @@ export interface ConsumerCallbacks {
     testsCompleted?: number;
     testsPassed?: number;
     testsFailed?: number;
+    testsSkipped?: number;
     totalTests?: number;
     currentTest?: string;
     isComplete?: boolean;
@@ -48,6 +49,7 @@ export class ConsumerBase {
   protected testsCompleted = 0;
   protected testsPassed = 0;
   protected testsFailed = 0;
+  protected testsSkipped = 0;
   protected isProcessingTest = false;
   protected shutdownRequested = false;
   protected callbacks: ConsumerCallbacks;
@@ -77,6 +79,7 @@ export class ConsumerBase {
     testsCompleted?: number;
     testsPassed?: number;
     testsFailed?: number;
+    testsSkipped?: number;
     totalTests?: number;
     currentTest?: string;
     isComplete?: boolean;
@@ -253,22 +256,27 @@ export class ConsumerBase {
       const result = await Promise.race([testPromise, timeoutPromise]);
 
       const duration = Date.now() - startTime;
-      const outcome = result.passed ? 'success' : 'failure';
+      const outcome = result.skipped ? 'skipped' : result.passed ? 'success' : 'failure';
 
-      this.log(`${outcome === 'success' ? '✅' : '❌'} ${testId} (${duration}ms)`);
-      if (!result.passed && result.output) {
-        // Show full error output (may be multi-line)
-        const outputLines = result.output.split('\n');
-        if (outputLines.length > 1) {
-          outputLines.forEach((line) => this.log(`   ${line}`));
-        } else {
-          this.log(`   ${result.output}`);
+      if (result.skipped) {
+        this.log(`⏭️  ${testId}: ${result.output}`);
+      } else {
+        this.log(`${outcome === 'success' ? '✅' : '❌'} ${testId} (${duration}ms)`);
+        if (!result.passed && result.output) {
+          const outputLines = result.output.split('\n');
+          if (outputLines.length > 1) {
+            outputLines.forEach((line) => this.log(`   ${line}`));
+          } else {
+            this.log(`   ${result.output}`);
+          }
         }
       }
 
       // Update stats
       this.testsCompleted++;
-      if (outcome === 'success') {
+      if (result.skipped) {
+        this.testsSkipped++;
+      } else if (outcome === 'success') {
         this.testsPassed++;
       } else {
         this.testsFailed++;
@@ -278,6 +286,7 @@ export class ConsumerBase {
         testsCompleted: this.testsCompleted,
         testsPassed: this.testsPassed,
         testsFailed: this.testsFailed,
+        testsSkipped: this.testsSkipped,
       });
 
       // Send result to producer
@@ -289,9 +298,9 @@ export class ConsumerBase {
           testId,
           uniqueTestId,
           outcome,
-          duration,
+          duration: result.skipped ? 0 : duration,
           timestamp: new Date().toISOString(),
-          error: result.passed ? undefined : result.output,
+          error: result.skipped ? result.output : result.passed ? undefined : result.output,
         }),
         { qos: 1 }
       );

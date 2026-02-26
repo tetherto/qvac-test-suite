@@ -7,6 +7,7 @@ interface BatchStats {
   testsCompleted: number;
   testsPassed: number;
   testsFailed: number;
+  testsSkipped: number;
   totalTests: number;
   currentTest: string;
   isComplete: boolean;
@@ -18,6 +19,7 @@ export default function BatchConsumer() {
     testsCompleted: 0,
     testsPassed: 0,
     testsFailed: 0,
+    testsSkipped: 0,
     totalTests: 0,
     currentTest: '',
     isComplete: false,
@@ -41,26 +43,24 @@ export default function BatchConsumer() {
         </Text>
       </View>
 
-      <View style={styles.statsContainer}>
+      <View style={styles.statsRow}>
+        <View style={styles.statBoxWide}>
+          <Text style={styles.statValue}>{stats.testsCompleted} / {stats.totalTests}</Text>
+          <Text style={styles.statLabel}>Progress</Text>
+        </View>
+      </View>
+      <View style={styles.statsRow}>
         <View style={styles.statBox}>
-          <Text style={styles.statValue}>{stats.testsCompleted}</Text>
-          <Text style={styles.statLabel}>Completed</Text>
+          <Text style={[styles.statValue, { color: '#4ade80' }]}>{stats.testsPassed}</Text>
+          <Text style={styles.statLabel}>Pass</Text>
         </View>
         <View style={styles.statBox}>
-          <Text style={[styles.statValue, { color: '#4ade80' }]}>
-            {stats.testsPassed}
-          </Text>
-          <Text style={styles.statLabel}>Passed</Text>
+          <Text style={[styles.statValue, { color: '#fbbf24' }]}>{stats.testsSkipped}</Text>
+          <Text style={styles.statLabel}>Skip</Text>
         </View>
         <View style={styles.statBox}>
-          <Text style={[styles.statValue, { color: '#f87171' }]}>
-            {stats.testsFailed}
-          </Text>
-          <Text style={styles.statLabel}>Failed</Text>
-        </View>
-        <View style={styles.statBox}>
-          <Text style={styles.statValue}>{stats.totalTests}</Text>
-          <Text style={styles.statLabel}>Total</Text>
+          <Text style={[styles.statValue, { color: '#f87171' }]}>{stats.testsFailed}</Text>
+          <Text style={styles.statLabel}>Fail</Text>
         </View>
       </View>
 
@@ -73,7 +73,7 @@ export default function BatchConsumer() {
 
       {stats.isComplete && (
         <View style={styles.completeContainer}>
-          <Text style={styles.completeText}>✅ Batch Complete!</Text>
+          <Text style={styles.completeText}>Batch Complete!</Text>
         </View>
       )}
 
@@ -91,7 +91,6 @@ export default function BatchConsumer() {
         </ScrollView>
       </View>
 
-      {/* Hidden component that handles MQTT connection and test execution */}
       <ConsumerWrapper log={addLog} updateStats={updateStats} />
     </View>
   );
@@ -107,14 +106,21 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 20, fontWeight: 'bold', color: '#fff', marginBottom: 4 },
   device: { fontSize: 12, color: '#888' },
-  statsContainer: {
+  statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: 20,
+    marginBottom: 8,
     gap: 8,
   },
   statBox: {
     flex: 1,
+    backgroundColor: '#1a1a1a',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  statBoxWide: {
+    flex: 2,
     backgroundColor: '#1a1a1a',
     padding: 12,
     borderRadius: 8,
@@ -171,4 +177,3 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
 });
-
