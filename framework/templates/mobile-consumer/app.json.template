@@ -21,19 +21,10 @@
     },
   "plugins": [
     [
-      "./plugins/withAndroidArchitecture.js",
-      ["arm64-v8a"]
-    ],
-    [
-      "./plugins/withAndroidNdkVersion.js",
-      "29.0.14206865"
-    ],
-    [
       "expo-build-properties",
       {
         "android": {
           "minSdkVersion": 31,
-          "ndkVersion": "29.0.14206865",
           "enableProguardInReleaseBuilds": false,
           "enableShrinkResourcesInReleaseBuilds": false,
           "enableMinifyInReleaseBuilds": false
@@ -49,4 +40,3 @@
     ]
   }
 }
-

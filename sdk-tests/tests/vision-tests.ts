@@ -14,7 +14,7 @@ const createVisionTest = (
   imagePath: string,
   expectation:
     | { validation: 'contains-all' | 'contains-any'; contains: string[] }
-    | { validation: 'type'; expectedType: 'string' | 'number' | 'array' | 'embedding' }
+    | { validation: 'type'; expectedType: 'string' | 'number' | 'array' }
 ): TestDefinition => ({
   testId,
   params: {

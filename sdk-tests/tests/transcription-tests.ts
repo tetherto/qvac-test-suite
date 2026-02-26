@@ -6,7 +6,7 @@ const createTranscriptionTest = (
   audioFileName: string,
   expectation:
     | { validation: 'contains-all' | 'contains-any'; contains: string[] }
-    | { validation: 'type'; expectedType: 'string' | 'number' | 'array' | 'embedding' }
+    | { validation: 'type'; expectedType: 'string' | 'number' | 'array' }
     | { validation: 'regex'; pattern: string },
   estimatedDurationMs: number = 30000
 ): TestDefinition => ({

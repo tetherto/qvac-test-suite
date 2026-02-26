@@ -5,7 +5,7 @@ const createOcrTest = (
   imageFileName: string,
   expectation:
     | { validation: 'contains-all' | 'contains-any'; contains: string[] }
-    | { validation: 'type'; expectedType: 'string' | 'number' | 'array' | 'embedding' }
+    | { validation: 'type'; expectedType: 'string' | 'number' | 'array' }
     | { validation: 'regex'; pattern: string },
   options?: { streaming?: boolean; paragraph?: boolean },
   estimatedDurationMs: number = 30000
