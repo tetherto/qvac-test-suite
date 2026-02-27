@@ -77,7 +77,7 @@ export class MobileConsumer extends ConsumerBase {
 		if (MobileConsumer.MOBILE_HTTP_BLACKLIST.has(testId)) {
 			return "SKIP: HTTP test disabled on mobile (OOM)";
 		}
-		return null;
+		return super.getTestSkipReason(testId);
 	}
 
 	protected async loadLlmModel(): Promise<string> {
