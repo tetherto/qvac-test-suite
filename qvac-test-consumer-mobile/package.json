@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@tetherto/cli-mono": "0.1.2-tmp.runid-22095485195",
-    "@tetherto/sdk-mono": "0.6.1-tmp.runid-22175273465",
+    "@tetherto/sdk-mono": "0.6.1-tmp.runid-22482682080",
     "bare-abort-controller": "^1.0.0",
     "bare-buffer": "^3.3.0",
     "bare-crypto": "^1.9.2",
