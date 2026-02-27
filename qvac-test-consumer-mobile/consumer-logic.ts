@@ -69,9 +69,6 @@ export class MobileConsumer extends ConsumerBase {
 		if (testId.startsWith("tools-") && !MOBILE_TOOLS_ALLOWED.has(testId)) {
 			return "SKIP: Tools test disabled on mobile";
 		}
-		if (testId.startsWith("tts-chatterbox-") && this.platform === "mobile-ios") {
-			return "SKIP: Chatterbox TTS disabled on iOS (OOM)";
-		}
 		if (this.platform === "mobile-ios" && (testId.startsWith("ocr-") || testId === "model-load-ocr")) {
 			if (!MobileConsumer.IOS_OCR_ALLOWED.has(testId)) {
 				return "SKIP: OCR test disabled on iOS (OOM)";
