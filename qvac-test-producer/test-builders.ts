@@ -1,10 +1,15 @@
 // Test builders organized by dependency
 
+interface SkipInfo {
+	reason: string;
+}
+
 export interface TestDefinition {
 	testId: string;
 	payload: string;
 	dependency: string; // "llm", "whisper", "embeddings", "none"
 	estimatedDurationMs: number;
+	skip?: SkipInfo;
 }
 
 export class TestBuilder {
@@ -1978,6 +1983,9 @@ export class TestBuilder {
 			}),
 			dependency: "whisper",
 			estimatedDurationMs: 10000,
+			skip: {
+				reason: "Flaky test disabled (addon-logging-whisper)",
+			}
 		};
 	}
 

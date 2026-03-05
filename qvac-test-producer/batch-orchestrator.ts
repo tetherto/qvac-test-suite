@@ -614,7 +614,16 @@ export class BatchOrchestrator {
 		}
 
 		let counter = 0;
+		let skippedCount = 0;
 		for (const test of filteredTests) {
+			if (test.skip) {
+				skippedCount++;
+				console.log(
+					`⏭️  Skipping ${test.testId}: ${test.skip.reason}`
+				);
+				continue;
+			}
+
 			const testCase: TestCase = {
 				id: `test-${Date.now()}-${counter++}`,
 				testId: test.testId,
@@ -623,6 +632,10 @@ export class BatchOrchestrator {
 				estimatedDurationMs: test.estimatedDurationMs,
 			};
 			this.testQueue.push(testCase);
+		}
+
+		if (skippedCount > 0) {
+			console.log(`\n⏭️  Skipped ${skippedCount} tests\n`);
 		}
 
 		// Group by dependency for better reporting

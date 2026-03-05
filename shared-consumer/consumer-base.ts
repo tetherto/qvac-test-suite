@@ -473,9 +473,6 @@ export abstract class ConsumerBase {
 	}
 
 	protected getTestSkipReason(testId: string): string | null {
-		if (testId === "addon-logging-whisper") {
-			return "SKIP: Flaky test disabled (addon-logging-whisper)";
-		}
 		return null;
 	}
 
