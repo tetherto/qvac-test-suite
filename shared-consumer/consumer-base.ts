@@ -2,11 +2,17 @@ import type { MqttClient } from "mqtt";
 import type { TestExecutor } from "./types";
 import { SDKProxy } from "./sdk-proxy";
 
+export interface Skip {
+	reason: string;
+	platforms?: string[];
+}
+
 export interface TestMessage {
 	testId: string;
 	params: any;
 	expectation: any;
 	expectedOutcome?: string;
+	skip?: Skip;
 }
 
 export interface TestAssignment {
@@ -472,7 +478,10 @@ export abstract class ConsumerBase {
 		}
 	}
 
-	protected getTestSkipReason(testId: string): string | null {
+	protected getTestSkipReason(testId: string, test?: TestMessage): string | null {
+		if (test?.skip?.platforms?.includes(this.platform)) {
+			return test.skip.reason;
+		}
 		return null;
 	}
 
@@ -483,7 +492,7 @@ export abstract class ConsumerBase {
 		this.log(`▶️  ${testId}`);
 		this.updateStats({ currentTest: testId });
 
-		const skipReason = this.getTestSkipReason(testId);
+		const skipReason = this.getTestSkipReason(testId, test);
 		if (skipReason) {
 			this.log(`⏭️  ${testId}: ${skipReason}`);
 			this.testsCompleted++;

@@ -26,12 +26,6 @@ import {
 	TTS_VOICE_STYLE_SUPERTONIC,
 } from "@tetherto/sdk-mono";
 
-const MOBILE_TOOLS_ALLOWED = new Set([
-	"tools-simple-function",
-	"tools-no-function-match",
-	"tools-text-response-fallback",
-]);
-
 export class MobileConsumer extends ConsumerBase {
 	protected loadModel(opts: LoadModelOptions): Promise<string> {
 		return this.loadModelTracked(opts);
@@ -50,34 +44,6 @@ export class MobileConsumer extends ConsumerBase {
 		callbacks: ConsumerCallbacks
 	) {
 		super(client, consumerId, platform, runId, executor, callbacks);
-	}
-
-	private static readonly IOS_OCR_ALLOWED = new Set([
-		"model-load-ocr",
-		"ocr-basic-png",
-	]);
-
-	private static readonly MOBILE_HTTP_BLACKLIST = new Set([
-		"http-archive-embed-load",
-		"http-archive-embed-progress",
-		"http-archive-embed-inference",
-		"http-sharded-embed-load",
-		"http-sharded-embed-progress",
-	]);
-
-	protected getTestSkipReason(testId: string): string | null {
-		if (testId.startsWith("tools-") && !MOBILE_TOOLS_ALLOWED.has(testId)) {
-			return "SKIP: Tools test disabled on mobile";
-		}
-		if (this.platform === "mobile-ios" && (testId.startsWith("ocr-") || testId === "model-load-ocr")) {
-			if (!MobileConsumer.IOS_OCR_ALLOWED.has(testId)) {
-				return "SKIP: OCR test disabled on iOS (OOM)";
-			}
-		}
-		if (MobileConsumer.MOBILE_HTTP_BLACKLIST.has(testId)) {
-			return "SKIP: HTTP test disabled on mobile (OOM)";
-		}
-		return super.getTestSkipReason(testId);
 	}
 
 	protected async loadLlmModel(): Promise<string> {
