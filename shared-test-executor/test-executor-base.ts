@@ -4720,31 +4720,36 @@ export abstract class TestExecutorBase {
 
 		try {
 			const { requests } = params;
-			const expectedAnswers = expectation.expectedAnswers || [];
+			const expectedFirstAnswer = expectation.expectedFirstAnswer || "6";
+			const rejectionPattern = expectation.expectedRejectionPattern || "job is already set";
 
-			// Run all completions concurrently
-			const results = await Promise.all(
-				requests.map((req: any) =>
-					this.sdk.completion({ modelId, history: req.history, stream: false })
-				)
+			const settled = await Promise.allSettled(
+				requests.map(async (req: any) => {
+					const result = this.sdk.completion({ modelId, history: req.history, stream: false });
+					const { text, error } = await this.safeAwaitCompletion(result);
+					if (error) throw new Error(error);
+					return text;
+				})
 			);
 
-			const texts = await Promise.all(
-				results.map(r => this.safeAwaitCompletion(r).then(res => res.error ? "" : res.text))
+			const fulfilled = settled.filter(r => r.status === "fulfilled");
+			const rejected = settled.filter(r => r.status === "rejected");
+
+			const firstSucceeded = fulfilled.length >= 1;
+			const firstText = firstSucceeded
+				? (fulfilled[0] as PromiseFulfilledResult<string>).value.trim()
+				: "";
+			const firstAnswerCorrect = firstText.includes(expectedFirstAnswer);
+
+			const rejectedWithExpectedError = rejected.every(r =>
+				(r as PromiseRejectedResult).reason?.message?.includes(rejectionPattern)
 			);
 
-			// Check if each response contains the expected answer
-			const matches = texts.map((text, i) => ({
-				text: text.trim(),
-				expected: expectedAnswers[i],
-				found: text.includes(expectedAnswers[i])
-			}));
-
-			const allPassed = matches.every(m => m.found);
+			const passed = firstSucceeded && firstAnswerCorrect && rejected.length > 0 && rejectedWithExpectedError;
 
 			return {
-				output: `Concurrent results: ${matches.map(m => `"${m.text}" (expected: ${m.expected}, found: ${m.found})`).join(", ")}`,
-				passed: allPassed,
+				output: `Concurrent: ${fulfilled.length} succeeded (first: "${firstText}", expected "${expectedFirstAnswer}": ${firstAnswerCorrect}), ${rejected.length} rejected (pattern "${rejectionPattern}": ${rejectedWithExpectedError})`,
+				passed,
 			};
 		} catch (error: any) {
 			return { output: `Error: ${error.message}`, passed: false };

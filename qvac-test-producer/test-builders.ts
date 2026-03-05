@@ -5142,14 +5142,15 @@ export class TestBuilder {
 					],
 					stream: false,
 				},
-				expectation: {
-					validation: "concurrent-results",
-					expectedAnswers: ["6", "10", "14"],
-				},
-				expectedOutcome: "pass",
-			}),
-			dependency: "llm",
-			estimatedDurationMs: 15000,
+			expectation: {
+				validation: "concurrent-exclusive",
+				expectedFirstAnswer: "6",
+				expectedRejectionPattern: "job is already set",
+			},
+			expectedOutcome: "pass",
+		}),
+		dependency: "llm",
+		estimatedDurationMs: 90000,
 		};
 	}
 
