@@ -1,10 +1,13 @@
 // Test builders organized by dependency
 
+import type { Skip } from "../shared-consumer/consumer-base";
+
 export interface TestDefinition {
 	testId: string;
 	payload: string;
 	dependency: string; // "llm", "whisper", "embeddings", "none"
 	estimatedDurationMs: number;
+	skip?: Skip;
 }
 
 export class TestBuilder {
@@ -316,6 +319,7 @@ export class TestBuilder {
       }),
       dependency: 'none',
       estimatedDurationMs: 300000, // 5 minutes for HTTP sharded download (~650MB)
+      skip: { reason: "HTTP test disabled on mobile (OOM)", platforms: ["mobile-ios", "mobile-android"] },
     };
   }
 
@@ -339,6 +343,7 @@ export class TestBuilder {
       }),
       dependency: 'none',
       estimatedDurationMs: 120000,
+      skip: { reason: "HTTP test disabled on mobile (OOM)", platforms: ["mobile-ios", "mobile-android"] },
     };
   }
 
@@ -386,6 +391,7 @@ export class TestBuilder {
       }),
       dependency: 'none',
       estimatedDurationMs: 300000, // 5 minutes for HTTP archive download + extraction
+      skip: { reason: "HTTP test disabled on mobile (OOM)", platforms: ["mobile-ios", "mobile-android"] },
     };
   }
 
@@ -408,6 +414,7 @@ export class TestBuilder {
       }),
       dependency: 'none',
       estimatedDurationMs: 300000,
+      skip: { reason: "HTTP test disabled on mobile (OOM)", platforms: ["mobile-ios", "mobile-android"] },
     };
   }
 
@@ -431,6 +438,7 @@ export class TestBuilder {
       }),
       dependency: 'http-archive-embed',
       estimatedDurationMs: 300000,
+      skip: { reason: "HTTP test disabled on mobile (OOM)", platforms: ["mobile-ios", "mobile-android"] },
     };
   }
 
@@ -1978,6 +1986,9 @@ export class TestBuilder {
 			}),
 			dependency: "whisper",
 			estimatedDurationMs: 10000,
+			skip: {
+				reason: "Flaky test disabled (addon-logging-whisper)",
+			}
 		};
 	}
 
@@ -3952,6 +3963,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 120000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -3973,6 +3985,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 120000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -3994,6 +4007,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 120000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -4016,6 +4030,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 120000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -4038,6 +4053,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 120000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -4060,6 +4076,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 120000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -4082,6 +4099,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 120000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -4104,6 +4122,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 120000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -4126,6 +4145,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 120000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -4148,6 +4168,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 120000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -4170,6 +4191,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 120000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -4194,6 +4216,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 60000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -4216,6 +4239,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 60000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -4238,6 +4262,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 30000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -4261,6 +4286,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 60000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -4284,6 +4310,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 60000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -4306,6 +4333,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 60000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -4328,6 +4356,7 @@ export class TestBuilder {
 			}),
 			dependency: "ocr",
 			estimatedDurationMs: 60000,
+			skip: { reason: "OCR test disabled on iOS (OOM)", platforms: ["mobile-ios"] },
 		};
 	}
 
@@ -6328,6 +6357,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 20000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -6370,6 +6400,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -6408,6 +6439,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -6444,6 +6476,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -6479,6 +6512,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -6526,6 +6560,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -6566,6 +6601,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 20000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -6603,6 +6639,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 20000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -6647,6 +6684,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -6692,6 +6730,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -6735,6 +6774,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -6769,6 +6809,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 10000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -6806,6 +6847,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -6879,6 +6921,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -6922,6 +6965,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -6961,6 +7005,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7006,6 +7051,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7047,6 +7093,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7087,6 +7134,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7126,6 +7174,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7163,6 +7212,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7187,6 +7237,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 10000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7211,6 +7262,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 10000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7248,6 +7300,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7287,6 +7340,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7325,6 +7379,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7363,6 +7418,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7418,6 +7474,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7465,6 +7522,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 20000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7499,6 +7557,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 5000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7537,6 +7596,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7574,6 +7634,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7613,6 +7674,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7655,6 +7717,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7696,6 +7759,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7734,6 +7798,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7772,6 +7837,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7810,6 +7876,7 @@ export class TestBuilder {
 			dependency: "llm",  // NOTE: Test currently uses tools model due to useNonToolsModel not implemented
 			// This test validates SDK behavior when tools are passed to regular model
 			estimatedDurationMs: 10000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7847,6 +7914,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7884,6 +7952,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 20000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7921,6 +7990,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -7991,6 +8061,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -8033,6 +8104,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -8079,6 +8151,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -8125,6 +8198,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -8167,6 +8241,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -8205,6 +8280,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -8248,6 +8324,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 15000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -8284,6 +8361,7 @@ export class TestBuilder {
 			}),
 			dependency: "tools",
 			estimatedDurationMs: 20000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 
@@ -8332,6 +8410,7 @@ export class TestBuilder {
 			}),
 			dependency: "llm",
 			estimatedDurationMs: 25000,
+			skip: { reason: "Tools test disabled on mobile", platforms: ["mobile-ios", "mobile-android"] },
 		};
 	}
 

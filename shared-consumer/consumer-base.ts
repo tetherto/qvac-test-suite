@@ -2,11 +2,17 @@ import type { MqttClient } from "mqtt";
 import type { TestExecutor } from "./types";
 import { SDKProxy } from "./sdk-proxy";
 
+export interface Skip {
+	reason: string;
+	platforms?: string[];
+}
+
 export interface TestMessage {
 	testId: string;
 	params: any;
 	expectation: any;
 	expectedOutcome?: string;
+	skip?: Skip;
 }
 
 export interface TestAssignment {
@@ -184,9 +190,9 @@ export abstract class ConsumerBase {
 			testId.startsWith("model-reload") ||
 			testId.startsWith("sharded-model")
 		) {
-			// Sharded model tests may need embeddings or llm depending on the model type
-			if (testId.includes("backward-compatibility") || testId.includes("load") || testId.includes("detection")) {
-				return 'embedding'; // Most sharded model tests use embedding models
+			if (testId.startsWith("sharded-model") &&
+				(testId.includes("backward-compatibility") || testId.includes("load") || testId.includes("detection"))) {
+				return 'embedding';
 			}
 			return 'llm';
 		} else if (testId.startsWith("cache-")) {
@@ -472,7 +478,10 @@ export abstract class ConsumerBase {
 		}
 	}
 
-	protected getTestSkipReason(testId: string): string | null {
+	protected getTestSkipReason(testId: string, test?: TestMessage): string | null {
+		if (test?.skip?.platforms?.includes(this.platform)) {
+			return test.skip.reason;
+		}
 		return null;
 	}
 
@@ -483,7 +492,7 @@ export abstract class ConsumerBase {
 		this.log(`▶️  ${testId}`);
 		this.updateStats({ currentTest: testId });
 
-		const skipReason = this.getTestSkipReason(testId);
+		const skipReason = this.getTestSkipReason(testId, test);
 		if (skipReason) {
 			this.log(`⏭️  ${testId}: ${skipReason}`);
 			this.testsCompleted++;
