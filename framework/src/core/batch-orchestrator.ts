@@ -452,7 +452,7 @@ export class BatchOrchestrator {
     let skippedCount = 0;
 
     for (const test of tests) {
-      if (test.skip) {
+      if (test.skip && !test.skip.platforms) {
         skippedCount++;
         console.log(
           `⏭️  Skipping ${test.testId}: ${test.skip.reason}${test.skip.issue ? ` (${test.skip.issue})` : ''}`
@@ -473,15 +473,21 @@ export class BatchOrchestrator {
         continue;
       }
 
+      // Build payload, include skip if conditional (has platforms)
+      const payloadObj: Record<string, unknown> = {
+        testId: test.testId,
+        params: test.params,
+        expectation: test.expectation,
+        metadata: test.metadata || {},
+      };
+      if (test.skip) {
+        payloadObj.skip = test.skip;
+      }
+
       const testCase: TestCase = {
         id: `test-${Date.now()}-${counter++}`,
         testId: test.testId,
-        payload: JSON.stringify({
-          testId: test.testId,
-          params: test.params,
-          expectation: test.expectation,
-          metadata: test.metadata || {},
-        }),
+        payload: JSON.stringify(payloadObj),
         metadata: test.metadata || {},
         estimatedDurationMs: test.metadata?.estimatedDurationMs || 10000,
       };

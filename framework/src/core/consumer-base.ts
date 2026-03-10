@@ -1,10 +1,12 @@
 import type { MqttClient } from 'mqtt';
+import type { SkipInfo } from '../types/test-definition.js';
 
 export interface TestMessage {
   testId: string;
   params: unknown;
   expectation: unknown;
   metadata?: Record<string, unknown>;
+  skip?: SkipInfo;
 }
 
 export interface TestAssignment {
@@ -219,12 +221,47 @@ export class ConsumerBase {
     }
   }
 
+  protected getTestSkipReason(testId: string, test?: TestMessage): string | null {
+    if (test?.skip?.platforms?.includes(this.platform)) {
+      return test.skip.reason;
+    }
+    return null;
+  }
+
   protected async executeTest(uniqueTestId: string, test: TestMessage) {
     this.isProcessingTest = true;
     const { testId, params, expectation } = test;
 
     this.log(`▶️  ${testId}`);
     this.updateStats({ currentTest: testId });
+
+    // Check for conditional platform-based skip
+    const skipReason = this.getTestSkipReason(testId, test);
+    if (skipReason) {
+      this.log(`⏭️  ${testId}: ${skipReason}`);
+      this.testsCompleted++;
+      this.testsSkipped++;
+      this.updateStats({ testsCompleted: this.testsCompleted, testsSkipped: this.testsSkipped });
+      this.client.publish(
+        'qvac/results',
+        JSON.stringify({
+          runId: this.runId,
+          consumerId: this.consumerId,
+          testId,
+          uniqueTestId,
+          outcome: 'skipped',
+          duration: 0,
+          timestamp: new Date().toISOString(),
+          error: skipReason,
+        }),
+        { qos: 1 }
+      );
+      this.isProcessingTest = false;
+      if (!this.shutdownRequested) {
+        setTimeout(() => this.requestNextTest(), 100);
+      }
+      return;
+    }
 
     const context = test.metadata || {};
 

@@ -11,6 +11,10 @@ export const skipInfoSchema = z.object({
   reason: z.string().describe('Why this test is skipped'),
   issue: z.string().optional().describe('Issue tracker reference (e.g., QVAC-8339)'),
   impact: z.string().optional().describe('Impact description (e.g., "causes 87+ tests to timeout")'),
+  platforms: z
+    .array(z.string())
+    .optional()
+    .describe('If set, skip only on these platforms (e.g., ["mobile-ios", "mobile-android"])'),
 });
 
 export type SkipInfo = z.infer<typeof skipInfoSchema>;
