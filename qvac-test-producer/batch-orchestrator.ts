@@ -3,6 +3,7 @@ import { env } from "./env";
 import { TestBuilder } from "./test-builders";
 import { generateHtmlReport, type ReportData, type ReportTestResult, type ReportConsumerInfo } from "../shared-utils/report-generator";
 import { getArgValue } from "../shared-utils/args";
+import type { Skip } from "../shared-consumer/consumer-base";
 
 interface TestCase {
 	id: string; // Unique test ID
@@ -10,6 +11,7 @@ interface TestCase {
 	payload: string;
 	dependency: string; // Model dependency: "llm", "whisper", "embeddings", "none"
 	estimatedDurationMs: number;
+	skip?: Skip;
 }
 
 interface TestAssignment {
@@ -236,13 +238,17 @@ export class BatchOrchestrator {
 		// The test stays in the queue until all consumers have completed it
 
 		// Send test to consumer
+		const testPayload = JSON.parse(nextTest.payload);
+		if (nextTest.skip) {
+			testPayload.skip = nextTest.skip;
+		}
 		this.client.publish(
 			`qvac/test-assigned/${consumerId}`,
 			JSON.stringify({
 				runId: this.runId,
 				status: "assigned",
 				uniqueTestId: nextTest.id,
-				test: JSON.parse(nextTest.payload),
+				test: testPayload,
 			}),
 			{ qos: 1 },
 		);
@@ -614,15 +620,27 @@ export class BatchOrchestrator {
 		}
 
 		let counter = 0;
+		let skippedCount = 0;
 		for (const test of filteredTests) {
+			if (test.skip && !test.skip.platforms) {
+				skippedCount++;
+				console.log(`⏭️  Skipping ${test.testId}: ${test.skip.reason}`);
+				continue;
+			}
+
 			const testCase: TestCase = {
 				id: `test-${Date.now()}-${counter++}`,
 				testId: test.testId,
 				payload: test.payload,
 				dependency: test.dependency,
 				estimatedDurationMs: test.estimatedDurationMs,
+				skip: test.skip,  // conditional skip passed to consumer
 			};
 			this.testQueue.push(testCase);
+		}
+
+		if (skippedCount > 0) {
+			console.log(`\n⏭️  Skipped ${skippedCount} tests\n`);
 		}
 
 		// Group by dependency for better reporting
