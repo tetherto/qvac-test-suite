@@ -43,6 +43,18 @@ export abstract class BaseExecutor<TDefs extends TestDefinitions> {
    */
   protected defaultHandler?: (testId: string, params: unknown, expectation: unknown) => Promise<TestResult>;
 
+  /**
+   * Override to perform setup before test execution (e.g., load models, acquire resources).
+   * Runs outside the test timeout window.
+   */
+  async setup?(testId: string, context: unknown): Promise<void>;
+
+  /**
+   * Override to perform cleanup after test execution (e.g., evict resources).
+   * Runs outside the test timeout window.
+   */
+  async teardown?(testId: string, context: unknown): Promise<void>;
+
   async execute(testId: string, context: unknown, params: unknown, expectation: unknown): Promise<TestResult> {
     const handler = this.handlers[testId as keyof typeof this.handlers];
 

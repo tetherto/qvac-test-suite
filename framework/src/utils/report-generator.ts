@@ -5,7 +5,7 @@ import * as os from 'node:os';
 export interface ReportTestResult {
   testId: string;
   consumerId: string;
-  outcome: 'success' | 'failure';
+  outcome: 'success' | 'failure' | 'skipped';
   duration: number;
   error?: string;
   output?: string;
@@ -56,8 +56,9 @@ export function generateHtmlReport(data: ReportData): string {
   const elapsed = (Date.now() - data.startTime) / 1000;
   const successCount = data.completedTests.filter((t) => t.outcome === 'success').length;
   const failureCount = data.completedTests.filter((t) => t.outcome === 'failure').length;
-  const successRate =
-    data.completedTests.length > 0 ? ((successCount / data.completedTests.length) * 100).toFixed(1) : '0.0';
+  const skippedCount = data.completedTests.filter((t) => t.outcome === 'skipped').length;
+  const nonSkipped = data.completedTests.length - skippedCount;
+  const successRate = nonSkipped > 0 ? ((successCount / nonSkipped) * 100).toFixed(1) : '0.0';
 
   // Group tests by consumer
   const testsByConsumer = new Map<string, ReportTestResult[]>();
@@ -195,6 +196,7 @@ export function generateHtmlReport(data: ReportData): string {
 		}
 		.badge.success { background: #d1fae5; color: #065f46; }
 		.badge.failure { background: #fee2e2; color: #991b1b; }
+		.badge.skipped { background: #fef3c7; color: #92400e; }
 		.consumer-section { margin-bottom: 30px; }
 		.consumer-header {
 			background: #f3f4f6;
@@ -356,6 +358,10 @@ export function generateHtmlReport(data: ReportData): string {
 				<h3>Failed</h3>
 				<div class="value">${failureCount}</div>
 			</div>
+			<div class="stat-card" style="border-left: 3px solid #f59e0b;">
+				<h3>Skipped</h3>
+				<div class="value" style="color: #f59e0b;">${skippedCount}</div>
+			</div>
 			<div class="stat-card info">
 				<h3>Success Rate</h3>
 				<div class="value">${successRate}%</div>
@@ -391,6 +397,7 @@ export function generateHtmlReport(data: ReportData): string {
 							<th>Category</th>
 							<th>Total</th>
 							<th>Passed</th>
+							<th>Skipped</th>
 							<th>Failed</th>
 							<th>Rate</th>
 						</tr>
@@ -400,14 +407,17 @@ export function generateHtmlReport(data: ReportData): string {
               .map(([category, tests]) => {
                 const passed = tests.filter((t) => t.outcome === 'success').length;
                 const failed = tests.filter((t) => t.outcome === 'failure').length;
-                const rate = ((passed / tests.length) * 100).toFixed(0);
+                const skipped = tests.filter((t) => t.outcome === 'skipped').length;
+                const nonSkippedTotal = tests.length - skipped;
+                const rate = nonSkippedTotal > 0 ? ((passed / nonSkippedTotal) * 100).toFixed(0) : 'N/A';
                 return `
 							<tr>
 								<td><strong>${category}</strong></td>
 								<td>${tests.length}</td>
 								<td>${passed}</td>
+								<td>${skipped}</td>
 								<td>${failed}</td>
-								<td>${rate}%</td>
+								<td>${rate}${rate !== 'N/A' ? '%' : ''}</td>
 							</tr>`;
               })
               .join('')}
@@ -758,22 +768,26 @@ export function generateJsonReport(data: ReportData): string {
   const elapsed = (Date.now() - data.startTime) / 1000;
   const successCount = data.completedTests.filter((t) => t.outcome === 'success').length;
   const failureCount = data.completedTests.filter((t) => t.outcome === 'failure').length;
+  const skippedCount = data.completedTests.filter((t) => t.outcome === 'skipped').length;
 
   // Group by category
-  const byCategory: Record<string, { passed: number; failed: number; total: number }> = {};
+  const byCategory: Record<string, { passed: number; failed: number; skipped: number; total: number }> = {};
   for (const test of data.completedTests) {
     const category = test.testId.split('-')[0];
     if (!byCategory[category]) {
-      byCategory[category] = { passed: 0, failed: 0, total: 0 };
+      byCategory[category] = { passed: 0, failed: 0, skipped: 0, total: 0 };
     }
     byCategory[category].total++;
     if (test.outcome === 'success') {
       byCategory[category].passed++;
+    } else if (test.outcome === 'skipped') {
+      byCategory[category].skipped++;
     } else {
       byCategory[category].failed++;
     }
   }
 
+  const nonSkipped = data.completedTests.length - skippedCount;
   const jsonReport = {
     runId: data.runId,
     timestamp: new Date().toISOString(),
@@ -781,7 +795,8 @@ export function generateJsonReport(data: ReportData): string {
       total: data.completedTests.length,
       passed: successCount,
       failed: failureCount,
-      successRate: ((successCount / data.completedTests.length) * 100).toFixed(1),
+      skipped: skippedCount,
+      successRate: nonSkipped > 0 ? ((successCount / nonSkipped) * 100).toFixed(1) : '0.0',
       duration: elapsed,
     },
     categories: byCategory,

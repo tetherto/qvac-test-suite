@@ -9,6 +9,12 @@ export interface TestHandler<TParams = unknown, TContext = Record<string, unknow
   pattern: RegExp;
 
   /**
+   * Called before test execution, outside the timeout window.
+   * Use for resource loading, model setup, or other slow preparation.
+   */
+  setup?(testId: string, context: TContext): Promise<void>;
+
+  /**
    * Execute a test
    * @param testId - Unique test identifier
    * @param context - Test context (metadata from test definition)
@@ -17,6 +23,12 @@ export interface TestHandler<TParams = unknown, TContext = Record<string, unknow
    * @returns Test result
    */
   execute(testId: string, context: TContext, params: TParams, expectation: Expectation): Promise<TestResult>;
+
+  /**
+   * Called after test execution (success or failure), outside the timeout window.
+   * Use for cleanup, resource eviction, or state reset.
+   */
+  teardown?(testId: string, context: TContext): Promise<void>;
 }
 
 /**

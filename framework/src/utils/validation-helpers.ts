@@ -25,7 +25,7 @@ export class ValidationHelpers {
           return this.validateNumericRange(result, expectation.min, expectation.max);
 
         case 'type':
-          return this.validateType(result, expectation.expectedType, expectation.minDimensions);
+          return this.validateType(result, expectation.expectedType, expectation.minLength);
 
         case 'throws-error':
           return this.validateThrowsError(result, expectation.errorContains);
@@ -117,29 +117,8 @@ export class ValidationHelpers {
     return { passed: true, output: String(num) };
   }
 
-  private static validateType(result: unknown, expectedType: string, minDimensions?: number): TestResult {
+  private static validateType(result: unknown, expectedType: string, minLength?: number): TestResult {
     const actualType = Array.isArray(result) ? 'array' : typeof result;
-
-    if (expectedType === 'embedding') {
-      if (!Array.isArray(result)) {
-        return {
-          passed: false,
-          output: `Expected embedding (array), got ${actualType}`,
-        };
-      }
-
-      if (minDimensions && result.length < minDimensions) {
-        return {
-          passed: false,
-          output: `Embedding has ${result.length} dimensions, expected at least ${minDimensions}`,
-        };
-      }
-
-      return {
-        passed: true,
-        output: `Embedding with ${result.length} dimensions`,
-      };
-    }
 
     if (actualType !== expectedType) {
       return {
@@ -148,9 +127,19 @@ export class ValidationHelpers {
       };
     }
 
+    if (expectedType === 'array' && minLength && Array.isArray(result) && result.length < minLength) {
+      return {
+        passed: false,
+        output: `Array has ${result.length} elements, expected at least ${minLength}`,
+      };
+    }
+
     return {
       passed: true,
-      output: `Type ${actualType} matches`,
+      output:
+        expectedType === 'array' && Array.isArray(result)
+          ? `Array with ${result.length} elements`
+          : `Type ${actualType} matches`,
     };
   }
 

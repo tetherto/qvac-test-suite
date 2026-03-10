@@ -32,10 +32,8 @@ const numericExpectationSchema = z.object({
  */
 const typeExpectationSchema = z.object({
   validation: z.literal('type'),
-  expectedType: z
-    .enum(['string', 'number', 'array', 'embedding'])
-    .describe('Expected JavaScript type or special type (embedding = array of numbers)'),
-  minDimensions: z.number().optional().describe('For embedding type: minimum array length'),
+  expectedType: z.enum(['string', 'number', 'array']).describe('Expected JavaScript type'),
+  minLength: z.number().optional().describe('For array type: minimum array length'),
 });
 
 /**

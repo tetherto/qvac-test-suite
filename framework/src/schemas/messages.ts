@@ -43,7 +43,7 @@ export const testResultSchema = z.object({
   consumerId: z.string(),
   testId: z.string().describe('Test identifier'),
   uniqueTestId: z.string().describe('Unique test instance ID'),
-  outcome: z.enum(['success', 'failure']),
+  outcome: z.enum(['success', 'failure', 'skipped']),
   duration: z.number().describe('Test duration in milliseconds'),
   timestamp: z.string(),
   error: z.string().optional().describe('Error message if failed'),
@@ -72,6 +72,7 @@ export const batchCompleteSchema = z.object({
   totalTests: z.number(),
   successCount: z.number(),
   failureCount: z.number(),
+  skippedCount: z.number(),
   duration: z.number(),
 });
 
@@ -104,6 +105,7 @@ export const testAssignmentSchema = z.union([
       testId: z.string(),
       params: z.unknown(),
       expectation: z.unknown(),
+      metadata: z.record(z.unknown()).optional(),
     }),
   }),
 ]);

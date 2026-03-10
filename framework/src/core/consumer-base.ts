@@ -1,9 +1,12 @@
 import type { MqttClient } from 'mqtt';
+import type { SkipInfo } from '../types/test-definition.js';
 
 export interface TestMessage {
   testId: string;
   params: unknown;
   expectation: unknown;
+  metadata?: Record<string, unknown>;
+  skip?: SkipInfo;
 }
 
 export interface TestAssignment {
@@ -21,7 +24,9 @@ export interface TestResult {
 }
 
 export interface TestExecutor {
+  setup?(testId: string, context: unknown): Promise<void>;
   executeTest(testId: string, context: unknown, params: unknown, expectation: unknown): Promise<TestResult>;
+  teardown?(testId: string, context: unknown): Promise<void>;
 }
 
 export interface ConsumerCallbacks {
@@ -30,6 +35,7 @@ export interface ConsumerCallbacks {
     testsCompleted?: number;
     testsPassed?: number;
     testsFailed?: number;
+    testsSkipped?: number;
     totalTests?: number;
     currentTest?: string;
     isComplete?: boolean;
@@ -48,6 +54,7 @@ export class ConsumerBase {
   protected testsCompleted = 0;
   protected testsPassed = 0;
   protected testsFailed = 0;
+  protected testsSkipped = 0;
   protected isProcessingTest = false;
   protected shutdownRequested = false;
   protected callbacks: ConsumerCallbacks;
@@ -77,6 +84,7 @@ export class ConsumerBase {
     testsCompleted?: number;
     testsPassed?: number;
     testsFailed?: number;
+    testsSkipped?: number;
     totalTests?: number;
     currentTest?: string;
     isComplete?: boolean;
@@ -213,6 +221,13 @@ export class ConsumerBase {
     }
   }
 
+  protected getTestSkipReason(testId: string, test?: TestMessage): string | null {
+    if (test?.skip?.platforms?.includes(this.platform)) {
+      return test.skip.reason;
+    }
+    return null;
+  }
+
   protected async executeTest(uniqueTestId: string, test: TestMessage) {
     this.isProcessingTest = true;
     const { testId, params, expectation } = test;
@@ -220,7 +235,69 @@ export class ConsumerBase {
     this.log(`▶️  ${testId}`);
     this.updateStats({ currentTest: testId });
 
-    // Notify producer that test has started
+    // Check for conditional platform-based skip
+    const skipReason = this.getTestSkipReason(testId, test);
+    if (skipReason) {
+      this.log(`⏭️  ${testId}: ${skipReason}`);
+      this.testsCompleted++;
+      this.testsSkipped++;
+      this.updateStats({ testsCompleted: this.testsCompleted, testsSkipped: this.testsSkipped });
+      this.client.publish(
+        'qvac/results',
+        JSON.stringify({
+          runId: this.runId,
+          consumerId: this.consumerId,
+          testId,
+          uniqueTestId,
+          outcome: 'skipped',
+          duration: 0,
+          timestamp: new Date().toISOString(),
+          error: skipReason,
+        }),
+        { qos: 1 }
+      );
+      this.isProcessingTest = false;
+      if (!this.shutdownRequested) {
+        setTimeout(() => this.requestNextTest(), 100);
+      }
+      return;
+    }
+
+    const context = test.metadata || {};
+
+    // Setup phase: runs BEFORE timeout and test-start notification
+    if (this.executor.setup) {
+      try {
+        await this.executor.setup(testId, context);
+      } catch (error: unknown) {
+        const errorMsg = error instanceof Error ? error.message : 'Setup failed';
+        this.log(`❌ ${testId} setup failed: ${errorMsg}`);
+        this.testsCompleted++;
+        this.testsFailed++;
+        this.updateStats({ testsCompleted: this.testsCompleted, testsFailed: this.testsFailed });
+        this.client.publish(
+          'qvac/results',
+          JSON.stringify({
+            runId: this.runId,
+            consumerId: this.consumerId,
+            testId,
+            uniqueTestId,
+            outcome: 'failure',
+            duration: 0,
+            timestamp: new Date().toISOString(),
+            error: `Setup failed: ${errorMsg}`,
+          }),
+          { qos: 1 }
+        );
+        this.isProcessingTest = false;
+        if (!this.shutdownRequested) {
+          setTimeout(() => this.requestNextTest(), 100);
+        }
+        return;
+      }
+    }
+
+    // Notify producer that test execution is starting (after setup)
     this.client.publish(
       'qvac/test-start',
       JSON.stringify({
@@ -235,16 +312,10 @@ export class ConsumerBase {
     const startTime = Date.now();
 
     try {
-      // Default timeout: 60 seconds (could be in metadata if needed)
-      const timeoutMs = 60000;
+      const metadata = test.metadata || (context as Record<string, unknown>) || {};
+      const estimatedMs = typeof metadata.estimatedDurationMs === 'number' ? metadata.estimatedDurationMs : 0;
+      const timeoutMs = Math.max(estimatedMs * 2, 120000);
 
-      // Pass test metadata as context
-      const context =
-        (typeof test === 'object' && test !== null && 'metadata' in test
-          ? (test as { metadata?: unknown }).metadata
-          : {}) || {};
-
-      // Execute the test with timeout
       const testPromise = this.executor.executeTest(testId, context, params, expectation);
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error(`Test timeout after ${timeoutMs / 1000}s`)), timeoutMs);
@@ -253,22 +324,27 @@ export class ConsumerBase {
       const result = await Promise.race([testPromise, timeoutPromise]);
 
       const duration = Date.now() - startTime;
-      const outcome = result.passed ? 'success' : 'failure';
+      const outcome = result.skipped ? 'skipped' : result.passed ? 'success' : 'failure';
 
-      this.log(`${outcome === 'success' ? '✅' : '❌'} ${testId} (${duration}ms)`);
-      if (!result.passed && result.output) {
-        // Show full error output (may be multi-line)
-        const outputLines = result.output.split('\n');
-        if (outputLines.length > 1) {
-          outputLines.forEach((line) => this.log(`   ${line}`));
-        } else {
-          this.log(`   ${result.output}`);
+      if (result.skipped) {
+        this.log(`⏭️  ${testId}: ${result.output}`);
+      } else {
+        this.log(`${outcome === 'success' ? '✅' : '❌'} ${testId} (${duration}ms)`);
+        if (!result.passed && result.output) {
+          const outputLines = result.output.split('\n');
+          if (outputLines.length > 1) {
+            outputLines.forEach((line) => this.log(`   ${line}`));
+          } else {
+            this.log(`   ${result.output}`);
+          }
         }
       }
 
       // Update stats
       this.testsCompleted++;
-      if (outcome === 'success') {
+      if (result.skipped) {
+        this.testsSkipped++;
+      } else if (outcome === 'success') {
         this.testsPassed++;
       } else {
         this.testsFailed++;
@@ -278,6 +354,7 @@ export class ConsumerBase {
         testsCompleted: this.testsCompleted,
         testsPassed: this.testsPassed,
         testsFailed: this.testsFailed,
+        testsSkipped: this.testsSkipped,
       });
 
       // Send result to producer
@@ -289,9 +366,9 @@ export class ConsumerBase {
           testId,
           uniqueTestId,
           outcome,
-          duration,
+          duration: result.skipped ? 0 : duration,
           timestamp: new Date().toISOString(),
-          error: result.passed ? undefined : result.output,
+          error: result.skipped ? result.output : result.passed ? undefined : result.output,
         }),
         { qos: 1 }
       );
@@ -325,6 +402,16 @@ export class ConsumerBase {
         { qos: 1 }
       );
     } finally {
+      // Teardown phase: runs after test execution regardless of outcome
+      if (this.executor.teardown) {
+        try {
+          await this.executor.teardown(testId, context);
+        } catch (teardownError: unknown) {
+          const msg = teardownError instanceof Error ? teardownError.message : String(teardownError);
+          this.log(`⚠️  ${testId} teardown error: ${msg}`);
+        }
+      }
+
       this.isProcessingTest = false;
 
       if (!this.shutdownRequested) {
