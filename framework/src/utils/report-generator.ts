@@ -1,6 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import type { ProfilerExport } from '../schemas/messages.js';
+import { parseProfilerExport, renderRawProfilerFallback, escapeHtml } from './profiler-adapter.js';
 
 export interface ReportTestResult {
   testId: string;
@@ -18,11 +20,17 @@ export interface ReportConsumerInfo {
   platform: string;
 }
 
+export interface ReportProfilingData {
+  consumerId: string;
+  profilerExport: ProfilerExport;
+}
+
 export interface ReportData {
   runId: string;
   completedTests: ReportTestResult[];
   consumers: Map<string, ReportConsumerInfo>;
   startTime: number;
+  profilingData?: ReportProfilingData[];
 }
 
 // Collect system information for the report
@@ -386,6 +394,7 @@ export function generateHtmlReport(data: ReportData): string {
           })
           .join('')}
 				<button class="tab" onclick="switchTab('all-tests')">📋 All Tests</button>
+				${data.profilingData && data.profilingData.length > 0 ? '<button class="tab" onclick="switchTab(\'profiling\')">📈 Profiling</button>' : ''}
 			</div>
 
 			<!-- Overview Tab -->
@@ -702,6 +711,168 @@ export function generateHtmlReport(data: ReportData): string {
 					</tbody>
 				</table>
 			</div>
+
+			<!-- Profiling Tab -->
+			${
+        data.profilingData && data.profilingData.length > 0
+          ? `
+			<div id="profiling" class="tab-content">
+				<h2>📈 Performance Profiling</h2>
+				<p style="color: #6b7280; margin-bottom: 20px;">SDK profiler metrics collected during test execution.</p>
+				
+				${data.profilingData
+          .map((pd) => {
+            const parsed = parseProfilerExport(pd.profilerExport);
+            if (!parsed) return renderRawProfilerFallback(pd.consumerId, pd.profilerExport);
+
+            const shortId = pd.consumerId.split('-').slice(1, 3).join('-');
+            const { config, aggregates, recentEvents } = parsed;
+            const metrics = Object.entries(aggregates).sort((a, b) => a[0].localeCompare(b[0]));
+
+            const formatValue = (val: number, metricName: string) => {
+              const lowerName = metricName.toLowerCase();
+              if (lowerName.includes('bps') || lowerName.includes('speed')) {
+                if (val < 1024) return val.toFixed(0) + ' B/s';
+                if (val < 1024 * 1024) return (val / 1024).toFixed(1) + ' KB/s';
+                return (val / (1024 * 1024)).toFixed(2) + ' MB/s';
+              }
+              if (lowerName.includes('bytes') || lowerName.includes('downloaded') || lowerName.includes('size')) {
+                if (val < 1024) return val.toFixed(0) + ' B';
+                if (val < 1024 * 1024) return (val / 1024).toFixed(1) + ' KB';
+                return (val / (1024 * 1024)).toFixed(2) + ' MB';
+              }
+              if (val < 1) return (val * 1000).toFixed(0) + 'μs';
+              if (val < 1000) return val.toFixed(1) + 'ms';
+              if (val < 60000) return (val / 1000).toFixed(2) + 's';
+              return (val / 60000).toFixed(2) + 'm';
+            };
+
+            return `
+				<div class="consumer-section">
+					<div class="consumer-header">
+						<h3>📊 ${shortId}</h3>
+						<div class="consumer-stats">
+							<span>Mode: ${config.mode ?? 'unknown'}</span>
+							<span>Server Breakdown: ${config.includeServerBreakdown ? 'Yes' : 'No'}</span>
+							<span>Metrics: ${metrics.length}</span>
+							${recentEvents.length > 0 ? `<span>Events: ${recentEvents.length}</span>` : ''}
+						</div>
+					</div>
+					
+					${
+            metrics.length > 0
+              ? (() => {
+                  type MetricEntry = (typeof metrics)[number];
+                  const groups: Record<string, MetricEntry[]> = {};
+                  for (const entry of metrics) {
+                    const prefix = entry[0].split('.')[0];
+                    if (!groups[prefix]) groups[prefix] = [];
+                    groups[prefix].push(entry);
+                  }
+                  const groupNames = Object.keys(groups).sort();
+
+                  return `
+					<h4 style="margin: 15px 0 10px 0; color: #374151;">📊 Aggregate Metrics (${metrics.length})</h4>
+					${groupNames
+            .map((groupName) => {
+              const groupMetrics = groups[groupName];
+              return `
+					<details style="margin-bottom: 10px; border: 1px solid #e5e7eb; border-radius: 6px;">
+						<summary style="padding: 10px 15px; cursor: pointer; background: #f9fafb; border-radius: 6px; font-weight: 600; color: #374151;">
+							${escapeHtml(groupName)} <span style="color: #6b7280; font-weight: normal;">(${groupMetrics.length} metrics)</span>
+						</summary>
+						<table style="margin: 0;">
+							<thead>
+								<tr>
+									<th>Metric</th>
+									<th>Count</th>
+									<th>Min</th>
+									<th>Max</th>
+									<th>Avg</th>
+									<th>Total</th>
+								</tr>
+							</thead>
+							<tbody>
+								${groupMetrics
+                  .map(
+                    ([name, stats]) => `
+								<tr>
+									<td><code>${escapeHtml(name)}</code></td>
+									<td>${stats.count.toLocaleString()}</td>
+									<td>${formatValue(stats.min, name)}</td>
+									<td>${formatValue(stats.max, name)}</td>
+									<td>${formatValue(stats.avg, name)}</td>
+									<td>${formatValue(stats.sum, name)}</td>
+								</tr>`
+                  )
+                  .join('')}
+							</tbody>
+						</table>
+					</details>`;
+            })
+            .join('')}`;
+                })()
+              : '<p style="color: #6b7280;">No aggregate metrics recorded.</p>'
+          }
+					
+					<!-- Recent Events Table (verbose mode) -->
+					${
+            recentEvents.length > 0
+              ? `
+					<h4 style="margin: 25px 0 10px 0; color: #374151;">📋 Recent Events (${recentEvents.length})</h4>
+					<div style="max-height: 400px; overflow-y: auto;">
+					<table>
+						<thead>
+							<tr>
+								<th>Operation</th>
+								<th>Kind</th>
+								<th>Phase</th>
+								<th>Duration</th>
+								<th>Tags</th>
+								<th>Gauges</th>
+							</tr>
+						</thead>
+						<tbody>
+							${recentEvents
+                .slice(-100)
+                .reverse()
+                .map((event) => {
+                  const tags = event.tags
+                    ? Object.entries(event.tags)
+                        .map(([k, v]) => escapeHtml(k) + '=' + escapeHtml(String(v)))
+                        .join(', ')
+                    : '-';
+                  const gauges = event.gauges
+                    ? Object.entries(event.gauges)
+                        .map(([k, v]) => escapeHtml(k) + '=' + formatValue(v, k))
+                        .join(', ')
+                    : '-';
+                  const duration = event.ms !== undefined ? formatValue(event.ms, 'duration') : '-';
+                  return `
+							<tr>
+								<td><code>${escapeHtml(event.op ?? '')}</code></td>
+								<td><span class="badge ${event.kind === 'handler' ? 'success' : event.kind === 'rpc' ? 'info' : ''}" style="font-size: 11px;">${escapeHtml(event.kind ?? '')}</span></td>
+								<td>${escapeHtml(event.phase ?? '-')}</td>
+								<td>${duration}</td>
+								<td style="font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(tags)}">${tags}</td>
+								<td style="font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(gauges)}">${gauges}</td>
+							</tr>`;
+                })
+                .join('')}
+						</tbody>
+					</table>
+					</div>
+					${recentEvents.length > 100 ? `<p style="color: #6b7280; font-size: 12px; margin-top: 10px;">Showing last 100 of ${recentEvents.length} events</p>` : ''}
+					`
+              : ''
+          }
+				</div>`;
+          })
+          .join('')}
+			</div>
+			`
+          : ''
+      }
 		</div>
 
 		<div class="footer">
@@ -810,6 +981,10 @@ export function generateJsonReport(data: ReportData): string {
     })),
     consumers: Array.from(data.consumers.values()),
     system: systemInfo,
+    profiling: data.profilingData?.map((pd) => ({
+      consumerId: pd.consumerId,
+      ...pd.profilerExport,
+    })),
   };
 
   try {

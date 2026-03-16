@@ -111,3 +111,22 @@ export const testAssignmentSchema = z.union([
 ]);
 
 export type TestAssignment = z.infer<typeof testAssignmentSchema>;
+
+/**
+ * Profiler export data
+ */
+export const profilerExportSchema = z.record(z.string(), z.unknown());
+
+export type ProfilerExport = z.infer<typeof profilerExportSchema>;
+
+/**
+ * Profiling data message schema
+ */
+export const profilingDataSchema = z.object({
+  runId: z.string(),
+  consumerId: z.string(),
+  timestamp: z.string(),
+  profilerExport: profilerExportSchema,
+});
+
+export type ProfilingData = z.infer<typeof profilingDataSchema>;

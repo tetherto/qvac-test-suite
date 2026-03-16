@@ -32,9 +32,19 @@ export interface TestHandler<TParams = unknown, TContext = Record<string, unknow
 }
 
 /**
+ * Profiling configuration for test executor.
+ */
+export interface ProfilingConfig {
+  init: () => void;
+  exportData: () => unknown;
+}
+
+/**
  * Test executor configuration
  */
 export interface TestExecutorConfig {
   /** Array of test handlers */
   handlers: TestHandler[];
+  /** Optional profiling configuration */
+  profiling?: ProfilingConfig;
 }
