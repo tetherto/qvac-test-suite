@@ -1,7 +1,8 @@
-import type { ProfilerExport } from '../schemas/messages.js';
+import { profilerExportSchema, type ProfilerExport } from '../schemas/messages.js';
 
 export interface ParsedProfilerExport {
   config: {
+    enabled?: boolean;
     mode?: string;
     includeServerBreakdown?: boolean;
   };
@@ -16,37 +17,39 @@ export interface ParsedProfilerExport {
   }>;
 }
 
-export function parseProfilerExport(data: ProfilerExport): ParsedProfilerExport | null {
-  const raw = data as Record<string, unknown>;
-  const config = raw['config'];
-  const aggregates = raw['aggregates'];
+export function parseProfilerExport(data: unknown): ParsedProfilerExport | null {
+  const result = profilerExportSchema.safeParse(data);
+  if (!result.success) return null;
 
-  if (typeof config !== 'object' || config === null) return null;
-  if (typeof aggregates !== 'object' || aggregates === null) return null;
+  const { config, aggregates, recentEvents } = result.data;
+  if (!config || !aggregates) return null;
 
   const parsedAggregates: ParsedProfilerExport['aggregates'] = {};
-  for (const [key, val] of Object.entries(aggregates as Record<string, unknown>)) {
-    const s = val as Record<string, unknown> | undefined;
-    if (typeof s?.['count'] !== 'number') continue;
+  for (const [key, stats] of Object.entries(aggregates)) {
     parsedAggregates[key] = {
-      count: s['count'] as number,
-      min: typeof s['min'] === 'number' ? s['min'] : 0,
-      max: typeof s['max'] === 'number' ? s['max'] : 0,
-      avg: typeof s['avg'] === 'number' ? s['avg'] : 0,
-      sum: typeof s['sum'] === 'number' ? s['sum'] : 0,
+      count: stats.count,
+      min: stats.min,
+      max: stats.max,
+      avg: stats.avg,
+      sum: stats.sum ?? stats.total ?? 0,
     };
   }
 
-  const rawEvents = raw['recentEvents'];
-  const recentEvents: ParsedProfilerExport['recentEvents'] = Array.isArray(rawEvents)
-    ? rawEvents.map((e) => e as ParsedProfilerExport['recentEvents'][number])
-    : [];
-
   return {
-    config: config as ParsedProfilerExport['config'],
+    config: {
+      enabled: config.enabled,
+      mode: config.mode,
+      includeServerBreakdown: config.includeServerBreakdown,
+    },
     aggregates: parsedAggregates,
-    recentEvents,
+    recentEvents: (recentEvents ?? []) as ParsedProfilerExport['recentEvents'],
   };
+}
+
+export function getMetricCount(data: unknown): number | undefined {
+  const result = profilerExportSchema.safeParse(data);
+  if (!result.success) return undefined;
+  return Object.keys(result.data.aggregates ?? {}).length;
 }
 
 export function escapeHtml(unsafe: string): string {

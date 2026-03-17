@@ -16,6 +16,7 @@ import {
   type ReportData,
   type ReportProfilingData,
 } from '../utils/report-generator.js';
+import { getMetricCount } from '../utils/profiler-adapter.js';
 
 interface TestCase {
   id: string; // Unique test ID
@@ -298,11 +299,9 @@ export class BatchOrchestrator {
     }
 
     this.profilingData.set(consumerId, profilerExport);
-    const aggregates = (profilerExport as Record<string, unknown>)['aggregates'];
-    const metricCount = typeof aggregates === 'object' && aggregates !== null ? Object.keys(aggregates).length : 0;
-    console.log(
-      `📈 Received profiling data from ${consumerId.split('-').slice(1, 3).join('-')} (${metricCount} metrics)`
-    );
+    const metricCount = getMetricCount(profilerExport);
+    const metricLabel = metricCount !== undefined ? `${metricCount} metrics` : 'N/A';
+    console.log(`📈 Received profiling data from ${consumerId.split('-').slice(1, 3).join('-')} (${metricLabel})`);
   }
 
   private getNextTestForConsumer(_consumerId: string): TestCase | null {

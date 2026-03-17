@@ -718,7 +718,7 @@ export function generateHtmlReport(data: ReportData): string {
           ? `
 			<div id="profiling" class="tab-content">
 				<h2>📈 Performance Profiling</h2>
-				<p style="color: #6b7280; margin-bottom: 20px;">SDK profiler metrics collected during test execution.</p>
+				<p style="color: #6b7280; margin-bottom: 20px;">Profiler metrics collected during test execution.</p>
 				
 				${data.profilingData
           .map((pd) => {

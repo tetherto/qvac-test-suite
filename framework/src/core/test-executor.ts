@@ -1,4 +1,4 @@
-import type { TestHandler, TestExecutorConfig, ProfilingConfig } from '../types/test-handler.js';
+import type { TestHandler, TestExecutorConfig, Profiler } from '../types/test-handler.js';
 import type { TestExecutor, TestResult } from './consumer-base.js';
 import type { Expectation } from '../types/test-definition.js';
 import type { ProfilerExport } from '../schemas/messages.js';
@@ -15,11 +15,11 @@ export function createExecutor(config: TestExecutorConfig): TestExecutor {
  */
 class DefaultTestExecutor implements TestExecutor {
   private handlers: TestHandler[];
-  private profiling?: ProfilingConfig;
+  private profiler?: Profiler;
 
-  constructor(handlers: TestHandler[], profiling?: ProfilingConfig) {
+  constructor(handlers: TestHandler[], profiler?: Profiler) {
     this.handlers = handlers;
-    this.profiling = profiling;
+    this.profiler = profiler;
   }
 
   private findHandler(testId: string): TestHandler | undefined {
@@ -65,13 +65,13 @@ class DefaultTestExecutor implements TestExecutor {
   }
 
   initProfiling(): void {
-    if (this.profiling) {
-      this.profiling.init();
+    if (this.profiler) {
+      this.profiler.init();
     }
   }
 
   getProfilingData(): ProfilerExport | undefined {
-    if (!this.profiling) return undefined;
-    return this.profiling.exportData() as ProfilerExport | undefined;
+    if (!this.profiler) return undefined;
+    return this.profiler.exportData() as ProfilerExport | undefined;
   }
 }
