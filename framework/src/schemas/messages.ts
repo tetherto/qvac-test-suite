@@ -116,13 +116,13 @@ export type TestAssignment = z.infer<typeof testAssignmentSchema>;
  * Aggregate statistics for a single metric.
  */
 export const aggregateStatsSchema = z.object({
-  count: z.number(),
-  min: z.number(),
-  max: z.number(),
-  avg: z.number(),
-  sum: z.number().optional(),
-  total: z.number().optional(),
-  last: z.number().optional(),
+  count: z.number().describe('Number of samples collected'),
+  min: z.number().describe('Minimum value observed'),
+  max: z.number().describe('Maximum value observed'),
+  avg: z.number().describe('Arithmetic mean of all samples'),
+  sum: z.number().optional().describe('Sum of all sample values'),
+  total: z.number().optional().describe('Sum of all sample values alias for sum'),
+  last: z.number().optional().describe('Most recent sample value'),
 });
 
 export type AggregateStats = z.infer<typeof aggregateStatsSchema>;
