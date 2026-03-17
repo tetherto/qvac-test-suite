@@ -109,6 +109,11 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
         // Generate consumer ID
         const consumerId = `consumer-mobile-${Constants.deviceName || Constants.sessionId || 'unknown'}-${runId === '*' ? Date.now() : runId}`;
 
+        if (executor.initProfiling) {
+          executor.initProfiling();
+          log('📈 Profiling enabled');
+        }
+
         // Create consumer using framework's ConsumerBase
         const consumer = new ConsumerBase(
           client,
