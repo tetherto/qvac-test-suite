@@ -111,3 +111,57 @@ export const testAssignmentSchema = z.union([
 ]);
 
 export type TestAssignment = z.infer<typeof testAssignmentSchema>;
+
+/**
+ * Aggregate statistics for a single metric.
+ */
+export const aggregateStatsSchema = z.object({
+  count: z.number().describe('Number of samples collected'),
+  min: z.number().describe('Minimum value observed'),
+  max: z.number().describe('Maximum value observed'),
+  avg: z.number().describe('Arithmetic mean of all samples'),
+  sum: z.number().optional().describe('Sum of all sample values'),
+  total: z.number().optional().describe('Sum of all sample values alias for sum'),
+  last: z.number().optional().describe('Most recent sample value'),
+});
+
+export type AggregateStats = z.infer<typeof aggregateStatsSchema>;
+
+/**
+ * Profiler configuration as reported in export.
+ */
+export const profilerConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    mode: z.string().optional(),
+    includeServerBreakdown: z.boolean().optional(),
+    operationFilters: z.array(z.string()).optional(),
+    maxRecentEvents: z.number().optional(),
+  })
+  .passthrough();
+
+/**
+ * Profiler export data schema.
+ */
+export const profilerExportSchema = z
+  .object({
+    config: profilerConfigSchema.optional(),
+    aggregates: z.record(z.string(), aggregateStatsSchema).optional(),
+    recentEvents: z.array(z.record(z.string(), z.unknown())).optional(),
+    exportedAt: z.number().optional(),
+  })
+  .passthrough();
+
+export type ProfilerExport = z.infer<typeof profilerExportSchema>;
+
+/**
+ * Profiling data message schema
+ */
+export const profilingDataSchema = z.object({
+  runId: z.string(),
+  consumerId: z.string(),
+  timestamp: z.string(),
+  profilerExport: profilerExportSchema,
+});
+
+export type ProfilingData = z.infer<typeof profilingDataSchema>;

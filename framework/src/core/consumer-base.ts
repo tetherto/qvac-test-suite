@@ -1,5 +1,6 @@
 import type { MqttClient } from 'mqtt';
 import type { SkipInfo } from '../types/test-definition.js';
+import type { ProfilerExport } from '../schemas/messages.js';
 
 export interface TestMessage {
   testId: string;
@@ -27,6 +28,8 @@ export interface TestExecutor {
   setup?(testId: string, context: unknown): Promise<void>;
   executeTest(testId: string, context: unknown, params: unknown, expectation: unknown): Promise<TestResult>;
   teardown?(testId: string, context: unknown): Promise<void>;
+  getProfilingData?(): ProfilerExport | undefined;
+  initProfiling?(): void;
 }
 
 export interface ConsumerCallbacks {
@@ -40,7 +43,7 @@ export interface ConsumerCallbacks {
     currentTest?: string;
     isComplete?: boolean;
   }) => void;
-  onShutdown?: () => void;
+  onShutdown?: () => void | Promise<void>;
 }
 
 export class ConsumerBase {
@@ -154,7 +157,7 @@ export class ConsumerBase {
         } else if (topic === `qvac/test-assigned/${this.consumerId}`) {
           await this.handleTestAssignment(message);
         } else if (topic === 'qvac/batch-complete') {
-          this.handleBatchComplete(message);
+          await this.handleBatchComplete(message);
         }
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -189,10 +192,7 @@ export class ConsumerBase {
 
   protected async handleTestAssignment(assignment: TestAssignment) {
     if (assignment.status === 'queue-empty') {
-      this.log('📭 No more tests in queue');
-      if (!this.isProcessingTest) {
-        this.shutdown();
-      }
+      this.log('📭 No more tests in queue - waiting for batch-complete');
       return;
     }
 
@@ -201,7 +201,7 @@ export class ConsumerBase {
     }
   }
 
-  protected handleBatchComplete(message: {
+  protected async handleBatchComplete(message: {
     totalTests?: number;
     successCount?: number;
     failureCount?: number;
@@ -216,9 +216,34 @@ export class ConsumerBase {
     this.shutdownRequested = true;
     this.updateStats({ isComplete: true });
 
-    if (!this.isProcessingTest) {
-      this.shutdown();
+    if (this.isProcessingTest) {
+      this.log('⏳ Waiting for in-progress test to complete before finalizing...');
+      return;
     }
+
+    await this.finalize();
+  }
+
+  protected async finalize() {
+    try {
+      const profilingData = this.executor.getProfilingData?.();
+      const exportData: ProfilerExport = profilingData ?? {
+        config: {
+          enabled: false,
+          mode: 'summary',
+          includeServerBreakdown: false,
+          operationFilters: [],
+          maxRecentEvents: 0,
+        },
+        aggregates: {},
+        exportedAt: Date.now(),
+      };
+      await this.publishProfilingData(exportData);
+    } catch (e) {
+      this.log(`⚠️  Failed to publish profiling data: ${e}`);
+    }
+
+    this.shutdown();
   }
 
   protected getTestSkipReason(testId: string, test?: TestMessage): string | null {
@@ -416,18 +441,45 @@ export class ConsumerBase {
 
       if (!this.shutdownRequested) {
         setTimeout(() => this.requestNextTest(), 100);
-      } else if (this.shutdownRequested) {
-        this.shutdown();
+      } else {
+        await this.finalize();
       }
     }
   }
 
-  protected shutdown() {
+  public publishProfilingData(profilerExport: ProfilerExport): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const payload = JSON.stringify({
+        runId: this.runId,
+        consumerId: this.consumerId,
+        timestamp: new Date().toISOString(),
+        profilerExport,
+      });
+
+      this.client.publish('qvac/profiling', payload, { qos: 1 }, (err) => {
+        if (err) {
+          this.log(`⚠️  Failed to publish profiling data: ${err.message}`);
+          reject(err);
+        } else {
+          this.log('📈 Profiling data published');
+          resolve();
+        }
+      });
+    });
+  }
+
+  protected async shutdown() {
     this.log('\n👋 Consumer shutting down...');
-    this.client.end(false, {}, () => {
-      if (this.callbacks.onShutdown) {
-        this.callbacks.onShutdown();
+
+    if (this.callbacks.onShutdown) {
+      try {
+        await this.callbacks.onShutdown();
+      } catch (e) {
+        this.log(`⚠️  onShutdown error: ${e}`);
       }
+    }
+
+    this.client.end(false, {}, () => {
       // Only call process.exit in Node.js environment, not React Native
       if (typeof process !== 'undefined' && typeof process.exit === 'function') {
         process.exit(0);

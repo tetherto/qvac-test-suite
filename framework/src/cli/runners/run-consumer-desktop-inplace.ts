@@ -64,10 +64,15 @@ async function main() {
   const client = createMqttClient(mqttConfig, configDir);
   const consumerId = `consumer-${platform}-${os.hostname()}-${Date.now()}`;
 
+  if (executor.initProfiling) {
+    executor.initProfiling();
+    console.log('📈 Profiling enabled');
+  }
+
   const consumer = new ConsumerBase(client, consumerId, platform, runId, executor, {
     log: (msg) => console.log(msg),
     updateStats: () => {},
-    onShutdown: () => process.exit(0),
+    onShutdown: () => {},
   });
 
   consumer.setupMqttHandlers();

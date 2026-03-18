@@ -6,9 +6,17 @@ import {
   testStartSchema,
   testResultSchema,
   heartbeatSchema,
+  profilingDataSchema,
   type TestResult as MqttTestResult,
+  type ProfilerExport,
 } from '../schemas/messages.js';
-import { generateHtmlReport, generateJsonReport, type ReportData } from '../utils/report-generator.js';
+import {
+  generateHtmlReport,
+  generateJsonReport,
+  type ReportData,
+  type ReportProfilingData,
+} from '../utils/report-generator.js';
+import { getMetricCount } from '../utils/profiler-adapter.js';
 
 interface TestCase {
   id: string; // Unique test ID
@@ -38,6 +46,9 @@ interface ConsumerInfo {
 // Test result type imported from schemas
 type TestResult = MqttTestResult;
 
+// Safety timeout for crashed consumers (normal path: all consumers publish on batch-complete)
+const PROFILING_SAFETY_TIMEOUT_MS = 10000;
+
 export class BatchOrchestrator {
   private client: MqttClient;
   private runId: string;
@@ -47,6 +58,7 @@ export class BatchOrchestrator {
   private assignedTests = new Map<string, TestAssignment>(); // uniqueTestId -> assignment
   private completedTests = new Map<string, TestResult>(); // uniqueTestId -> result
   private consumers = new Map<string, ConsumerInfo>(); // consumerId -> info
+  private profilingData = new Map<string, ProfilerExport>(); // consumerId -> profiler export
   private startTime = 0;
   private batchStarted = false;
   private shutdownTimer?: NodeJS.Timeout;
@@ -73,7 +85,7 @@ export class BatchOrchestrator {
 
       // Subscribe to all coordination topics
       this.client.subscribe(
-        ['qvac/register', 'qvac/request-test', 'qvac/test-start', 'qvac/results', 'qvac/heartbeat'],
+        ['qvac/register', 'qvac/request-test', 'qvac/test-start', 'qvac/results', 'qvac/heartbeat', 'qvac/profiling'],
         { qos: 1 },
         (err) => {
           if (err) {
@@ -111,6 +123,9 @@ export class BatchOrchestrator {
             break;
           case 'qvac/heartbeat':
             this.handleHeartbeat(message);
+            break;
+          case 'qvac/profiling':
+            this.handleProfilingData(message);
             break;
         }
       } catch (error) {
@@ -274,6 +289,21 @@ export class BatchOrchestrator {
     }
   }
 
+  private handleProfilingData(rawMessage: unknown) {
+    const message = profilingDataSchema.parse(rawMessage);
+    const { consumerId, profilerExport } = message;
+
+    if (!this.consumers.has(consumerId)) {
+      console.log(`⚠️  Ignoring profiling from unknown consumer: ${consumerId.split('-').slice(1, 3).join('-')}`);
+      return;
+    }
+
+    this.profilingData.set(consumerId, profilerExport);
+    const metricCount = getMetricCount(profilerExport);
+    const metricLabel = metricCount !== undefined ? `${metricCount} metrics` : 'N/A';
+    console.log(`📈 Received profiling data from ${consumerId.split('-').slice(1, 3).join('-')} (${metricLabel})`);
+  }
+
   private getNextTestForConsumer(_consumerId: string): TestCase | null {
     // Simple FIFO for now - could be enhanced with dependency-aware scheduling
     return this.testQueue.length > 0 ? this.testQueue[0] : null;
@@ -373,26 +403,7 @@ export class BatchOrchestrator {
     console.log('\n📋 Test Results by Category:\n');
     this.displayResultsByCategory();
 
-    // Generate reports
-    try {
-      const reportData: ReportData = {
-        runId: this.runId,
-        completedTests: Array.from(this.completedTests.values()),
-        consumers: this.consumers,
-        startTime: this.startTime,
-      };
-
-      const htmlPath = generateHtmlReport(reportData);
-      const jsonPath = generateJsonReport(reportData);
-
-      console.log(`\n📄 Reports generated:`);
-      console.log(`   HTML: ${htmlPath}`);
-      console.log(`   JSON: ${jsonPath}`);
-    } catch (error) {
-      console.error('\n⚠️  Failed to generate reports:', error);
-    }
-
-    // Signal all consumers to shutdown
+    console.log(`\n📨 Signaling ${this.consumers.size} consumer(s) to complete...`);
     this.client.publish(
       'qvac/batch-complete',
       JSON.stringify({
@@ -407,6 +418,72 @@ export class BatchOrchestrator {
       { qos: 1 }
     );
 
+    const expectedIds = new Set(this.consumers.keys());
+    this.waitForProfilingData(expectedIds);
+  }
+
+  private waitForProfilingData(expectedIds: Set<string>) {
+    if (expectedIds.size === 0) {
+      return this.finishAfterProfiling(false, []);
+    }
+
+    const startTime = Date.now();
+    const timer = setInterval(() => {
+      const pending = [...expectedIds].filter((id) => !this.profilingData.has(id));
+      const timedOut = Date.now() - startTime >= PROFILING_SAFETY_TIMEOUT_MS;
+
+      if (pending.length === 0 || timedOut) {
+        clearInterval(timer);
+        this.finishAfterProfiling(timedOut, pending);
+      }
+    }, 100);
+  }
+
+  private finishAfterProfiling(timedOut: boolean, pendingIds: string[]) {
+    if (timedOut && pendingIds.length > 0) {
+      const pendingShort = pendingIds.map((id) => id.split('-').slice(1, 3).join('-'));
+      console.log(
+        `⚠️  Safety timeout: missing profiling from ${pendingIds.length} consumer(s): ${pendingShort.join(', ')}`
+      );
+    } else {
+      const receivedCount = this.profilingData.size;
+      if (receivedCount > 0) {
+        console.log(`✅ Received profiling data from all ${receivedCount} consumer(s)`);
+      }
+    }
+    this.generateReports();
+    this.scheduleShutdown();
+  }
+
+  private generateReports() {
+    try {
+      const profilingDataArray: ReportProfilingData[] = Array.from(this.profilingData.entries()).map(
+        ([consumerId, profilerExport]) => ({ consumerId, profilerExport })
+      );
+
+      const reportData: ReportData = {
+        runId: this.runId,
+        completedTests: Array.from(this.completedTests.values()),
+        consumers: this.consumers,
+        startTime: this.startTime,
+        profilingData: profilingDataArray.length > 0 ? profilingDataArray : undefined,
+      };
+
+      const htmlPath = generateHtmlReport(reportData);
+      const jsonPath = generateJsonReport(reportData);
+
+      console.log(`\n📄 Reports generated:`);
+      console.log(`   HTML: ${htmlPath}`);
+      console.log(`   JSON: ${jsonPath}`);
+      if (profilingDataArray.length > 0) {
+        console.log(`📈 Profiling data included from ${profilingDataArray.length} consumer(s)`);
+      }
+    } catch (error) {
+      console.error('\n⚠️  Failed to generate reports:', error);
+    }
+  }
+
+  private scheduleShutdown() {
     // Shutdown after 2 seconds
     this.shutdownTimer = setTimeout(() => {
       console.log('\n👋 Shutting down producer...\n');
