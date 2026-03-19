@@ -741,6 +741,20 @@ export function generateHtmlReport(data: ReportData): string {
                 if (val < 1024 * 1024) return (val / 1024).toFixed(1) + ' KB';
                 return (val / (1024 * 1024)).toFixed(2) + ' MB';
               }
+              if (
+                lowerName.includes('tokens') ||
+                lowerName.includes('count') ||
+                lowerName.includes('factor') ||
+                lowerName.includes('segments') ||
+                lowerName.includes('samples')
+              ) {
+                if (Number.isInteger(val)) return val.toLocaleString();
+                if (Math.abs(val) < 0.01) return val.toExponential(2);
+                if (Math.abs(val) < 1) return val.toFixed(3);
+                if (Math.abs(val) < 100) return val.toFixed(2);
+                return val.toFixed(1);
+              }
+              // Default: duration
               if (val < 1) return (val * 1000).toFixed(0) + 'μs';
               if (val < 1000) return val.toFixed(1) + 'ms';
               if (val < 60000) return (val / 1000).toFixed(2) + 's';
