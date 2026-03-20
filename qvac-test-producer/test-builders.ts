@@ -1162,6 +1162,52 @@ export class TestBuilder {
 		};
 	}
 
+	buildDownloadParallelTest(): TestDefinition {
+		return {
+			testId: "download-parallel",
+			payload: JSON.stringify({
+				testId: "download-parallel",
+				params: {
+					assets: [
+						{ name: "Whisper Tiny", constant: "WHISPER_TINY" },
+						{ name: "VAD Silero", constant: "VAD_SILERO_5_1_2" },
+					],
+				},
+				expectation: {
+					type: "downloads-completed",
+					validation: "all-succeed",
+					expectedCount: 2,
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 180000,
+			skip: { reason: "Download test not suitable for mobile (OOM/bandwidth)", platforms: ["mobile-ios", "mobile-android"] },
+		};
+	}
+
+	buildDownloadCancelIsolationTest(): TestDefinition {
+		return {
+			testId: "download-cancel-isolation",
+			payload: JSON.stringify({
+				testId: "download-cancel-isolation",
+				params: {
+					survivorConstant: "WHISPER_TINY",
+					cancelledConstant: "VAD_SILERO_5_1_2",
+					cancelAtPercent: 1,
+				},
+				expectation: {
+					type: "cancel-isolated",
+					validation: "survivor-succeeds-cancelled-fails",
+				},
+				expectedOutcome: "pass",
+			}),
+			dependency: "none",
+			estimatedDurationMs: 180000,
+			skip: { reason: "Download test not suitable for mobile (OOM/bandwidth)", platforms: ["mobile-ios", "mobile-android"] },
+		};
+	}
+
 	buildCompletionInvalidModelTest(): TestDefinition {
 		return {
 			testId: "completion-invalid-model",
@@ -4580,6 +4626,10 @@ export class TestBuilder {
 			tests.push(this.buildModelUnloadTest());
 			tests.push(this.buildModelLoadConcurrentTest());
 			tests.push(this.buildModelReloadTest());
+
+			// Parallel download tests (registry client isolation)
+			tests.push(this.buildDownloadParallelTest());
+			tests.push(this.buildDownloadCancelIsolationTest());
 			
 			// Sharded model tests (PR #237)
 			tests.push(this.buildShardedModelLoadTest());

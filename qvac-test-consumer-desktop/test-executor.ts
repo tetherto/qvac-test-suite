@@ -14,9 +14,13 @@ import {
 	modelRegistryList,
 	modelRegistrySearch,
 	modelRegistryGetModel,
+	downloadAsset,
+	cancel,
 	LLAMA_3_2_1B_INST_Q4_0,
 	GTE_LARGE_FP16,
 	OCR_LATIN_RECOGNIZER_1,
+	WHISPER_TINY,
+	VAD_SILERO_5_1_2,
 } from "@tetherto/sdk-mono";
 // Dynamic import for SDK_LOG_ID (QVAC-9211) - may not be in types yet
 const sdkModule = require("@tetherto/sdk-mono");
@@ -49,6 +53,10 @@ export class TestExecutor extends TestExecutorBase {
 			modelRegistryList,
 			modelRegistrySearch,
 			modelRegistryGetModel,
+			downloadAsset,
+			cancel,
+			WHISPER_TINY,
+			VAD_SILERO_5_1_2,
 		};
 		const platform: PlatformFunctions = {
 			pathJoin: path.join,

@@ -31,6 +31,10 @@ export interface SDKFunctions {
 	modelRegistryList?: any; // Registry public API
 	modelRegistrySearch?: any; // Registry public API
 	modelRegistryGetModel?: any; // Registry public API
+	downloadAsset?: any; // Download-only API (parallel download tests)
+	cancel?: any; // Cancel ongoing operations
+	WHISPER_TINY?: any; // Lightweight model constant for download tests
+	VAD_SILERO_5_1_2?: any; // Lightweight model constant for download tests
 }
 
 // Platform-specific functions interface for dependency injection
@@ -479,6 +483,10 @@ export abstract class TestExecutorBase {
 		this.testHandlers.set("model-load-concurrent", this.modelLoadConcurrent.bind(this));
 		this.testHandlers.set("completion-invalid-model", this.completionInvalidModel.bind(this));
 		this.testHandlers.set("model-reload-llm", this.modelReload.bind(this));
+
+		// Parallel download tests (registry client isolation)
+		this.testHandlers.set("download-parallel", this.downloadParallel.bind(this));
+		this.testHandlers.set("download-cancel-isolation", this.downloadCancelIsolation.bind(this));
 
 		// Phase 4: Robustness & Advanced Scenarios
 		this.testHandlers.set("completion-concurrent-requests", this.completionConcurrentRequests.bind(this));
@@ -4633,6 +4641,124 @@ export abstract class TestExecutorBase {
 				output: `Error: ${error.message}`,
 				passed: false,
 			};
+		}
+	}
+
+	// ========== PARALLEL DOWNLOAD TESTS ==========
+
+	protected async downloadParallel(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!this.sdk.downloadAsset) {
+			return { output: "downloadAsset not available in this SDK version", passed: false };
+		}
+
+		try {
+			const assetConstants: Record<string, any> = {
+				WHISPER_TINY: this.sdk.WHISPER_TINY,
+				VAD_SILERO_5_1_2: this.sdk.VAD_SILERO_5_1_2,
+			};
+
+			const assets = (params.assets || []).map((a: any) => ({
+				name: a.name,
+				src: assetConstants[a.constant],
+			}));
+
+			if (assets.some((a: any) => !a.src)) {
+				return { output: "One or more asset constants not available", passed: false };
+			}
+
+			const promises = assets.map((asset: any) =>
+				this.sdk.downloadAsset({
+					assetSrc: asset.src,
+					onProgress: () => {},
+				}).then(
+					(id: string) => ({ name: asset.name, status: "ok" as const, id }),
+					(err: any) => ({ name: asset.name, status: "fail" as const, err: err.message || String(err) }),
+				),
+			);
+
+			const results = await Promise.all(promises);
+
+			const succeeded = results.filter((r: any) => r.status === "ok");
+			const failed = results.filter((r: any) => r.status === "fail");
+			const allSucceeded = succeeded.length === expectation.expectedCount;
+
+			const detail = results.map((r: any) =>
+				r.status === "ok" ? `${r.name}: OK (${r.id})` : `${r.name}: FAILED (${r.err})`
+			).join(", ");
+
+			return {
+				output: `Parallel download: ${succeeded.length}/${results.length} succeeded. ${detail}`,
+				passed: allSucceeded,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
+		}
+	}
+
+	protected async downloadCancelIsolation(modelId: string | null, params: any, expectation: any): Promise<TestResult> {
+		if (!this.sdk.downloadAsset || !this.sdk.cancel) {
+			return { output: "downloadAsset or cancel not available in this SDK version", passed: false };
+		}
+
+		try {
+			const assetConstants: Record<string, any> = {
+				WHISPER_TINY: this.sdk.WHISPER_TINY,
+				VAD_SILERO_5_1_2: this.sdk.VAD_SILERO_5_1_2,
+			};
+
+			const survivorSrc = assetConstants[params.survivorConstant];
+			const cancelledSrc = assetConstants[params.cancelledConstant];
+
+			if (!survivorSrc || !cancelledSrc) {
+				return { output: "Asset constants not available for cancel isolation test", passed: false };
+			}
+
+			let cancelTriggered = false;
+
+			const survivorPromise = this.sdk.downloadAsset({
+				assetSrc: survivorSrc,
+				onProgress: () => {},
+			}).then(
+				(id: string) => ({ status: "ok" as const, id }),
+				(err: any) => ({ status: "fail" as const, err: err.message || String(err) }),
+			);
+
+			const cancelledPromise = this.sdk.downloadAsset({
+				assetSrc: cancelledSrc,
+				onProgress: (p: any) => {
+					if (!cancelTriggered && p.downloadKey && p.percentage >= (params.cancelAtPercent || 1)) {
+						cancelTriggered = true;
+						void this.sdk.cancel({
+							operation: "downloadAsset",
+							downloadKey: p.downloadKey,
+							clearCache: true,
+						});
+					}
+				},
+			}).then(
+				(id: string) => ({ status: "ok" as const, id }),
+				(err: any) => ({ status: "fail" as const, err: err.message || String(err) }),
+			);
+
+			const [survivor, cancelled] = await Promise.all([survivorPromise, cancelledPromise]);
+
+			const survivorOk = survivor.status === "ok";
+			const cancelledFailed = cancelled.status === "fail";
+			const passed = survivorOk && cancelledFailed;
+
+			const survivorDetail = survivor.status === "ok"
+				? `OK (${survivor.id})`
+				: `FAILED (${survivor.err})`;
+			const cancelledDetail = cancelled.status === "fail"
+				? `correctly rejected (${cancelled.err})`
+				: `should have been cancelled but succeeded (${cancelled.id})`;
+
+			return {
+				output: `Survivor (${params.survivorConstant}): ${survivorDetail}. Cancelled (${params.cancelledConstant}): ${cancelledDetail}`,
+				passed,
+			};
+		} catch (error: any) {
+			return { output: `Error: ${error.message}`, passed: false };
 		}
 	}
 
