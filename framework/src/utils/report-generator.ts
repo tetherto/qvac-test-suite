@@ -18,6 +18,7 @@ export interface ReportTestResult {
 export interface ReportConsumerInfo {
   consumerId: string;
   platform: string;
+  sdkVersion?: string;
 }
 
 export interface ReportProfilingData {
@@ -62,6 +63,16 @@ export function generateHtmlReport(data: ReportData): string {
   }
 
   const elapsed = (Date.now() - data.startTime) / 1000;
+
+  const sdkVersions = [
+    ...new Set(
+      Array.from(data.consumers.values())
+        .map((c) => c.sdkVersion)
+        .filter(Boolean)
+    ),
+  ];
+  const sdkVersionLabel = sdkVersions.length > 0 ? sdkVersions.join(', ') : 'unknown';
+
   const successCount = data.completedTests.filter((t) => t.outcome === 'success').length;
   const failureCount = data.completedTests.filter((t) => t.outcome === 'failure').length;
   const skippedCount = data.completedTests.filter((t) => t.outcome === 'skipped').length;
@@ -335,7 +346,7 @@ export function generateHtmlReport(data: ReportData): string {
 	<div class="container">
 		<div class="header">
 			<h1>🧪 QVAC Batch Test Report</h1>
-			<p>Run ID: ${data.runId}</p>
+			<p>Run ID: ${data.runId} &nbsp;|&nbsp; SDK: ${sdkVersionLabel}</p>
 			<p>Generated: ${new Date().toLocaleString()}</p>
 		</div>
 
@@ -350,6 +361,7 @@ export function generateHtmlReport(data: ReportData): string {
 				<div><strong>Total Memory:</strong> ${systemInfo.totalMemoryGB} GB</div>
 				<div><strong>Free Memory:</strong> ${systemInfo.freeMemoryGB} GB (at report time)</div>
 				<div><strong>Node Version:</strong> ${systemInfo.nodeVersion}</div>
+				<div><strong>SDK Version:</strong> ${sdkVersionLabel}</div>
 			</div>
 		</div>
 
@@ -539,6 +551,7 @@ export function generateHtmlReport(data: ReportData): string {
 						<div style="font-size: 12px; color: #6b7280; margin-top: 4px; font-family: monospace;">Full ID: ${consumerId}</div>
 						<div class="consumer-stats">
 							<span>Platform: ${consumer?.platform || 'unknown'}</span>
+							<span>SDK: ${consumer?.sdkVersion || 'unknown'}</span>
 							<span>Total Tests: ${tests.length}</span>
 							<span>✅ Passed: ${passed}</span>
 							<span>❌ Failed: ${failed}</span>

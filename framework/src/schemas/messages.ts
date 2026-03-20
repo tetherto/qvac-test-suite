@@ -8,6 +8,7 @@ export const consumerRegistrationSchema = z.object({
   consumerId: z.string().describe('Unique consumer identifier'),
   platform: z.string().describe('Platform: desktop, ios, android, etc.'),
   timestamp: z.string().describe('ISO timestamp of registration'),
+  sdkVersion: z.string().optional().describe('SDK package version (from env, @qvac/sdk, or @tetherto/sdk-mono)'),
 });
 
 export type ConsumerRegistration = z.infer<typeof consumerRegistrationSchema>;

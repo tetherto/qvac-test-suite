@@ -170,6 +170,17 @@ export class ConsumerBase {
     });
   }
 
+  protected getSdkVersion(): string {
+    if (process.env.QVAC_SDK_VERSION) return process.env.QVAC_SDK_VERSION;
+    try {
+      return require('@qvac/sdk/package.json').version;
+    } catch {}
+    try {
+      return require('@tetherto/sdk-mono/package.json').version;
+    } catch {}
+    return 'unknown';
+  }
+
   protected sendRegistration() {
     this.client.publish(
       'qvac/register',
@@ -177,6 +188,7 @@ export class ConsumerBase {
         runId: this.runId,
         consumerId: this.consumerId,
         platform: this.platform,
+        sdkVersion: this.getSdkVersion(),
         timestamp: new Date().toISOString(),
       }),
       { qos: 1 }
