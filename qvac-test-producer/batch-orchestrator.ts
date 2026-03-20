@@ -25,11 +25,12 @@ interface TestAssignment {
 interface ConsumerInfo {
 	consumerId: string;
 	platform: string;
+	sdkVersion?: string;
 	registeredAt: number;
 	lastSeen: number;
 	testsCompleted: number;
 	testsRunning: number;
-	completedTestIds: Set<string>; // Track which tests this consumer has completed
+	completedTestIds: Set<string>;
 }
 
 interface TestResult {
@@ -128,26 +129,29 @@ export class BatchOrchestrator {
 	}
 
 	private handleConsumerRegistration(message: any) {
-		const { consumerId, platform } = message;
+		const { consumerId, platform, sdkVersion } = message;
 		const now = Date.now();
+		const versionLabel = sdkVersion ?? "unknown";
 		
 		const existing = this.consumers.get(consumerId);
 		if (existing) {
 			existing.platform = platform;
+			existing.sdkVersion = sdkVersion;
 			existing.lastSeen = now;
 			existing.testsRunning = 0;
-			console.log(`\n🔌 Consumer re-registered: ${consumerId} (${platform}), preserving ${existing.completedTestIds.size} completed tests`);
+			console.log(`\n🔌 Consumer re-registered: ${consumerId} (${platform}, SDK ${versionLabel}), preserving ${existing.completedTestIds.size} completed tests`);
 		} else {
 			this.consumers.set(consumerId, {
 				consumerId,
 				platform,
+				sdkVersion,
 				registeredAt: now,
 				lastSeen: now,
 				testsCompleted: 0,
 				testsRunning: 0,
 				completedTestIds: new Set<string>(),
 			});
-			console.log(`\n🔌 Consumer registered: ${consumerId} (${platform})`);
+			console.log(`\n🔌 Consumer registered: ${consumerId} (${platform}, SDK ${versionLabel})`);
 		}
 
 		// Reset queue-empty notification status for this consumer (in case of re-registration)
@@ -521,7 +525,7 @@ export class BatchOrchestrator {
 				} as ReportTestResult)),
 				consumers: new Map(Array.from(this.consumers.entries()).map(([id, info]) => [
 					id,
-					{ consumerId: info.consumerId, platform: info.platform } as ReportConsumerInfo
+					{ consumerId: info.consumerId, platform: info.platform, sdkVersion: info.sdkVersion } as ReportConsumerInfo
 				])),
 				startTime: this.startTime,
 			};

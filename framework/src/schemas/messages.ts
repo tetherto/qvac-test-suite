@@ -7,6 +7,7 @@ export const consumerRegistrationSchema = z.object({
   runId: z.string().describe('Run identifier for this test batch'),
   consumerId: z.string().describe('Unique consumer identifier'),
   platform: z.string().describe('Platform: desktop, ios, android, etc.'),
+  sdkVersion: z.string().optional().describe('SDK package version (from env, @qvac/sdk, or @tetherto/sdk-mono)'),
   timestamp: z.string().describe('ISO timestamp of registration'),
 });
 

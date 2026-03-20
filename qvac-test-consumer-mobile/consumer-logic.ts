@@ -187,6 +187,13 @@ export class MobileConsumer extends ConsumerBase {
 		});
 	}
 
+	protected getSdkVersion(): string {
+		if (process.env.QVAC_SDK_VERSION) return process.env.QVAC_SDK_VERSION;
+		try { return require("@qvac/sdk/package.json").version; } catch {}
+		try { return require("@tetherto/sdk-mono/package.json").version; } catch {}
+		return "unknown";
+	}
+
 	protected async getSDKFunctions() {
 		return { unloadModel, cancel };
 	}

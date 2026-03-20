@@ -170,6 +170,10 @@ export class ConsumerBase {
     });
   }
 
+  protected getSdkVersion(): string {
+    return 'unknown';
+  }
+
   protected sendRegistration() {
     this.client.publish(
       'qvac/register',
@@ -177,6 +181,7 @@ export class ConsumerBase {
         runId: this.runId,
         consumerId: this.consumerId,
         platform: this.platform,
+        sdkVersion: this.getSdkVersion(),
         timestamp: new Date().toISOString(),
       }),
       { qos: 1 }

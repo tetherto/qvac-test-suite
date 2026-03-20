@@ -37,6 +37,7 @@ interface TestAssignment {
 interface ConsumerInfo {
   consumerId: string;
   platform: string;
+  sdkVersion?: string;
   registeredAt: number;
   lastSeen: number;
   testsCompleted: number;
@@ -140,7 +141,7 @@ export class BatchOrchestrator {
 
   private handleConsumerRegistration(rawMessage: unknown) {
     const message = consumerRegistrationSchema.parse(rawMessage);
-    const { consumerId, platform } = message;
+    const { consumerId, platform, sdkVersion } = message;
     const now = Date.now();
 
     // Cancel consumer timeout on first registration
@@ -152,13 +153,14 @@ export class BatchOrchestrator {
     this.consumers.set(consumerId, {
       consumerId,
       platform,
+      sdkVersion,
       registeredAt: now,
       lastSeen: now,
       testsCompleted: 0,
       testsRunning: 0,
     });
 
-    console.log(`\n🔌 Consumer registered: ${consumerId} (${platform})`);
+    console.log(`\n🔌 Consumer registered: ${consumerId} (${platform}, SDK ${sdkVersion ?? 'unknown'})`);
     this.displayStatus();
 
     // Send acknowledgment
