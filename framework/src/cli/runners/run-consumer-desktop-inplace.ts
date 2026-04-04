@@ -22,7 +22,12 @@ function requireArg(args: string[], name: string): string {
   return value;
 }
 
-async function loadExecutor(entryAbsPath: string): Promise<TestExecutor> {
+interface ConsumerEntry {
+  executor: TestExecutor;
+  bootstrap?: () => Promise<void>;
+}
+
+async function loadConsumerEntry(entryAbsPath: string): Promise<ConsumerEntry> {
   const entryUrl = pathToFileURL(entryAbsPath).href;
   const mod = await import(entryUrl);
   const executor =
@@ -34,7 +39,9 @@ async function loadExecutor(entryAbsPath: string): Promise<TestExecutor> {
     );
   }
 
-  return executor as TestExecutor;
+  const bootstrap = typeof mod.bootstrap === 'function' ? mod.bootstrap : undefined;
+
+  return { executor: executor as TestExecutor, bootstrap };
 }
 
 async function main() {
@@ -54,7 +61,7 @@ async function main() {
   }
 
   const entryAbs = path.resolve(configDir, config.consumers.desktop.entry);
-  const executor = await loadExecutor(entryAbs);
+  const { executor, bootstrap } = await loadConsumerEntry(entryAbs);
 
   const mqttConfig = buildMqttConnectionConfig(config);
   if (mqttBrokerOverride) {
@@ -71,6 +78,7 @@ async function main() {
 
   const consumer = new ConsumerBase(client, consumerId, platform, runId, executor, {
     log: (msg) => console.log(msg),
+    onBootstrap: bootstrap,
     updateStats: () => {},
     onShutdown: () => {},
   });

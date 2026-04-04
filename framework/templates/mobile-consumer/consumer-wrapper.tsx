@@ -22,6 +22,18 @@ import type { MqttClient } from 'mqtt';
 import { executor } from './executor';
 import { config as consumerConfig } from './consumer-config';
 
+// Optional bootstrap hook — may or may not be exported by the user's executor module
+let bootstrap: (() => Promise<void>) | undefined;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const executorModule = require('./executor');
+  if (typeof executorModule.bootstrap === 'function') {
+    bootstrap = executorModule.bootstrap;
+  }
+} catch {
+  // bootstrap not available
+}
+
 interface ConsumerWrapperProps {
   log: (message: string) => void;
   updateStats: (stats: {
@@ -129,6 +141,7 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
               }
               log(message);
             },
+            onBootstrap: bootstrap,
             updateStats: (update: Record<string, unknown>) => {
               updateStats(update as Parameters<typeof updateStats>[0]);
             },

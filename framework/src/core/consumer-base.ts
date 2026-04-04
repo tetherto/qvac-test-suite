@@ -43,6 +43,7 @@ export interface ConsumerCallbacks {
     currentTest?: string;
     isComplete?: boolean;
   }) => void;
+  onBootstrap?: () => Promise<void>;
   onShutdown?: () => void | Promise<void>;
 }
 
@@ -54,6 +55,7 @@ export class ConsumerBase {
   protected isWildcard: boolean;
   protected executor: TestExecutor;
   protected registered = false;
+  protected bootstrapped = false;
   protected testsCompleted = 0;
   protected testsPassed = 0;
   protected testsFailed = 0;
@@ -153,7 +155,7 @@ export class ConsumerBase {
         }
 
         if (topic === `qvac/register-ack/${this.consumerId}`) {
-          this.handleRegistrationAck(message);
+          await this.handleRegistrationAck(message);
         } else if (topic === `qvac/test-assigned/${this.consumerId}`) {
           await this.handleTestAssignment(message);
         } else if (topic === 'qvac/batch-complete') {
@@ -183,10 +185,30 @@ export class ConsumerBase {
     );
   }
 
-  protected handleRegistrationAck(message: { totalTests?: number; runId?: string }) {
+  protected async handleRegistrationAck(message: { totalTests?: number; runId?: string }) {
     this.log(`🔌 Registration ack - ${message.totalTests} tests in queue\n`);
     this.registered = true;
     this.updateStats({ totalTests: message.totalTests });
+
+    if (!this.callbacks.onBootstrap) {
+      this.bootstrapped = true;
+    }
+
+    if (!this.bootstrapped) {
+      try {
+        this.log('🔧 Running bootstrap...');
+        const start = Date.now();
+        await this.callbacks.onBootstrap!();
+        this.bootstrapped = true;
+        this.log(`🔧 Bootstrap completed in ${Date.now() - start}ms\n`);
+      } catch (error: unknown) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        this.log(`❌ Bootstrap failed: ${errorMsg}`);
+        this.shutdown();
+        return;
+      }
+    }
+
     this.requestNextTest();
   }
 
