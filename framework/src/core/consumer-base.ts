@@ -168,6 +168,18 @@ export class ConsumerBase {
       }
     });
 
+    this.client.on('reconnect', () => {
+      this.log('🔄 Reconnecting to MQTT broker...');
+    });
+
+    this.client.on('offline', () => {
+      this.log('📴 Consumer offline');
+    });
+
+    this.client.on('close', () => {
+      this.log('🔌 MQTT connection closed');
+    });
+
     this.client.on('error', (err) => {
       this.log(`❌ MQTT error: ${err.message}`);
     });
@@ -288,7 +300,8 @@ export class ConsumerBase {
     this.isProcessingTest = true;
     const { testId, params, expectation } = test;
 
-    this.log(`▶️  ${testId}`);
+    const progress = this.totalTests > 0 ? `[${this.testsCompleted + 1}/${this.totalTests}]` : '';
+    this.log(`▶️  ${progress} ${testId}`);
     this.updateStats({ currentTest: testId });
 
     // Check for conditional platform-based skip
@@ -324,7 +337,12 @@ export class ConsumerBase {
     // Setup phase: runs BEFORE timeout and test-start notification
     if (this.executor.setup) {
       try {
+        const setupStart = Date.now();
         await this.executor.setup(testId, context);
+        const setupDuration = Date.now() - setupStart;
+        if (setupDuration > 1000) {
+          this.log(`   Setup: ${setupDuration}ms`);
+        }
       } catch (error: unknown) {
         const errorMsg = error instanceof Error ? error.message : 'Setup failed';
         this.log(`❌ ${testId} setup failed: ${errorMsg}`);

@@ -134,6 +134,18 @@ export class BatchOrchestrator {
       }
     });
 
+    this.client.on('reconnect', () => {
+      console.log('🔄 Producer reconnecting to MQTT broker...');
+    });
+
+    this.client.on('offline', () => {
+      console.log('📴 Producer offline');
+    });
+
+    this.client.on('close', () => {
+      console.log('🔌 Producer MQTT connection closed');
+    });
+
     this.client.on('error', (err) => {
       console.error('❌ MQTT error:', err);
     });
@@ -192,7 +204,7 @@ export class BatchOrchestrator {
         JSON.stringify({ runId: this.runId, status: 'queue-empty' }),
         { qos: 1 }
       );
-      console.log(`📭 No more tests for ${consumerId}`);
+      console.log(`📭 No more tests for ${consumerId} (completed: ${consumer.testsCompleted})`);
       return;
     }
 
@@ -370,10 +382,24 @@ export class BatchOrchestrator {
     const running = this.assignedTests.size;
     const queued = this.testQueue.length;
     const consumers = this.consumers.size;
+    const elapsed = this.startTime > 0 ? `${Math.round((Date.now() - this.startTime) / 1000)}s` : '0s';
 
     console.log(
-      `\n📊 Status: ${completed}/${total} completed | ${running} running | ${queued} queued | ${consumers} consumers\n`
+      `\n📊 Status [${elapsed}]: ${completed}/${total} completed | ${running} running | ${queued} queued | ${consumers} consumers`
     );
+
+    if (running > 0) {
+      const now = Date.now();
+      for (const assignment of this.assignedTests.values()) {
+        const waitSec = Math.round((now - (assignment.startedAt ?? assignment.assignedAt)) / 1000);
+        const timeoutSec = Math.round(assignment.timeoutMs / 1000);
+        const phase = assignment.startedAt ? 'running' : 'setup';
+        console.log(
+          `   ⏳ ${assignment.testCase.testId} → ${assignment.consumerId} (${phase}, ${waitSec}s / ${timeoutSec}s)`
+        );
+      }
+    }
+    console.log();
   }
 
   private completeBatch() {
