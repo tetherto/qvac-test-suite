@@ -34,6 +34,11 @@ export const testDefinitionSchema = z.object({
     .optional()
     .describe('Optional metadata: setup requirements, categories, timeouts, or any repo-specific info'),
 
+  suites: z
+    .array(z.string())
+    .optional()
+    .describe('Suite tags for grouping and filtering (e.g., ["smoke", "regression", "slow"])'),
+
   skip: skipInfoSchema.optional().describe('If present, test is skipped with reason logged'),
 });
 

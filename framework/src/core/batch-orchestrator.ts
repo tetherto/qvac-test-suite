@@ -23,6 +23,7 @@ interface TestCase {
   testId: string; // Test type
   payload: string;
   metadata: Record<string, unknown>; // Test metadata
+  suites?: string[];
   estimatedDurationMs: number;
 }
 
@@ -59,6 +60,7 @@ export class BatchOrchestrator {
   private completedTests = new Map<string, TestResult>(); // uniqueTestId -> result
   private consumers = new Map<string, ConsumerInfo>(); // consumerId -> info
   private profilingData = new Map<string, ProfilerExport>(); // consumerId -> profiler export
+  private testSuites = new Map<string, string[]>(); // testId -> suites
   private initialTotalTests = 0;
   private startTime = 0;
   private batchStarted = false;
@@ -429,6 +431,7 @@ export class BatchOrchestrator {
 
     console.log('\n📋 Test Results by Category:\n');
     this.displayResultsByCategory();
+    this.displayResultsBySuite();
 
     console.log(`\n📨 Signaling ${this.consumers.size} consumer(s) to complete...`);
     this.client.publish(
@@ -488,9 +491,14 @@ export class BatchOrchestrator {
         ([consumerId, profilerExport]) => ({ consumerId, profilerExport })
       );
 
+      const completedTests = Array.from(this.completedTests.values()).map((result) => ({
+        ...result,
+        suites: this.testSuites.get(result.testId),
+      }));
+
       const reportData: ReportData = {
         runId: this.runId,
-        completedTests: Array.from(this.completedTests.values()),
+        completedTests,
         consumers: this.consumers,
         startTime: this.startTime,
         profilingData: profilingDataArray.length > 0 ? profilingDataArray : undefined,
@@ -549,6 +557,41 @@ export class BatchOrchestrator {
     }
   }
 
+  private displayResultsBySuite() {
+    if (this.testSuites.size === 0) return;
+
+    const suites = new Map<string, { passed: number; failed: number; skipped: number }>();
+
+    for (const [, result] of this.completedTests) {
+      const testSuiteList = this.testSuites.get(result.testId);
+      if (!testSuiteList) continue;
+
+      for (const suite of testSuiteList) {
+        if (!suites.has(suite)) {
+          suites.set(suite, { passed: 0, failed: 0, skipped: 0 });
+        }
+        const stats = suites.get(suite)!;
+        if (result.outcome === 'success') {
+          stats.passed++;
+        } else if (result.outcome === 'skipped') {
+          stats.skipped++;
+        } else {
+          stats.failed++;
+        }
+      }
+    }
+
+    if (suites.size === 0) return;
+
+    console.log('\n📋 Test Results by Suite:\n');
+    for (const [suite, stats] of suites) {
+      const total = stats.passed + stats.failed + stats.skipped;
+      const rate = ((stats.passed / Math.max(total - stats.skipped, 1)) * 100).toFixed(0);
+      const skipStr = stats.skipped > 0 ? `, ${stats.skipped} skipped` : '';
+      console.log(`   ${suite.padEnd(20)} ${stats.passed}/${total} (${rate}%${skipStr})`);
+    }
+  }
+
   public buildTestQueue(tests: TestDefinition[]) {
     console.log('🔨 Building test queue...\n');
 
@@ -593,8 +636,12 @@ export class BatchOrchestrator {
         testId: test.testId,
         payload: JSON.stringify(payloadObj),
         metadata: test.metadata || {},
+        suites: test.suites,
         estimatedDurationMs: test.metadata?.estimatedDurationMs || 10000,
       };
+      if (test.suites) {
+        this.testSuites.set(test.testId, test.suites);
+      }
       this.testQueue.push(testCase);
     }
 

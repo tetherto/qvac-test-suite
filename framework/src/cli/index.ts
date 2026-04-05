@@ -22,6 +22,8 @@ program
     '--filter <categories>',
     'Filter tests by category or testId prefix (comma-separated, e.g., "model,completion")'
   )
+  .option('--suite <suites>', 'Include only tests in these suites (comma-separated, e.g., "smoke,regression")')
+  .option('--exclude-suite <suites>', 'Exclude tests in these suites (comma-separated, e.g., "slow,flaky")')
   .action(runProducer);
 
 program
