@@ -44,4 +44,4 @@ export {
   buildMqttConnectionConfig,
   logMqttConnectionSecurity,
 } from './utils/mqtt-connection.js';
-export type { MqttConnectionConfig } from './utils/mqtt-connection.js';
+export type { MqttConnectionConfig, CreateMqttClientOptions } from './utils/mqtt-connection.js';

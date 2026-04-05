@@ -18,7 +18,7 @@ if (process.env.EXPO_PUBLIC_MQTT_DEBUG === 'true') {
 
 import mqtt from 'mqtt';
 import { ConsumerBase } from '@tetherto/qvac-test-suite/mobile';
-import type { MqttClient } from 'mqtt';
+import type { IClientOptions, MqttClient } from 'mqtt';
 import { executor } from './executor';
 import { config as consumerConfig } from './consumer-config';
 
@@ -74,12 +74,16 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
         // Build broker URL with path for WebSocket
         const brokerUrl = `${mqttConfig.protocol}://${mqttConfig.host}:${mqttConfig.port}${mqttConfig.path}`;
 
+        // Generate consumer ID early so we can use it as MQTT clientId
+        const consumerId = `consumer-mobile-${Constants.deviceName || Constants.sessionId || 'unknown'}-${runId === '*' ? Date.now() : runId}`;
+
         // Build connection options
-        const connectOptions: any = {
-          connectTimeout: 10000,
-          reconnectPeriod: 5000,
-          keepalive: 60,
-          clean: true,
+        const connectOptions: IClientOptions = {
+          clientId: consumerId,
+          connectTimeout: 15000,
+          reconnectPeriod: 3000,
+          keepalive: 30,
+          clean: false,
         };
 
         // Add authentication if provided
@@ -118,8 +122,6 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
           });
         }
 
-        // Generate consumer ID
-        const consumerId = `consumer-mobile-${Constants.deviceName || Constants.sessionId || 'unknown'}-${runId === '*' ? Date.now() : runId}`;
 
         if (executor.initProfiling) {
           executor.initProfiling();

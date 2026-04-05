@@ -68,8 +68,8 @@ async function main() {
     mqttConfig.brokerUrl = mqttBrokerOverride;
   }
 
-  const client = createMqttClient(mqttConfig, configDir);
   const consumerId = `consumer-${platform}-${os.hostname()}-${Date.now()}`;
+  const client = createMqttClient(mqttConfig, configDir, { clientId: consumerId });
 
   if (executor.initProfiling) {
     executor.initProfiling();
