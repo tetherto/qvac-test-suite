@@ -56,6 +56,7 @@ export class ConsumerBase {
   protected executor: TestExecutor;
   protected registered = false;
   protected bootstrapped = false;
+  protected totalTests = 0;
   protected testsCompleted = 0;
   protected testsPassed = 0;
   protected testsFailed = 0;
@@ -186,9 +187,17 @@ export class ConsumerBase {
   }
 
   protected async handleRegistrationAck(message: { totalTests?: number; runId?: string }) {
-    this.log(`🔌 Registration ack - ${message.totalTests} tests in queue\n`);
+    const isReconnect = this.registered;
     this.registered = true;
-    this.updateStats({ totalTests: message.totalTests });
+    this.totalTests = Math.max(this.totalTests, message.totalTests ?? 0);
+
+    if (isReconnect) {
+      this.log(`🔌 Re-registered (reconnect) - totalTests: ${this.totalTests}\n`);
+    } else {
+      this.log(`🔌 Registration ack - ${this.totalTests} tests in queue\n`);
+    }
+
+    this.updateStats({ totalTests: this.totalTests });
 
     if (!this.callbacks.onBootstrap) {
       this.bootstrapped = true;

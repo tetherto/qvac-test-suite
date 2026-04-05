@@ -59,6 +59,7 @@ export class BatchOrchestrator {
   private completedTests = new Map<string, TestResult>(); // uniqueTestId -> result
   private consumers = new Map<string, ConsumerInfo>(); // consumerId -> info
   private profilingData = new Map<string, ProfilerExport>(); // consumerId -> profiler export
+  private initialTotalTests = 0;
   private startTime = 0;
   private batchStarted = false;
   private shutdownTimer?: NodeJS.Timeout;
@@ -161,10 +162,10 @@ export class BatchOrchestrator {
     console.log(`\n🔌 Consumer registered: ${consumerId} (${platform})`);
     this.displayStatus();
 
-    // Send acknowledgment
+    // Send acknowledgment with initial total (not current queue length, which shrinks as tests are assigned)
     this.client.publish(
       `qvac/register-ack/${consumerId}`,
-      JSON.stringify({ runId: this.runId, status: 'registered', totalTests: this.testQueue.length }),
+      JSON.stringify({ runId: this.runId, status: 'registered', totalTests: this.initialTotalTests }),
       { qos: 1 }
     );
   }
@@ -581,6 +582,8 @@ export class BatchOrchestrator {
       const category = (typeof test.metadata?.category === 'string' ? test.metadata.category : null) || 'uncategorized';
       byCategory.set(category, (byCategory.get(category) || 0) + 1);
     }
+
+    this.initialTotalTests = this.testQueue.length + this.completedTests.size;
 
     console.log(`📦 Built ${this.testQueue.length} tests:`);
     for (const [category, count] of byCategory) {
