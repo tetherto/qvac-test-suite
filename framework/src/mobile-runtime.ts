@@ -20,5 +20,8 @@ export { AssetExecutor } from './mobile/asset-executor.js';
 // Schema exports
 export { expectationSchema } from './schemas/expectations.js';
 
+// Helper function exports (mobile-compatible)
+export { defineTests } from './core/define-tests.js';
+
 // Utility exports (mobile-compatible only)
-export { ValidationHelpers } from './utils/validation-helpers.js';
+export { ValidationHelpers, chainExpectation } from './utils/validation-helpers.js';
