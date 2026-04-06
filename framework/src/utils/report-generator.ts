@@ -62,7 +62,7 @@ export function generateHtmlReport(data: ReportData): string {
     filename = `reports/batch-report-${data.runId}-${timestamp}.html`;
   }
 
-  const elapsed = (Date.now() - data.startTime) / 1000;
+  const elapsed = data.startTime > 0 ? (Date.now() - data.startTime) / 1000 : 0;
   const successCount = data.completedTests.filter((t) => t.outcome === 'success').length;
   const failureCount = data.completedTests.filter((t) => t.outcome === 'failure').length;
   const skippedCount = data.completedTests.filter((t) => t.outcome === 'skipped').length;
@@ -1003,7 +1003,7 @@ export function generateJsonReport(data: ReportData): string {
     filename = `reports/results-${data.runId}-${timestamp}.json`;
   }
 
-  const elapsed = (Date.now() - data.startTime) / 1000;
+  const elapsed = data.startTime > 0 ? (Date.now() - data.startTime) / 1000 : 0;
   const successCount = data.completedTests.filter((t) => t.outcome === 'success').length;
   const failureCount = data.completedTests.filter((t) => t.outcome === 'failure').length;
   const skippedCount = data.completedTests.filter((t) => t.outcome === 'skipped').length;

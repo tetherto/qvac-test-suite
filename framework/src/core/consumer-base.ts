@@ -56,6 +56,8 @@ export class ConsumerBase {
   protected isProcessingTest = false;
   protected shutdownRequested = false;
   protected callbacks: ConsumerCallbacks;
+  private messageQueue: Promise<void> = Promise.resolve();
+  private bootstrapPromise?: Promise<void>;
 
   constructor(
     client: MqttClient,
@@ -117,6 +119,12 @@ export class ConsumerBase {
 
   public setupMqttHandlers() {
     this.client.on('connect', () => {
+      if (this.registered) {
+        this.log('✅ Reconnected to MQTT broker');
+        this.requestNextTest();
+        return;
+      }
+
       this.log('✅ Connected to MQTT broker');
       this.log(`🔑 Run ID: ${this.runId}${this.isWildcard ? ' (wildcard mode)' : ''}`);
 
@@ -130,6 +138,25 @@ export class ConsumerBase {
             return;
           }
           this.log('📡 Subscribed to topics\n');
+
+          // Start bootstrap in parallel with registration (doesn't need ack)
+          if (this.callbacks.onBootstrap && !this.bootstrapped) {
+            this.log('🔧 Running bootstrap...');
+            const start = Date.now();
+            this.bootstrapPromise = this.callbacks
+              .onBootstrap()
+              .then(() => {
+                this.bootstrapped = true;
+                this.log(`🔧 Bootstrap completed in ${Date.now() - start}ms\n`);
+              })
+              .catch((error: unknown) => {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                this.log(`❌ Bootstrap failed: ${errorMsg}`);
+                this.shutdown();
+              });
+          } else {
+            this.bootstrapped = true;
+          }
 
           // Register with producer (with retry)
           this.sendRegistration();
@@ -146,25 +173,27 @@ export class ConsumerBase {
       );
     });
 
-    this.client.on('message', async (topic, payload) => {
-      try {
-        const message = JSON.parse(payload.toString());
+    this.client.on('message', (topic, payload) => {
+      this.messageQueue = this.messageQueue.then(async () => {
+        try {
+          const message = JSON.parse(payload.toString());
 
-        if (!this.isWildcard && message.runId !== this.runId) {
-          return;
-        }
+          if (!this.isWildcard && message.runId !== this.runId) {
+            return;
+          }
 
-        if (topic === `qvac/register-ack/${this.consumerId}`) {
-          await this.handleRegistrationAck(message);
-        } else if (topic === `qvac/test-assigned/${this.consumerId}`) {
-          await this.handleTestAssignment(message);
-        } else if (topic === 'qvac/batch-complete') {
-          await this.handleBatchComplete(message);
+          if (topic === `qvac/register-ack/${this.consumerId}`) {
+            await this.handleRegistrationAck(message);
+          } else if (topic === `qvac/test-assigned/${this.consumerId}`) {
+            await this.handleTestAssignment(message);
+          } else if (topic === 'qvac/batch-complete') {
+            await this.handleBatchComplete(message);
+          }
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          this.log(`❌ Error handling ${topic}: ${errorMessage}`);
         }
-      } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        this.log(`❌ Error handling ${topic}: ${errorMessage}`);
-      }
+      });
     });
 
     this.client.on('reconnect', () => {
@@ -198,35 +227,23 @@ export class ConsumerBase {
   }
 
   protected async handleRegistrationAck(message: { totalTests?: number; runId?: string }) {
-    const isReconnect = this.registered;
-    this.registered = true;
     this.totalTests = Math.max(this.totalTests, message.totalTests ?? 0);
 
-    if (isReconnect) {
-      this.log(`🔌 Re-registered (reconnect) - totalTests: ${this.totalTests}\n`);
-    } else {
-      this.log(`🔌 Registration ack - ${this.totalTests} tests in queue\n`);
+    if (this.registered) {
+      return;
     }
 
+    this.registered = true;
+    this.log(`🔌 Registration ack - ${this.totalTests} tests in queue\n`);
     this.updateStats({ totalTests: this.totalTests });
 
-    if (!this.callbacks.onBootstrap) {
-      this.bootstrapped = true;
+    // Wait for bootstrap if still running (started at connect time)
+    if (this.bootstrapPromise) {
+      await this.bootstrapPromise;
     }
 
     if (!this.bootstrapped) {
-      try {
-        this.log('🔧 Running bootstrap...');
-        const start = Date.now();
-        await this.callbacks.onBootstrap!();
-        this.bootstrapped = true;
-        this.log(`🔧 Bootstrap completed in ${Date.now() - start}ms\n`);
-      } catch (error: unknown) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        this.log(`❌ Bootstrap failed: ${errorMsg}`);
-        this.shutdown();
-        return;
-      }
+      return;
     }
 
     this.requestNextTest();

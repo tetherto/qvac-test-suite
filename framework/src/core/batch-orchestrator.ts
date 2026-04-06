@@ -157,6 +157,18 @@ export class BatchOrchestrator {
     const { consumerId, platform } = message;
     const now = Date.now();
 
+    const existing = this.consumers.get(consumerId);
+    if (existing) {
+      existing.lastSeen = now;
+      // Always re-send ack (consumer may not have received it yet)
+      this.client.publish(
+        `qvac/register-ack/${consumerId}`,
+        JSON.stringify({ runId: this.runId, status: 'registered', totalTests: this.initialTotalTests }),
+        { qos: 1 }
+      );
+      return;
+    }
+
     // Cancel consumer timeout on first registration
     if (this.consumers.size === 0 && this.consumerTimeoutTimer) {
       clearTimeout(this.consumerTimeoutTimer);
@@ -406,7 +418,7 @@ export class BatchOrchestrator {
   private completeBatch() {
     if (this.shutdownTimer) return; // Already shutting down
 
-    const duration = Date.now() - this.startTime;
+    const duration = this.startTime > 0 ? Date.now() - this.startTime : 0;
     const totalTests = this.completedTests.size;
     const results = Array.from(this.completedTests.values());
     const successCount = results.filter((r) => r.outcome === 'success').length;
