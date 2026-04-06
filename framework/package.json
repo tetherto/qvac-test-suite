@@ -1,6 +1,6 @@
 {
   "name": "@tetherto/qvac-test-suite",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Generic distributed testing framework for multi-platform execution",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,6 +10,7 @@
   },
   "exports": {
     ".": {
+      "react-native": "./dist/mobile-runtime.js",
       "types": "./dist/index.d.ts",
       "require": "./dist/index.js",
       "import": "./dist/index.js",

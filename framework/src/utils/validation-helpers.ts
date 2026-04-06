@@ -2,6 +2,28 @@ import type { Expectation } from '../types/test-definition.js';
 import type { TestResult } from '../core/consumer-base.js';
 
 /**
+ * Compose multiple expectations with AND logic.
+ * Returns a function expectation that runs each in order,
+ * returning the first failure or a combined success.
+ */
+export function chainExpectation(...expectations: Expectation[]): Expectation {
+  return {
+    validation: 'function' as const,
+    fn(result: unknown): TestResult {
+      const outputs: string[] = [];
+      for (const expectation of expectations) {
+        const r = ValidationHelpers.validate(result, expectation);
+        if (!r.passed) {
+          return { passed: false, output: `[${expectation.validation}] ${r.output}` };
+        }
+        outputs.push(r.output);
+      }
+      return { passed: true, output: outputs.join(' | ') };
+    },
+  };
+}
+
+/**
  * Validation helpers for common test expectations
  */
 export class ValidationHelpers {
@@ -30,8 +52,8 @@ export class ValidationHelpers {
         case 'throws-error':
           return this.validateThrowsError(result, expectation.errorContains);
 
-        case 'custom':
-          return this.validateCustom(result, expectation.validator);
+        case 'function':
+          return this.validateFunction(result, expectation.fn);
 
         default:
           return {
@@ -159,18 +181,14 @@ export class ValidationHelpers {
     };
   }
 
-  private static validateCustom(result: unknown, validator: (result: unknown) => boolean): TestResult {
+  private static validateFunction(result: unknown, fn: (result: unknown) => TestResult): TestResult {
     try {
-      const passed = validator(result);
-      return {
-        passed,
-        output: passed ? String(result) : `Custom validation failed for: ${String(result).substring(0, 200)}`,
-      };
+      return fn(result);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       return {
         passed: false,
-        output: `Custom validator threw error: ${errorMessage}`,
+        output: `Function validator threw error: ${errorMessage}`,
       };
     }
   }

@@ -18,9 +18,31 @@ if (process.env.EXPO_PUBLIC_MQTT_DEBUG === 'true') {
 
 import mqtt from 'mqtt';
 import { ConsumerBase } from '@tetherto/qvac-test-suite/mobile';
-import type { MqttClient } from 'mqtt';
+import type { IClientOptions, MqttClient } from 'mqtt';
 import { executor } from './executor';
 import { config as consumerConfig } from './consumer-config';
+
+// Optional bootstrap hook — may or may not be exported by the user's executor module
+let bootstrap: (() => Promise<void>) | undefined;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const executorModule = require('./executor');
+  if (typeof executorModule.bootstrap === 'function') {
+    bootstrap = executorModule.bootstrap;
+  }
+} catch {
+  // bootstrap not available
+}
+
+// Optional test definitions — required for consumer-side test resolution
+let testDefinitions: any[] | undefined;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const testDefsModule = require('./test-definitions');
+  testDefinitions = testDefsModule.tests || testDefsModule.default;
+} catch {
+  // test definitions not bundled — consumer will fail on test assignment
+}
 
 interface ConsumerWrapperProps {
   log: (message: string) => void;
@@ -62,12 +84,16 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
         // Build broker URL with path for WebSocket
         const brokerUrl = `${mqttConfig.protocol}://${mqttConfig.host}:${mqttConfig.port}${mqttConfig.path}`;
 
+        // Generate consumer ID early so we can use it as MQTT clientId
+        const consumerId = `consumer-mobile-${Constants.deviceName || Constants.sessionId || 'unknown'}-${runId === '*' ? Date.now() : runId}`;
+
         // Build connection options
-        const connectOptions: any = {
-          connectTimeout: 10000,
-          reconnectPeriod: 5000,
-          keepalive: 60,
-          clean: true,
+        const connectOptions: IClientOptions = {
+          clientId: consumerId,
+          connectTimeout: 15000,
+          reconnectPeriod: 3000,
+          keepalive: 30,
+          clean: false,
         };
 
         // Add authentication if provided
@@ -106,12 +132,14 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
           });
         }
 
-        // Generate consumer ID
-        const consumerId = `consumer-mobile-${Constants.deviceName || Constants.sessionId || 'unknown'}-${runId === '*' ? Date.now() : runId}`;
 
         if (executor.initProfiling) {
           executor.initProfiling();
           log('📈 Profiling enabled');
+        }
+
+        if (!testDefinitions) {
+          log('⚠️  No test definitions bundled — consumer will fail on test assignment');
         }
 
         // Create consumer using framework's ConsumerBase
@@ -129,10 +157,12 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
               }
               log(message);
             },
+            onBootstrap: bootstrap,
             updateStats: (update: Record<string, unknown>) => {
               updateStats(update as Parameters<typeof updateStats>[0]);
             },
-          }
+          },
+          testDefinitions
         );
 
         consumerRef.current = consumer;

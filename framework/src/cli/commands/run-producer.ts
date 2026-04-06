@@ -11,6 +11,8 @@ interface ProducerOptions {
   config: string;
   consumerTimeout?: string;
   filter?: string;
+  suite?: string;
+  excludeSuite?: string;
 }
 
 export async function runProducer(options: ProducerOptions) {
@@ -36,15 +38,33 @@ export async function runProducer(options: ProducerOptions) {
     console.log(`📋 Loading tests from: ${config.testDir}`);
     let tests = await loadTests(config, configDir);
 
+    const originalCount = tests.length;
+    let filtered = false;
+
+    if (options.suite) {
+      const suites = options.suite.split(',').map((s) => s.trim());
+      console.log(`🏷️  Including suites: ${suites.join(', ')}`);
+      tests = tests.filter((test) => test.suites?.some((s) => suites.includes(s)));
+      filtered = true;
+    }
+
+    if (options.excludeSuite) {
+      const excluded = options.excludeSuite.split(',').map((s) => s.trim());
+      console.log(`🚫 Excluding suites: ${excluded.join(', ')}`);
+      tests = tests.filter((test) => !test.suites?.some((s) => excluded.includes(s)));
+      filtered = true;
+    }
+
     if (options.filter) {
       const filters = options.filter.split(',').map((f) => f.trim());
       console.log(`🔍 Filtering tests by: ${filters.join(', ')}`);
-
-      const originalCount = tests.length;
       tests = tests.filter((test) =>
         filters.some((filter) => test.testId.startsWith(filter) || test.metadata?.category === filter)
       );
+      filtered = true;
+    }
 
+    if (filtered) {
       console.log(`📋 Filtered: ${tests.length} of ${originalCount} tests\n`);
     } else {
       console.log(`✅ Loaded ${tests.length} tests\n`);
@@ -52,7 +72,7 @@ export async function runProducer(options: ProducerOptions) {
 
     const consumerTimeoutSec = parseInt(options.consumerTimeout || '30', 10);
 
-    const client = createMqttClient(mqttConfig, configDir);
+    const client = createMqttClient(mqttConfig, configDir, { clientId: `producer-${runId}` });
     const orchestrator = new BatchOrchestrator(client, runId, false, consumerTimeoutSec);
 
     orchestrator.buildTestQueue(tests);

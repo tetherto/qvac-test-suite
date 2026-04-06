@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ConsumerBase, type TestExecutor } from '../../core/consumer-base.js';
 import { loadConfig } from '../../utils/config-loader.js';
+import { loadTests } from '../../utils/test-loader.js';
 import { buildMqttConnectionConfig, createMqttClient } from '../../utils/mqtt-connection.js';
 
 function readArg(args: string[], name: string): string | undefined {
@@ -22,7 +23,12 @@ function requireArg(args: string[], name: string): string {
   return value;
 }
 
-async function loadExecutor(entryAbsPath: string): Promise<TestExecutor> {
+interface ConsumerEntry {
+  executor: TestExecutor;
+  bootstrap?: () => Promise<void>;
+}
+
+async function loadConsumerEntry(entryAbsPath: string): Promise<ConsumerEntry> {
   const entryUrl = pathToFileURL(entryAbsPath).href;
   const mod = await import(entryUrl);
   const executor =
@@ -34,7 +40,9 @@ async function loadExecutor(entryAbsPath: string): Promise<TestExecutor> {
     );
   }
 
-  return executor as TestExecutor;
+  const bootstrap = typeof mod.bootstrap === 'function' ? mod.bootstrap : undefined;
+
+  return { executor: executor as TestExecutor, bootstrap };
 }
 
 async function main() {
@@ -54,26 +62,39 @@ async function main() {
   }
 
   const entryAbs = path.resolve(configDir, config.consumers.desktop.entry);
-  const executor = await loadExecutor(entryAbs);
+  const { executor, bootstrap } = await loadConsumerEntry(entryAbs);
+
+  console.log('📋 Loading test definitions...');
+  const testDefinitions = await loadTests(config, configDir);
+  console.log(`✅ Loaded ${testDefinitions.length} test definitions\n`);
 
   const mqttConfig = buildMqttConnectionConfig(config);
   if (mqttBrokerOverride) {
     mqttConfig.brokerUrl = mqttBrokerOverride;
   }
 
-  const client = createMqttClient(mqttConfig, configDir);
   const consumerId = `consumer-${platform}-${os.hostname()}-${Date.now()}`;
+  const client = createMqttClient(mqttConfig, configDir, { clientId: consumerId });
 
   if (executor.initProfiling) {
     executor.initProfiling();
     console.log('📈 Profiling enabled');
   }
 
-  const consumer = new ConsumerBase(client, consumerId, platform, runId, executor, {
-    log: (msg) => console.log(msg),
-    updateStats: () => {},
-    onShutdown: () => {},
-  });
+  const consumer = new ConsumerBase(
+    client,
+    consumerId,
+    platform,
+    runId,
+    executor,
+    {
+      log: (msg) => console.log(msg),
+      onBootstrap: bootstrap,
+      updateStats: () => {},
+      onShutdown: () => {},
+    },
+    testDefinitions
+  );
 
   consumer.setupMqttHandlers();
 

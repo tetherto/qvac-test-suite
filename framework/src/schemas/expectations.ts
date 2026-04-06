@@ -45,15 +45,16 @@ const errorExpectationSchema = z.object({
 });
 
 /**
- * Custom validation: user-provided function
+ * Function validation: user-provided function returning TestResult
+ * Only works when consumer has local test definitions (not serializable over MQTT).
  */
-const customExpectationSchema = z.object({
-  validation: z.literal('custom'),
-  validator: z
+const functionExpectationSchema = z.object({
+  validation: z.literal('function'),
+  fn: z
     .function()
     .args(z.any())
-    .returns(z.boolean())
-    .describe('Custom validation function: (result) => boolean'),
+    .returns(z.any())
+    .describe('Validator function: (result) => TestResult ({ passed, output })'),
 });
 
 /**
@@ -65,7 +66,7 @@ export const expectationSchema = z.union([
   numericExpectationSchema,
   typeExpectationSchema,
   errorExpectationSchema,
-  customExpectationSchema,
+  functionExpectationSchema,
 ]);
 
 export type Expectation = z.infer<typeof expectationSchema>;

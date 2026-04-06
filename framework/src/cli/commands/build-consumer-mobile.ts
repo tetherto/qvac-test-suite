@@ -170,7 +170,7 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
     // Bundle user's executor (include shared code if configured)
     console.log('📦 Bundling executor...');
     const allIncludes = [...mobileConfig.include, ...(config.consumers?.shared?.include ?? [])];
-    await bundleExecutor(entryPath, outputDir, configDir, allIncludes);
+    await bundleExecutor(entryPath, outputDir, configDir, allIncludes, config);
 
     // Generate package.json with dependencies
     console.log('📦 Setting up dependencies...');
@@ -315,7 +315,8 @@ async function bundleExecutor(
   entryPath: string,
   outputDir: string,
   configDir: string,
-  includePatterns: string[]
+  includePatterns: string[],
+  config: QvacTestConfig
 ): Promise<void> {
   // Copy all test files that the executor depends on
   for (const pattern of includePatterns) {
@@ -329,12 +330,31 @@ async function bundleExecutor(
     }
   }
 
-  // Create executor.js that re-exports from the copied entry file
+  // Create executor.js that re-exports all from the copied entry file
   const relativeEntry = path.relative(configDir, entryPath);
   const executorContent = `// Bundled executor entry point
-export { executor } from './${relativeEntry.replace(/\.ts$/, '')}';
+export * from './${relativeEntry.replace(/\.ts$/, '')}';
 `;
   fs.writeFileSync(path.join(outputDir, 'executor.js'), executorContent);
+
+  // Create test-definitions.js that re-exports from the test definitions file
+  const testDir = path.resolve(configDir, config.testDir);
+  const tsDefsPath = path.join(testDir, 'test-definitions.ts');
+  const jsDefsPath = path.join(testDir, 'test-definitions.js');
+  const defsPath = fs.existsSync(jsDefsPath) ? jsDefsPath : fs.existsSync(tsDefsPath) ? tsDefsPath : null;
+
+  if (defsPath) {
+    const relativeDefs = path.relative(configDir, defsPath);
+    const testDefsContent = `// Bundled test definitions entry point
+export { tests, default } from './${relativeDefs.replace(/\.ts$/, '')}';
+`;
+    fs.writeFileSync(path.join(outputDir, 'test-definitions.js'), testDefsContent);
+    console.log(`   ✅ Generated test-definitions.js`);
+  } else {
+    console.warn(
+      `   ⚠️  No test-definitions.ts/.js found in ${testDir} — consumer will not have local test definitions`
+    );
+  }
 }
 
 function copyDirectoryRecursive(src: string, dest: string): void {

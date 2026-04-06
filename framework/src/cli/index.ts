@@ -2,6 +2,7 @@
 import { Command } from 'commander';
 import { runProducer } from './commands/run-producer.js';
 import { runConsumerDesktop } from './commands/run-consumer-desktop.js';
+import { runBootstrap } from './commands/run-bootstrap.js';
 import { buildConsumerMobile } from './commands/build-consumer-mobile.js';
 import { reportCompare } from './commands/report-compare.js';
 import { reportFormat } from './commands/report-format.js';
@@ -21,6 +22,8 @@ program
     '--filter <categories>',
     'Filter tests by category or testId prefix (comma-separated, e.g., "model,completion")'
   )
+  .option('--suite <suites>', 'Include only tests in these suites (comma-separated, e.g., "smoke,regression")')
+  .option('--exclude-suite <suites>', 'Exclude tests in these suites (comma-separated, e.g., "slow,flaky")')
   .action(runProducer);
 
 program
@@ -31,6 +34,12 @@ program
   .option('--config <path>', 'Path to config directory', process.cwd())
   .option('--platform <platform>', 'Platform name', 'desktop')
   .action(runConsumerDesktop);
+
+program
+  .command('run:bootstrap:desktop')
+  .description('Run bootstrap from desktop consumer entry (e.g., pre-download models for CI caching)')
+  .option('--config <path>', 'Path to config directory', process.cwd())
+  .action(runBootstrap);
 
 program
   .command('build:consumer:android')

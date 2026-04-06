@@ -48,11 +48,18 @@ export function buildMqttConnectionConfig(config: any): MqttConnectionConfig {
     certPath: resolved.certPath || process.env.MQTT_CERT_PATH,
     keyPath: resolved.keyPath || process.env.MQTT_KEY_PATH,
     rejectUnauthorized: resolved.rejectUnauthorized,
+    keepalive: resolved.keepalive,
+    reconnectPeriod: resolved.reconnectPeriod,
+    connectTimeout: resolved.connectTimeout,
   });
 }
 
 export function buildMqttOptions(config: MqttConnectionConfig, configDir?: string): IClientOptions {
-  const options: IClientOptions = {};
+  const options: IClientOptions = {
+    keepalive: config.keepalive ?? 30,
+    reconnectPeriod: config.reconnectPeriod ?? 3000,
+    connectTimeout: config.connectTimeout ?? 15000,
+  };
 
   const username = config.username || process.env.MQTT_USERNAME;
   const password = config.password || process.env.MQTT_PASSWORD;
@@ -126,11 +133,27 @@ export function logMqttConnectionSecurity(brokerUrl: string, options: IClientOpt
     console.log('⚠️  No authentication configured (local development mode)');
   }
 
+  if (options.clientId) {
+    console.log(`   Client ID: ${options.clientId}`);
+    console.log(`   Clean session: ${options.clean ?? true}`);
+  }
+
+  console.log(`   Keepalive: ${options.keepalive ?? 60}s | Reconnect: ${options.reconnectPeriod ?? 1000}ms`);
   console.log('');
 }
 
-export function createMqttClient(config: MqttConnectionConfig, configDir?: string) {
+export interface CreateMqttClientOptions {
+  clientId?: string;
+}
+
+export function createMqttClient(config: MqttConnectionConfig, configDir?: string, opts?: CreateMqttClientOptions) {
   const options = buildMqttOptions(config, configDir);
+
+  if (opts?.clientId) {
+    options.clientId = opts.clientId;
+    options.clean = false;
+  }
+
   logMqttConnectionSecurity(config.brokerUrl, options);
   return mqtt.connect(config.brokerUrl, options);
 }

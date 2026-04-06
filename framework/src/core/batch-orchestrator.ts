@@ -21,8 +21,8 @@ import { getMetricCount } from '../utils/profiler-adapter.js';
 interface TestCase {
   id: string; // Unique test ID
   testId: string; // Test type
-  payload: string;
-  metadata: Record<string, unknown>; // Test metadata
+  metadata: Record<string, unknown>; // Test metadata (producer-side reporting only)
+  suites?: string[];
   estimatedDurationMs: number;
 }
 
@@ -59,6 +59,8 @@ export class BatchOrchestrator {
   private completedTests = new Map<string, TestResult>(); // uniqueTestId -> result
   private consumers = new Map<string, ConsumerInfo>(); // consumerId -> info
   private profilingData = new Map<string, ProfilerExport>(); // consumerId -> profiler export
+  private testSuites = new Map<string, string[]>(); // testId -> suites
+  private initialTotalTests = 0;
   private startTime = 0;
   private batchStarted = false;
   private shutdownTimer?: NodeJS.Timeout;
@@ -133,6 +135,18 @@ export class BatchOrchestrator {
       }
     });
 
+    this.client.on('reconnect', () => {
+      console.log('🔄 Producer reconnecting to MQTT broker...');
+    });
+
+    this.client.on('offline', () => {
+      console.log('📴 Producer offline');
+    });
+
+    this.client.on('close', () => {
+      console.log('🔌 Producer MQTT connection closed');
+    });
+
     this.client.on('error', (err) => {
       console.error('❌ MQTT error:', err);
     });
@@ -142,6 +156,18 @@ export class BatchOrchestrator {
     const message = consumerRegistrationSchema.parse(rawMessage);
     const { consumerId, platform } = message;
     const now = Date.now();
+
+    const existing = this.consumers.get(consumerId);
+    if (existing) {
+      existing.lastSeen = now;
+      // Always re-send ack (consumer may not have received it yet)
+      this.client.publish(
+        `qvac/register-ack/${consumerId}`,
+        JSON.stringify({ runId: this.runId, status: 'registered', totalTests: this.initialTotalTests }),
+        { qos: 1 }
+      );
+      return;
+    }
 
     // Cancel consumer timeout on first registration
     if (this.consumers.size === 0 && this.consumerTimeoutTimer) {
@@ -161,10 +187,10 @@ export class BatchOrchestrator {
     console.log(`\n🔌 Consumer registered: ${consumerId} (${platform})`);
     this.displayStatus();
 
-    // Send acknowledgment
+    // Send acknowledgment with initial total (not current queue length, which shrinks as tests are assigned)
     this.client.publish(
       `qvac/register-ack/${consumerId}`,
-      JSON.stringify({ runId: this.runId, status: 'registered', totalTests: this.testQueue.length }),
+      JSON.stringify({ runId: this.runId, status: 'registered', totalTests: this.initialTotalTests }),
       { qos: 1 }
     );
   }
@@ -191,7 +217,7 @@ export class BatchOrchestrator {
         JSON.stringify({ runId: this.runId, status: 'queue-empty' }),
         { qos: 1 }
       );
-      console.log(`📭 No more tests for ${consumerId}`);
+      console.log(`📭 No more tests for ${consumerId} (completed: ${consumer.testsCompleted})`);
       return;
     }
 
@@ -210,14 +236,14 @@ export class BatchOrchestrator {
     // Remove from queue
     this.testQueue = this.testQueue.filter((t) => t.id !== nextTest.id);
 
-    // Send test to consumer
+    // Send test assignment — consumer resolves full definition locally
     this.client.publish(
       `qvac/test-assigned/${consumerId}`,
       JSON.stringify({
         runId: this.runId,
         status: 'assigned',
         uniqueTestId: nextTest.id,
-        test: JSON.parse(nextTest.payload),
+        testId: nextTest.testId,
       }),
       { qos: 1 }
     );
@@ -369,16 +395,30 @@ export class BatchOrchestrator {
     const running = this.assignedTests.size;
     const queued = this.testQueue.length;
     const consumers = this.consumers.size;
+    const elapsed = this.startTime > 0 ? `${Math.round((Date.now() - this.startTime) / 1000)}s` : '0s';
 
     console.log(
-      `\n📊 Status: ${completed}/${total} completed | ${running} running | ${queued} queued | ${consumers} consumers\n`
+      `\n📊 Status [${elapsed}]: ${completed}/${total} completed | ${running} running | ${queued} queued | ${consumers} consumers`
     );
+
+    if (running > 0) {
+      const now = Date.now();
+      for (const assignment of this.assignedTests.values()) {
+        const waitSec = Math.round((now - (assignment.startedAt ?? assignment.assignedAt)) / 1000);
+        const timeoutSec = Math.round(assignment.timeoutMs / 1000);
+        const phase = assignment.startedAt ? 'running' : 'setup';
+        console.log(
+          `   ⏳ ${assignment.testCase.testId} → ${assignment.consumerId} (${phase}, ${waitSec}s / ${timeoutSec}s)`
+        );
+      }
+    }
+    console.log();
   }
 
   private completeBatch() {
     if (this.shutdownTimer) return; // Already shutting down
 
-    const duration = Date.now() - this.startTime;
+    const duration = this.startTime > 0 ? Date.now() - this.startTime : 0;
     const totalTests = this.completedTests.size;
     const results = Array.from(this.completedTests.values());
     const successCount = results.filter((r) => r.outcome === 'success').length;
@@ -402,6 +442,7 @@ export class BatchOrchestrator {
 
     console.log('\n📋 Test Results by Category:\n');
     this.displayResultsByCategory();
+    this.displayResultsBySuite();
 
     console.log(`\n📨 Signaling ${this.consumers.size} consumer(s) to complete...`);
     this.client.publish(
@@ -461,9 +502,14 @@ export class BatchOrchestrator {
         ([consumerId, profilerExport]) => ({ consumerId, profilerExport })
       );
 
+      const completedTests = Array.from(this.completedTests.values()).map((result) => ({
+        ...result,
+        suites: this.testSuites.get(result.testId),
+      }));
+
       const reportData: ReportData = {
         runId: this.runId,
-        completedTests: Array.from(this.completedTests.values()),
+        completedTests,
         consumers: this.consumers,
         startTime: this.startTime,
         profilingData: profilingDataArray.length > 0 ? profilingDataArray : undefined,
@@ -522,6 +568,41 @@ export class BatchOrchestrator {
     }
   }
 
+  private displayResultsBySuite() {
+    if (this.testSuites.size === 0) return;
+
+    const suites = new Map<string, { passed: number; failed: number; skipped: number }>();
+
+    for (const [, result] of this.completedTests) {
+      const testSuiteList = this.testSuites.get(result.testId);
+      if (!testSuiteList) continue;
+
+      for (const suite of testSuiteList) {
+        if (!suites.has(suite)) {
+          suites.set(suite, { passed: 0, failed: 0, skipped: 0 });
+        }
+        const stats = suites.get(suite)!;
+        if (result.outcome === 'success') {
+          stats.passed++;
+        } else if (result.outcome === 'skipped') {
+          stats.skipped++;
+        } else {
+          stats.failed++;
+        }
+      }
+    }
+
+    if (suites.size === 0) return;
+
+    console.log('\n📋 Test Results by Suite:\n');
+    for (const [suite, stats] of suites) {
+      const total = stats.passed + stats.failed + stats.skipped;
+      const rate = ((stats.passed / Math.max(total - stats.skipped, 1)) * 100).toFixed(0);
+      const skipStr = stats.skipped > 0 ? `, ${stats.skipped} skipped` : '';
+      console.log(`   ${suite.padEnd(20)} ${stats.passed}/${total} (${rate}%${skipStr})`);
+    }
+  }
+
   public buildTestQueue(tests: TestDefinition[]) {
     console.log('🔨 Building test queue...\n');
 
@@ -550,24 +631,16 @@ export class BatchOrchestrator {
         continue;
       }
 
-      // Build payload, include skip if conditional (has platforms)
-      const payloadObj: Record<string, unknown> = {
-        testId: test.testId,
-        params: test.params,
-        expectation: test.expectation,
-        metadata: test.metadata || {},
-      };
-      if (test.skip) {
-        payloadObj.skip = test.skip;
-      }
-
       const testCase: TestCase = {
         id: `test-${Date.now()}-${counter++}`,
         testId: test.testId,
-        payload: JSON.stringify(payloadObj),
         metadata: test.metadata || {},
+        suites: test.suites,
         estimatedDurationMs: test.metadata?.estimatedDurationMs || 10000,
       };
+      if (test.suites) {
+        this.testSuites.set(test.testId, test.suites);
+      }
       this.testQueue.push(testCase);
     }
 
@@ -581,6 +654,8 @@ export class BatchOrchestrator {
       const category = (typeof test.metadata?.category === 'string' ? test.metadata.category : null) || 'uncategorized';
       byCategory.set(category, (byCategory.get(category) || 0) + 1);
     }
+
+    this.initialTotalTests = this.testQueue.length + this.completedTests.size;
 
     console.log(`📦 Built ${this.testQueue.length} tests:`);
     for (const [category, count] of byCategory) {

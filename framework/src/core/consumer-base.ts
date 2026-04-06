@@ -1,20 +1,11 @@
 import type { MqttClient } from 'mqtt';
-import type { SkipInfo } from '../types/test-definition.js';
+import type { TestDefinition } from '../types/test-definition.js';
 import type { ProfilerExport } from '../schemas/messages.js';
-
-export interface TestMessage {
-  testId: string;
-  params: unknown;
-  expectation: unknown;
-  metadata?: Record<string, unknown>;
-  skip?: SkipInfo;
-}
 
 export interface TestAssignment {
   status: string;
   uniqueTestId?: string;
-  test?: TestMessage;
-  totalTests?: number;
+  testId?: string;
   runId?: string;
 }
 
@@ -43,6 +34,7 @@ export interface ConsumerCallbacks {
     currentTest?: string;
     isComplete?: boolean;
   }) => void;
+  onBootstrap?: () => Promise<void>;
   onShutdown?: () => void | Promise<void>;
 }
 
@@ -53,7 +45,10 @@ export class ConsumerBase {
   protected runId: string;
   protected isWildcard: boolean;
   protected executor: TestExecutor;
+  protected testDefinitions: Map<string, TestDefinition>;
   protected registered = false;
+  protected bootstrapped = false;
+  protected totalTests = 0;
   protected testsCompleted = 0;
   protected testsPassed = 0;
   protected testsFailed = 0;
@@ -61,6 +56,8 @@ export class ConsumerBase {
   protected isProcessingTest = false;
   protected shutdownRequested = false;
   protected callbacks: ConsumerCallbacks;
+  private messageQueue: Promise<void> = Promise.resolve();
+  private bootstrapPromise?: Promise<void>;
 
   constructor(
     client: MqttClient,
@@ -68,7 +65,8 @@ export class ConsumerBase {
     platform: string,
     runId: string,
     executor: TestExecutor,
-    callbacks: ConsumerCallbacks
+    callbacks: ConsumerCallbacks,
+    testDefinitions?: TestDefinition[]
   ) {
     this.client = client;
     this.consumerId = consumerId;
@@ -77,6 +75,12 @@ export class ConsumerBase {
     this.isWildcard = runId === '*';
     this.executor = executor;
     this.callbacks = callbacks;
+    this.testDefinitions = new Map();
+    if (testDefinitions) {
+      for (const def of testDefinitions) {
+        this.testDefinitions.set(def.testId, def);
+      }
+    }
   }
 
   protected log(message: string) {
@@ -115,6 +119,12 @@ export class ConsumerBase {
 
   public setupMqttHandlers() {
     this.client.on('connect', () => {
+      if (this.registered) {
+        this.log('✅ Reconnected to MQTT broker');
+        this.requestNextTest();
+        return;
+      }
+
       this.log('✅ Connected to MQTT broker');
       this.log(`🔑 Run ID: ${this.runId}${this.isWildcard ? ' (wildcard mode)' : ''}`);
 
@@ -128,6 +138,25 @@ export class ConsumerBase {
             return;
           }
           this.log('📡 Subscribed to topics\n');
+
+          // Start bootstrap in parallel with registration (doesn't need ack)
+          if (this.callbacks.onBootstrap && !this.bootstrapped) {
+            this.log('🔧 Running bootstrap...');
+            const start = Date.now();
+            this.bootstrapPromise = this.callbacks
+              .onBootstrap()
+              .then(() => {
+                this.bootstrapped = true;
+                this.log(`🔧 Bootstrap completed in ${Date.now() - start}ms\n`);
+              })
+              .catch((error: unknown) => {
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                this.log(`❌ Bootstrap failed: ${errorMsg}`);
+                this.shutdown();
+              });
+          } else {
+            this.bootstrapped = true;
+          }
 
           // Register with producer (with retry)
           this.sendRegistration();
@@ -144,25 +173,39 @@ export class ConsumerBase {
       );
     });
 
-    this.client.on('message', async (topic, payload) => {
-      try {
-        const message = JSON.parse(payload.toString());
+    this.client.on('message', (topic, payload) => {
+      this.messageQueue = this.messageQueue.then(async () => {
+        try {
+          const message = JSON.parse(payload.toString());
 
-        if (!this.isWildcard && message.runId !== this.runId) {
-          return;
-        }
+          if (!this.isWildcard && message.runId !== this.runId) {
+            return;
+          }
 
-        if (topic === `qvac/register-ack/${this.consumerId}`) {
-          this.handleRegistrationAck(message);
-        } else if (topic === `qvac/test-assigned/${this.consumerId}`) {
-          await this.handleTestAssignment(message);
-        } else if (topic === 'qvac/batch-complete') {
-          await this.handleBatchComplete(message);
+          if (topic === `qvac/register-ack/${this.consumerId}`) {
+            await this.handleRegistrationAck(message);
+          } else if (topic === `qvac/test-assigned/${this.consumerId}`) {
+            await this.handleTestAssignment(message);
+          } else if (topic === 'qvac/batch-complete') {
+            await this.handleBatchComplete(message);
+          }
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          this.log(`❌ Error handling ${topic}: ${errorMessage}`);
         }
-      } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        this.log(`❌ Error handling ${topic}: ${errorMessage}`);
-      }
+      });
+    });
+
+    this.client.on('reconnect', () => {
+      this.log('🔄 Reconnecting to MQTT broker...');
+    });
+
+    this.client.on('offline', () => {
+      this.log('📴 Consumer offline');
+    });
+
+    this.client.on('close', () => {
+      this.log('🔌 MQTT connection closed');
     });
 
     this.client.on('error', (err) => {
@@ -183,10 +226,26 @@ export class ConsumerBase {
     );
   }
 
-  protected handleRegistrationAck(message: { totalTests?: number; runId?: string }) {
-    this.log(`🔌 Registration ack - ${message.totalTests} tests in queue\n`);
+  protected async handleRegistrationAck(message: { totalTests?: number; runId?: string }) {
+    this.totalTests = Math.max(this.totalTests, message.totalTests ?? 0);
+
+    if (this.registered) {
+      return;
+    }
+
     this.registered = true;
-    this.updateStats({ totalTests: message.totalTests });
+    this.log(`🔌 Registration ack - ${this.totalTests} tests in queue\n`);
+    this.updateStats({ totalTests: this.totalTests });
+
+    // Wait for bootstrap if still running (started at connect time)
+    if (this.bootstrapPromise) {
+      await this.bootstrapPromise;
+    }
+
+    if (!this.bootstrapped) {
+      return;
+    }
+
     this.requestNextTest();
   }
 
@@ -196,8 +255,30 @@ export class ConsumerBase {
       return;
     }
 
-    if (assignment.status === 'assigned' && assignment.test && assignment.uniqueTestId) {
-      await this.executeTest(assignment.uniqueTestId, assignment.test);
+    if (assignment.status === 'assigned' && assignment.testId && assignment.uniqueTestId) {
+      const definition = this.testDefinitions.get(assignment.testId);
+      if (!definition) {
+        this.log(`❌ No local test definition for: ${assignment.testId}`);
+        this.client.publish(
+          'qvac/results',
+          JSON.stringify({
+            runId: this.runId,
+            consumerId: this.consumerId,
+            testId: assignment.testId,
+            uniqueTestId: assignment.uniqueTestId,
+            outcome: 'failure',
+            duration: 0,
+            timestamp: new Date().toISOString(),
+            error: `No local test definition for: ${assignment.testId}`,
+          }),
+          { qos: 1 }
+        );
+        if (!this.shutdownRequested) {
+          setTimeout(() => this.requestNextTest(), 100);
+        }
+        return;
+      }
+      await this.executeTest(assignment.uniqueTestId, definition);
     }
   }
 
@@ -246,22 +327,23 @@ export class ConsumerBase {
     this.shutdown();
   }
 
-  protected getTestSkipReason(testId: string, test?: TestMessage): string | null {
-    if (test?.skip?.platforms?.includes(this.platform)) {
-      return test.skip.reason;
+  protected getTestSkipReason(definition: TestDefinition): string | null {
+    if (definition.skip?.platforms?.includes(this.platform)) {
+      return definition.skip.reason;
     }
     return null;
   }
 
-  protected async executeTest(uniqueTestId: string, test: TestMessage) {
+  protected async executeTest(uniqueTestId: string, definition: TestDefinition) {
     this.isProcessingTest = true;
-    const { testId, params, expectation } = test;
+    const { testId, params, expectation } = definition;
 
-    this.log(`▶️  ${testId}`);
+    const progress = this.totalTests > 0 ? `[${this.testsCompleted + 1}/${this.totalTests}]` : '';
+    this.log(`▶️  ${progress} ${testId}`);
     this.updateStats({ currentTest: testId });
 
     // Check for conditional platform-based skip
-    const skipReason = this.getTestSkipReason(testId, test);
+    const skipReason = this.getTestSkipReason(definition);
     if (skipReason) {
       this.log(`⏭️  ${testId}: ${skipReason}`);
       this.testsCompleted++;
@@ -288,12 +370,17 @@ export class ConsumerBase {
       return;
     }
 
-    const context = test.metadata || {};
+    const context = definition.metadata || {};
 
     // Setup phase: runs BEFORE timeout and test-start notification
     if (this.executor.setup) {
       try {
+        const setupStart = Date.now();
         await this.executor.setup(testId, context);
+        const setupDuration = Date.now() - setupStart;
+        if (setupDuration > 1000) {
+          this.log(`   Setup: ${setupDuration}ms`);
+        }
       } catch (error: unknown) {
         const errorMsg = error instanceof Error ? error.message : 'Setup failed';
         this.log(`❌ ${testId} setup failed: ${errorMsg}`);
@@ -337,7 +424,7 @@ export class ConsumerBase {
     const startTime = Date.now();
 
     try {
-      const metadata = test.metadata || (context as Record<string, unknown>) || {};
+      const metadata = definition.metadata || {};
       const estimatedMs = typeof metadata.estimatedDurationMs === 'number' ? metadata.estimatedDurationMs : 0;
       const timeoutMs = Math.max(estimatedMs * 2, 120000);
 

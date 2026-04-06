@@ -13,6 +13,7 @@ export interface ReportTestResult {
   output?: string;
   expected?: string;
   actual?: string;
+  suites?: string[];
 }
 
 export interface ReportConsumerInfo {
@@ -61,7 +62,7 @@ export function generateHtmlReport(data: ReportData): string {
     filename = `reports/batch-report-${data.runId}-${timestamp}.html`;
   }
 
-  const elapsed = (Date.now() - data.startTime) / 1000;
+  const elapsed = data.startTime > 0 ? (Date.now() - data.startTime) / 1000 : 0;
   const successCount = data.completedTests.filter((t) => t.outcome === 'success').length;
   const failureCount = data.completedTests.filter((t) => t.outcome === 'failure').length;
   const skippedCount = data.completedTests.filter((t) => t.outcome === 'skipped').length;
@@ -85,6 +86,18 @@ export function generateHtmlReport(data: ReportData): string {
       testsByCategory.set(category, []);
     }
     testsByCategory.get(category)!.push(test);
+  }
+
+  // Group tests by suite
+  const testsBySuite = new Map<string, ReportTestResult[]>();
+  for (const test of data.completedTests) {
+    if (!test.suites) continue;
+    for (const suite of test.suites) {
+      if (!testsBySuite.has(suite)) {
+        testsBySuite.set(suite, []);
+      }
+      testsBySuite.get(suite)!.push(test);
+    }
   }
 
   const html = `<!DOCTYPE html>
@@ -432,6 +445,46 @@ export function generateHtmlReport(data: ReportData): string {
               .join('')}
 					</tbody>
 				</table>
+
+				${
+          testsBySuite.size > 0
+            ? `
+				<h2 style="margin-top: 30px;">🏷️ Results by Suite</h2>
+				<table>
+					<thead>
+						<tr>
+							<th>Suite</th>
+							<th>Total</th>
+							<th>Passed</th>
+							<th>Skipped</th>
+							<th>Failed</th>
+							<th>Rate</th>
+						</tr>
+					</thead>
+					<tbody>
+						${Array.from(testsBySuite.entries())
+              .map(([suite, tests]) => {
+                const passed = tests.filter((t) => t.outcome === 'success').length;
+                const failed = tests.filter((t) => t.outcome === 'failure').length;
+                const skipped = tests.filter((t) => t.outcome === 'skipped').length;
+                const nonSkippedTotal = tests.length - skipped;
+                const rate = nonSkippedTotal > 0 ? ((passed / nonSkippedTotal) * 100).toFixed(0) : 'N/A';
+                return `
+							<tr>
+								<td><strong>${suite}</strong></td>
+								<td>${tests.length}</td>
+								<td>${passed}</td>
+								<td>${skipped}</td>
+								<td>${failed}</td>
+								<td>${rate}${rate !== 'N/A' ? '%' : ''}</td>
+							</tr>`;
+              })
+              .join('')}
+					</tbody>
+				</table>
+				`
+            : ''
+        }
 
 				${
           failureCount > 0
@@ -950,7 +1003,7 @@ export function generateJsonReport(data: ReportData): string {
     filename = `reports/results-${data.runId}-${timestamp}.json`;
   }
 
-  const elapsed = (Date.now() - data.startTime) / 1000;
+  const elapsed = data.startTime > 0 ? (Date.now() - data.startTime) / 1000 : 0;
   const successCount = data.completedTests.filter((t) => t.outcome === 'success').length;
   const failureCount = data.completedTests.filter((t) => t.outcome === 'failure').length;
   const skippedCount = data.completedTests.filter((t) => t.outcome === 'skipped').length;
@@ -972,6 +1025,21 @@ export function generateJsonReport(data: ReportData): string {
     }
   }
 
+  // Group by suite for JSON
+  const bySuite: Record<string, { passed: number; failed: number; skipped: number; total: number }> = {};
+  for (const test of data.completedTests) {
+    if (!test.suites) continue;
+    for (const suite of test.suites) {
+      if (!bySuite[suite]) {
+        bySuite[suite] = { passed: 0, failed: 0, skipped: 0, total: 0 };
+      }
+      bySuite[suite].total++;
+      if (test.outcome === 'success') bySuite[suite].passed++;
+      else if (test.outcome === 'skipped') bySuite[suite].skipped++;
+      else bySuite[suite].failed++;
+    }
+  }
+
   const nonSkipped = data.completedTests.length - skippedCount;
   const jsonReport = {
     runId: data.runId,
@@ -985,6 +1053,7 @@ export function generateJsonReport(data: ReportData): string {
       duration: elapsed,
     },
     categories: byCategory,
+    suites: Object.keys(bySuite).length > 0 ? bySuite : undefined,
     tests: data.completedTests.map((test) => ({
       testId: test.testId,
       consumerId: test.consumerId,
@@ -992,6 +1061,7 @@ export function generateJsonReport(data: ReportData): string {
       duration: test.duration,
       error: test.error,
       output: test.output,
+      suites: test.suites,
     })),
     consumers: Array.from(data.consumers.values()),
     system: systemInfo,
