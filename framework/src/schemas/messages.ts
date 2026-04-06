@@ -101,12 +101,7 @@ export const testAssignmentSchema = z.union([
     status: z.literal('assigned'),
     runId: z.string(),
     uniqueTestId: z.string(),
-    test: z.object({
-      testId: z.string(),
-      params: z.unknown(),
-      expectation: z.unknown(),
-      metadata: z.record(z.unknown()).optional(),
-    }),
+    testId: z.string(),
   }),
 ]);
 

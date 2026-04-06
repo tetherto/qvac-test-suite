@@ -21,8 +21,7 @@ import { getMetricCount } from '../utils/profiler-adapter.js';
 interface TestCase {
   id: string; // Unique test ID
   testId: string; // Test type
-  payload: string;
-  metadata: Record<string, unknown>; // Test metadata
+  metadata: Record<string, unknown>; // Test metadata (producer-side reporting only)
   suites?: string[];
   estimatedDurationMs: number;
 }
@@ -225,14 +224,14 @@ export class BatchOrchestrator {
     // Remove from queue
     this.testQueue = this.testQueue.filter((t) => t.id !== nextTest.id);
 
-    // Send test to consumer
+    // Send test assignment — consumer resolves full definition locally
     this.client.publish(
       `qvac/test-assigned/${consumerId}`,
       JSON.stringify({
         runId: this.runId,
         status: 'assigned',
         uniqueTestId: nextTest.id,
-        test: JSON.parse(nextTest.payload),
+        testId: nextTest.testId,
       }),
       { qos: 1 }
     );
@@ -620,21 +619,9 @@ export class BatchOrchestrator {
         continue;
       }
 
-      // Build payload, include skip if conditional (has platforms)
-      const payloadObj: Record<string, unknown> = {
-        testId: test.testId,
-        params: test.params,
-        expectation: test.expectation,
-        metadata: test.metadata || {},
-      };
-      if (test.skip) {
-        payloadObj.skip = test.skip;
-      }
-
       const testCase: TestCase = {
         id: `test-${Date.now()}-${counter++}`,
         testId: test.testId,
-        payload: JSON.stringify(payloadObj),
         metadata: test.metadata || {},
         suites: test.suites,
         estimatedDurationMs: test.metadata?.estimatedDurationMs || 10000,

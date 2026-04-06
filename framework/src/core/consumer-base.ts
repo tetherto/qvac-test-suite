@@ -1,20 +1,11 @@
 import type { MqttClient } from 'mqtt';
-import type { SkipInfo } from '../types/test-definition.js';
+import type { TestDefinition } from '../types/test-definition.js';
 import type { ProfilerExport } from '../schemas/messages.js';
-
-export interface TestMessage {
-  testId: string;
-  params: unknown;
-  expectation: unknown;
-  metadata?: Record<string, unknown>;
-  skip?: SkipInfo;
-}
 
 export interface TestAssignment {
   status: string;
   uniqueTestId?: string;
-  test?: TestMessage;
-  totalTests?: number;
+  testId?: string;
   runId?: string;
 }
 
@@ -54,6 +45,7 @@ export class ConsumerBase {
   protected runId: string;
   protected isWildcard: boolean;
   protected executor: TestExecutor;
+  protected testDefinitions: Map<string, TestDefinition>;
   protected registered = false;
   protected bootstrapped = false;
   protected totalTests = 0;
@@ -71,7 +63,8 @@ export class ConsumerBase {
     platform: string,
     runId: string,
     executor: TestExecutor,
-    callbacks: ConsumerCallbacks
+    callbacks: ConsumerCallbacks,
+    testDefinitions?: TestDefinition[]
   ) {
     this.client = client;
     this.consumerId = consumerId;
@@ -80,6 +73,12 @@ export class ConsumerBase {
     this.isWildcard = runId === '*';
     this.executor = executor;
     this.callbacks = callbacks;
+    this.testDefinitions = new Map();
+    if (testDefinitions) {
+      for (const def of testDefinitions) {
+        this.testDefinitions.set(def.testId, def);
+      }
+    }
   }
 
   protected log(message: string) {
@@ -239,8 +238,30 @@ export class ConsumerBase {
       return;
     }
 
-    if (assignment.status === 'assigned' && assignment.test && assignment.uniqueTestId) {
-      await this.executeTest(assignment.uniqueTestId, assignment.test);
+    if (assignment.status === 'assigned' && assignment.testId && assignment.uniqueTestId) {
+      const definition = this.testDefinitions.get(assignment.testId);
+      if (!definition) {
+        this.log(`❌ No local test definition for: ${assignment.testId}`);
+        this.client.publish(
+          'qvac/results',
+          JSON.stringify({
+            runId: this.runId,
+            consumerId: this.consumerId,
+            testId: assignment.testId,
+            uniqueTestId: assignment.uniqueTestId,
+            outcome: 'failure',
+            duration: 0,
+            timestamp: new Date().toISOString(),
+            error: `No local test definition for: ${assignment.testId}`,
+          }),
+          { qos: 1 }
+        );
+        if (!this.shutdownRequested) {
+          setTimeout(() => this.requestNextTest(), 100);
+        }
+        return;
+      }
+      await this.executeTest(assignment.uniqueTestId, definition);
     }
   }
 
@@ -289,23 +310,23 @@ export class ConsumerBase {
     this.shutdown();
   }
 
-  protected getTestSkipReason(testId: string, test?: TestMessage): string | null {
-    if (test?.skip?.platforms?.includes(this.platform)) {
-      return test.skip.reason;
+  protected getTestSkipReason(definition: TestDefinition): string | null {
+    if (definition.skip?.platforms?.includes(this.platform)) {
+      return definition.skip.reason;
     }
     return null;
   }
 
-  protected async executeTest(uniqueTestId: string, test: TestMessage) {
+  protected async executeTest(uniqueTestId: string, definition: TestDefinition) {
     this.isProcessingTest = true;
-    const { testId, params, expectation } = test;
+    const { testId, params, expectation } = definition;
 
     const progress = this.totalTests > 0 ? `[${this.testsCompleted + 1}/${this.totalTests}]` : '';
     this.log(`▶️  ${progress} ${testId}`);
     this.updateStats({ currentTest: testId });
 
     // Check for conditional platform-based skip
-    const skipReason = this.getTestSkipReason(testId, test);
+    const skipReason = this.getTestSkipReason(definition);
     if (skipReason) {
       this.log(`⏭️  ${testId}: ${skipReason}`);
       this.testsCompleted++;
@@ -332,7 +353,7 @@ export class ConsumerBase {
       return;
     }
 
-    const context = test.metadata || {};
+    const context = definition.metadata || {};
 
     // Setup phase: runs BEFORE timeout and test-start notification
     if (this.executor.setup) {
@@ -386,7 +407,7 @@ export class ConsumerBase {
     const startTime = Date.now();
 
     try {
-      const metadata = test.metadata || (context as Record<string, unknown>) || {};
+      const metadata = definition.metadata || {};
       const estimatedMs = typeof metadata.estimatedDurationMs === 'number' ? metadata.estimatedDurationMs : 0;
       const timeoutMs = Math.max(estimatedMs * 2, 120000);
 

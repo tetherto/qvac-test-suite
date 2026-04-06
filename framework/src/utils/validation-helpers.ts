@@ -30,8 +30,8 @@ export class ValidationHelpers {
         case 'throws-error':
           return this.validateThrowsError(result, expectation.errorContains);
 
-        case 'custom':
-          return this.validateCustom(result, expectation.validator);
+        case 'function':
+          return this.validateFunction(result, expectation.fn);
 
         default:
           return {
@@ -159,18 +159,14 @@ export class ValidationHelpers {
     };
   }
 
-  private static validateCustom(result: unknown, validator: (result: unknown) => boolean): TestResult {
+  private static validateFunction(result: unknown, fn: (result: unknown) => TestResult): TestResult {
     try {
-      const passed = validator(result);
-      return {
-        passed,
-        output: passed ? String(result) : `Custom validation failed for: ${String(result).substring(0, 200)}`,
-      };
+      return fn(result);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       return {
         passed: false,
-        output: `Custom validator threw error: ${errorMessage}`,
+        output: `Function validator threw error: ${errorMessage}`,
       };
     }
   }

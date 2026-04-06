@@ -34,6 +34,16 @@ try {
   // bootstrap not available
 }
 
+// Optional test definitions — required for consumer-side test resolution
+let testDefinitions: any[] | undefined;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const testDefsModule = require('./test-definitions');
+  testDefinitions = testDefsModule.tests || testDefsModule.default;
+} catch {
+  // test definitions not bundled — consumer will fail on test assignment
+}
+
 interface ConsumerWrapperProps {
   log: (message: string) => void;
   updateStats: (stats: {
@@ -128,6 +138,10 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
           log('📈 Profiling enabled');
         }
 
+        if (!testDefinitions) {
+          log('⚠️  No test definitions bundled — consumer will fail on test assignment');
+        }
+
         // Create consumer using framework's ConsumerBase
         const consumer = new ConsumerBase(
           client,
@@ -147,7 +161,8 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
             updateStats: (update: Record<string, unknown>) => {
               updateStats(update as Parameters<typeof updateStats>[0]);
             },
-          }
+          },
+          testDefinitions
         );
 
         consumerRef.current = consumer;
