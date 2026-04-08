@@ -216,12 +216,116 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
       }
     } else {
       // iOS build
-      execSync('xcodebuild -workspace *.xcworkspace -scheme App -configuration Release', {
-        cwd: path.join(outputDir, 'ios'),
-        stdio: 'inherit',
-      });
+      const iosDir = path.join(outputDir, 'ios');
+
+      console.log('📦 Installing CocoaPods dependencies...');
+      execSync('pod install --repo-update', { cwd: iosDir, stdio: 'inherit' });
+
+      // Detect scheme from the generated Xcode project
+      const listOutput = execSync('xcodebuild -list', { cwd: iosDir, encoding: 'utf-8' });
+      const schemeMatch = listOutput.match(/Schemes:\s*\n\s*(.+)/);
+      if (!schemeMatch) {
+        throw new Error('Could not detect Xcode scheme from xcodebuild -list');
+      }
+      const scheme = schemeMatch[1].trim();
+      console.log(`   Detected scheme: ${scheme}`);
+
+      const archivePath = path.join(iosDir, 'build', `${scheme}.xcarchive`);
+      const exportDir = path.join(iosDir, 'build', 'export');
+
+      const teamId = process.env.QVAC_IOS_TEAM_ID;
+      const manualSigning = !!teamId;
+
+      // Archive
+      const archiveArgs = [
+        'xcodebuild',
+        `-workspace "${scheme}.xcworkspace"`,
+        `-scheme "${scheme}"`,
+        '-sdk iphoneos',
+        '-configuration Release',
+        '-destination "generic/platform=iOS"',
+        `-archivePath "${archivePath}"`,
+      ];
+
+      if (manualSigning) {
+        const identity = process.env.QVAC_IOS_CODE_SIGN_IDENTITY || 'Apple Distribution';
+        const profileUuid = process.env.QVAC_IOS_PROVISIONING_PROFILE || '';
+        archiveArgs.push(
+          'CODE_SIGN_STYLE=Manual',
+          `PROVISIONING_PROFILE_SPECIFIER="${profileUuid}"`,
+          `CODE_SIGN_IDENTITY="${identity}"`,
+          `DEVELOPMENT_TEAM="${teamId}"`
+        );
+        console.log('   Using manual signing (CI mode)');
+      } else {
+        console.log('   Using automatic signing (local dev mode)');
+      }
+
+      archiveArgs.push('clean archive');
+      execSync(archiveArgs.join(' '), { cwd: iosDir, stdio: 'inherit' });
+
+      // Write ExportOptions.plist
+      const bundleId = process.env.QVAC_IOS_BUNDLE_ID || 'io.tether.qvac-test-consumer-mobile';
+      const exportMethod = process.env.QVAC_IOS_EXPORT_METHOD || 'development';
+      const exportPlistPath = path.join(iosDir, 'build', 'ExportOptions.plist');
+
+      let exportPlist: string;
+      if (manualSigning) {
+        const profileUuid = process.env.QVAC_IOS_PROVISIONING_PROFILE || '';
+        exportPlist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>method</key>
+  <string>${exportMethod}</string>
+  <key>teamID</key>
+  <string>${teamId}</string>
+  <key>signingStyle</key>
+  <string>manual</string>
+  <key>provisioningProfiles</key>
+  <dict>
+    <key>${bundleId}</key>
+    <string>${profileUuid}</string>
+  </dict>
+</dict>
+</plist>`;
+      } else {
+        exportPlist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>method</key>
+  <string>${exportMethod}</string>
+  <key>signingStyle</key>
+  <string>automatic</string>
+</dict>
+</plist>`;
+      }
+
+      fs.writeFileSync(exportPlistPath, exportPlist);
+
+      // Export IPA
+      fs.mkdirSync(exportDir, { recursive: true });
+      execSync(
+        `xcodebuild -exportArchive -archivePath "${archivePath}" -exportOptionsPlist "${exportPlistPath}" -exportPath "${exportDir}"`,
+        { cwd: iosDir, stdio: 'inherit' }
+      );
+
+      // Find and copy IPA
+      const exportFiles = fs.readdirSync(exportDir);
+      const ipaFile = exportFiles.find((f) => f.endsWith('.ipa'));
+      if (!ipaFile) {
+        throw new Error(`IPA file not found in ${exportDir}`);
+      }
+
+      const ipaPath = path.join(exportDir, ipaFile);
       console.log(`\n✅ Build successful!`);
-      console.log(`📦 IPA: Check ${path.join(outputDir, 'ios/build/Build/Products/Release-iphoneos/')}`);
+      console.log(`📦 IPA: ${ipaPath}`);
+
+      if (mobileConfig.copyArtifact !== false) {
+        fs.copyFileSync(ipaPath, path.join(outputDir, 'consumer.ipa'));
+        console.log(`📋 Copied to: ${path.join(outputDir, 'consumer.ipa')}`);
+      }
     }
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
