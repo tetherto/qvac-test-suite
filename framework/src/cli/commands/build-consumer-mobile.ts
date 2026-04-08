@@ -435,11 +435,10 @@ function generateAppJson(
 
   const appConfig = JSON.parse(fs.readFileSync(templatePath, 'utf-8'));
 
-  // Replace placeholders
-  appConfig.expo.name = 'QVAC Test Consumer';
-  appConfig.expo.slug = 'qvac-test-consumer-mobile';
-  appConfig.expo.ios.bundleIdentifier = 'io.tether.qvac-test-consumer-mobile';
-  appConfig.expo.android.package = 'io.tether.qvac_test_consumer_mobile';
+  appConfig.expo.name = process.env.QVAC_APP_NAME || 'QVAC Test Consumer';
+  appConfig.expo.slug = process.env.QVAC_APP_SLUG || 'qvac-test-consumer-mobile';
+  appConfig.expo.ios.bundleIdentifier = process.env.QVAC_IOS_BUNDLE_ID || 'io.tether.qvac-test-consumer-mobile';
+  appConfig.expo.android.package = process.env.QVAC_ANDROID_PACKAGE || 'io.tether.qvac_test_consumer_mobile';
 
   // Update withNetworkSecurityConfig plugin to include CA cert if provided
   const networkSecurityPluginIndex = appConfig.expo.plugins.findIndex(
