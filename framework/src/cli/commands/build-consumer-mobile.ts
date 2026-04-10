@@ -218,10 +218,7 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
       // iOS build
       const iosDir = path.join(outputDir, 'ios');
 
-      console.log('📦 Installing CocoaPods dependencies...');
-      execSync('pod install --repo-update', { cwd: iosDir, stdio: 'inherit' });
-
-      // Detect scheme from the generated Xcode project
+      // Detect scheme from the generated Xcode project (expo prebuild already ran pod install)
       const listOutput = execSync('xcodebuild -list', { cwd: iosDir, encoding: 'utf-8' });
       const schemeMatch = listOutput.match(/Schemes:\s*\n\s*(.+)/);
       if (!schemeMatch) {
@@ -245,6 +242,7 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
         '-configuration Release',
         '-destination "generic/platform=iOS"',
         `-archivePath "${archivePath}"`,
+        '-quiet',
       ];
 
       if (manualSigning) {
@@ -307,7 +305,7 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
       // Export IPA
       fs.mkdirSync(exportDir, { recursive: true });
       execSync(
-        `xcodebuild -exportArchive -archivePath "${archivePath}" -exportOptionsPlist "${exportPlistPath}" -exportPath "${exportDir}"`,
+        `xcodebuild -exportArchive -archivePath "${archivePath}" -exportOptionsPlist "${exportPlistPath}" -exportPath "${exportDir}" -quiet`,
         { cwd: iosDir, stdio: 'inherit' }
       );
 
