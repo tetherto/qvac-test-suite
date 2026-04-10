@@ -54,6 +54,7 @@ export class BatchOrchestrator {
   private runId: string;
   private allowWildcardConsumers: boolean;
   private consumerTimeoutSec: number;
+  private consumerInactivityTimeoutMs: number;
   private testQueue: TestCase[] = [];
   private assignedTests = new Map<string, TestAssignment>(); // uniqueTestId -> assignment
   private completedTests = new Map<string, TestResult>(); // uniqueTestId -> result
@@ -70,12 +71,14 @@ export class BatchOrchestrator {
     client: MqttClient,
     runId: string,
     allowWildcardConsumers: boolean = false,
-    consumerTimeoutSec: number = 30
+    consumerTimeoutSec: number = 30,
+    consumerInactivityTimeoutSec: number = 120
   ) {
     this.client = client;
     this.runId = runId;
     this.allowWildcardConsumers = allowWildcardConsumers;
     this.consumerTimeoutSec = consumerTimeoutSec;
+    this.consumerInactivityTimeoutMs = consumerInactivityTimeoutSec * 1000;
     this.setupMqttHandlers();
   }
 
@@ -386,6 +389,50 @@ export class BatchOrchestrator {
       }
 
       this.checkBatchComplete();
+    }
+
+    // Check consumer liveness (heartbeat-based)
+    const deadConsumers: string[] = [];
+    for (const [consumerId, consumer] of this.consumers) {
+      const silent = now - consumer.lastSeen;
+      if (silent > this.consumerInactivityTimeoutMs) {
+        deadConsumers.push(consumerId);
+      }
+    }
+
+    for (const consumerId of deadConsumers) {
+      const silent = now - (this.consumers.get(consumerId)?.lastSeen ?? 0);
+      console.error(
+        `\n💀 Consumer ${consumerId.split('-').slice(1, 3).join('-')} unresponsive for ${Math.round(silent / 1000)}s — marking as dead`
+      );
+
+      for (const [uniqueTestId, assignment] of this.assignedTests) {
+        if (assignment.consumerId === consumerId) {
+          const failResult: TestResult = {
+            runId: this.runId,
+            consumerId,
+            testId: assignment.testCase.testId,
+            uniqueTestId,
+            outcome: 'failure',
+            duration: Date.now() - assignment.assignedAt,
+            timestamp: new Date().toISOString(),
+            error: `Consumer became unresponsive (no heartbeat for ${Math.round(silent / 1000)}s)`,
+          };
+          this.completedTests.set(uniqueTestId, failResult);
+          this.assignedTests.delete(uniqueTestId);
+        }
+      }
+
+      this.consumers.delete(consumerId);
+    }
+
+    if (deadConsumers.length > 0) {
+      if (this.consumers.size === 0 && (this.testQueue.length > 0 || this.assignedTests.size > 0)) {
+        console.error('\n❌ All consumers are dead. Terminating batch.');
+        this.completeBatch();
+      } else {
+        this.checkBatchComplete();
+      }
     }
   }
 

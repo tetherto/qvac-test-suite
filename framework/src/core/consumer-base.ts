@@ -58,6 +58,7 @@ export class ConsumerBase {
   protected callbacks: ConsumerCallbacks;
   private messageQueue: Promise<void> = Promise.resolve();
   private bootstrapPromise?: Promise<void>;
+  private heartbeatTimer?: ReturnType<typeof setInterval>;
 
   constructor(
     client: MqttClient,
@@ -236,6 +237,7 @@ export class ConsumerBase {
     this.registered = true;
     this.log(`🔌 Registration ack - ${this.totalTests} tests in queue\n`);
     this.updateStats({ totalTests: this.totalTests });
+    this.startHeartbeat();
 
     // Wait for bootstrap if still running (started at connect time)
     if (this.bootstrapPromise) {
@@ -555,8 +557,28 @@ export class ConsumerBase {
     });
   }
 
+  private startHeartbeat() {
+    this.heartbeatTimer = setInterval(() => {
+      if (!this.shutdownRequested) {
+        this.client.publish(
+          'qvac/heartbeat',
+          JSON.stringify({
+            runId: this.runId,
+            consumerId: this.consumerId,
+            timestamp: new Date().toISOString(),
+          }),
+          { qos: 0 }
+        );
+      }
+    }, 15000);
+  }
+
   protected async shutdown() {
     this.log('\n👋 Consumer shutting down...');
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = undefined;
+    }
 
     if (this.callbacks.onShutdown) {
       try {
