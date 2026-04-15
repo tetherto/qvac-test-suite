@@ -18,6 +18,7 @@ program
   .option('--mqtt-broker <url>', 'MQTT broker URL (overrides config)')
   .option('--config <path>', 'Path to config directory', process.cwd())
   .option('--consumer-timeout <seconds>', 'Timeout waiting for consumer connection (default: 30)', '30')
+  .option('--consumer-inactivity-timeout <seconds>', 'Timeout for consumer inactivity/heartbeat (default: 120)', '120')
   .option(
     '--filter <categories>',
     'Filter tests by category or testId prefix (comma-separated, e.g., "model,completion")'

@@ -10,6 +10,7 @@ interface ProducerOptions {
   mqttBroker?: string;
   config: string;
   consumerTimeout?: string;
+  consumerInactivityTimeout?: string;
   filter?: string;
   suite?: string;
   excludeSuite?: string;
@@ -71,9 +72,10 @@ export async function runProducer(options: ProducerOptions) {
     }
 
     const consumerTimeoutSec = parseInt(options.consumerTimeout || '30', 10);
+    const consumerInactivityTimeoutSec = parseInt(options.consumerInactivityTimeout || '120', 10);
 
     const client = createMqttClient(mqttConfig, configDir, { clientId: `producer-${runId}` });
-    const orchestrator = new BatchOrchestrator(client, runId, false, consumerTimeoutSec);
+    const orchestrator = new BatchOrchestrator(client, runId, false, consumerTimeoutSec, consumerInactivityTimeoutSec);
 
     orchestrator.buildTestQueue(tests);
 

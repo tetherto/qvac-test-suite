@@ -54,6 +54,7 @@ export class BatchOrchestrator {
   private runId: string;
   private allowWildcardConsumers: boolean;
   private consumerTimeoutSec: number;
+  private consumerInactivityTimeoutMs: number;
   private testQueue: TestCase[] = [];
   private assignedTests = new Map<string, TestAssignment>(); // uniqueTestId -> assignment
   private completedTests = new Map<string, TestResult>(); // uniqueTestId -> result
@@ -63,6 +64,7 @@ export class BatchOrchestrator {
   private initialTotalTests = 0;
   private startTime = 0;
   private batchStarted = false;
+  private allConsumersDead = false;
   private shutdownTimer?: NodeJS.Timeout;
   private consumerTimeoutTimer?: NodeJS.Timeout;
 
@@ -70,12 +72,14 @@ export class BatchOrchestrator {
     client: MqttClient,
     runId: string,
     allowWildcardConsumers: boolean = false,
-    consumerTimeoutSec: number = 30
+    consumerTimeoutSec: number = 30,
+    consumerInactivityTimeoutSec: number = 120
   ) {
     this.client = client;
     this.runId = runId;
     this.allowWildcardConsumers = allowWildcardConsumers;
     this.consumerTimeoutSec = consumerTimeoutSec;
+    this.consumerInactivityTimeoutMs = consumerInactivityTimeoutSec * 1000;
     this.setupMqttHandlers();
   }
 
@@ -387,6 +391,69 @@ export class BatchOrchestrator {
 
       this.checkBatchComplete();
     }
+
+    // Check consumer liveness (heartbeat-based)
+    const deadConsumers: string[] = [];
+    for (const [consumerId, consumer] of this.consumers) {
+      const silent = now - consumer.lastSeen;
+      if (silent > this.consumerInactivityTimeoutMs) {
+        deadConsumers.push(consumerId);
+      }
+    }
+
+    for (const consumerId of deadConsumers) {
+      const silent = now - (this.consumers.get(consumerId)?.lastSeen ?? 0);
+      console.error(
+        `\n💀 Consumer ${consumerId.split('-').slice(1, 3).join('-')} unresponsive for ${Math.round(silent / 1000)}s — marking as dead`
+      );
+
+      for (const [uniqueTestId, assignment] of this.assignedTests) {
+        if (assignment.consumerId === consumerId) {
+          const failResult: TestResult = {
+            runId: this.runId,
+            consumerId,
+            testId: assignment.testCase.testId,
+            uniqueTestId,
+            outcome: 'failure',
+            duration: Date.now() - assignment.assignedAt,
+            timestamp: new Date().toISOString(),
+            error: `Consumer became unresponsive (no heartbeat for ${Math.round(silent / 1000)}s)`,
+          };
+          this.completedTests.set(uniqueTestId, failResult);
+          this.assignedTests.delete(uniqueTestId);
+        }
+      }
+
+      this.consumers.delete(consumerId);
+    }
+
+    if (deadConsumers.length > 0) {
+      if (this.consumers.size === 0 && (this.testQueue.length > 0 || this.assignedTests.size > 0)) {
+        console.error('\n❌ All consumers are dead. Terminating batch.');
+        this.allConsumersDead = true;
+
+        // Fail all remaining queued tests
+        while (this.testQueue.length > 0) {
+          const testCase = this.testQueue.shift()!;
+          const uniqueTestId = `${testCase.testId}-orphaned`;
+          const failResult: TestResult = {
+            runId: this.runId,
+            consumerId: 'none',
+            testId: testCase.testId,
+            uniqueTestId,
+            outcome: 'failure',
+            duration: 0,
+            timestamp: new Date().toISOString(),
+            error: 'Consumer died before test could be executed',
+          };
+          this.completedTests.set(uniqueTestId, failResult);
+        }
+
+        this.completeBatch();
+      } else {
+        this.checkBatchComplete();
+      }
+    }
   }
 
   private displayStatus() {
@@ -530,10 +597,10 @@ export class BatchOrchestrator {
   }
 
   private scheduleShutdown() {
-    // Shutdown after 2 seconds
+    const exitCode = this.allConsumersDead ? 1 : 0;
     this.shutdownTimer = setTimeout(() => {
       console.log('\n👋 Shutting down producer...\n');
-      this.client.end(false, {}, () => process.exit(0));
+      this.client.end(false, {}, () => process.exit(exitCode));
     }, 2000);
   }
 
