@@ -64,6 +64,7 @@ export class BatchOrchestrator {
   private initialTotalTests = 0;
   private startTime = 0;
   private batchStarted = false;
+  private allConsumersDead = false;
   private shutdownTimer?: NodeJS.Timeout;
   private consumerTimeoutTimer?: NodeJS.Timeout;
 
@@ -429,6 +430,25 @@ export class BatchOrchestrator {
     if (deadConsumers.length > 0) {
       if (this.consumers.size === 0 && (this.testQueue.length > 0 || this.assignedTests.size > 0)) {
         console.error('\n❌ All consumers are dead. Terminating batch.');
+        this.allConsumersDead = true;
+
+        // Fail all remaining queued tests
+        while (this.testQueue.length > 0) {
+          const testCase = this.testQueue.shift()!;
+          const uniqueTestId = `${testCase.testId}-orphaned`;
+          const failResult: TestResult = {
+            runId: this.runId,
+            consumerId: 'none',
+            testId: testCase.testId,
+            uniqueTestId,
+            outcome: 'failure',
+            duration: 0,
+            timestamp: new Date().toISOString(),
+            error: 'Consumer died before test could be executed',
+          };
+          this.completedTests.set(uniqueTestId, failResult);
+        }
+
         this.completeBatch();
       } else {
         this.checkBatchComplete();
@@ -577,10 +597,10 @@ export class BatchOrchestrator {
   }
 
   private scheduleShutdown() {
-    // Shutdown after 2 seconds
+    const exitCode = this.allConsumersDead ? 1 : 0;
     this.shutdownTimer = setTimeout(() => {
       console.log('\n👋 Shutting down producer...\n');
-      this.client.end(false, {}, () => process.exit(0));
+      this.client.end(false, {}, () => process.exit(exitCode));
     }, 2000);
   }
 
