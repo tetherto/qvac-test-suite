@@ -6,6 +6,7 @@ import { runBootstrap } from './commands/run-bootstrap.js';
 import { buildConsumerMobile } from './commands/build-consumer-mobile.js';
 import { reportCompare } from './commands/report-compare.js';
 import { reportFormat } from './commands/report-format.js';
+import { runLocalDesktop, runLocalAndroid, runLocalIos } from './commands/run-local.js';
 
 const program = new Command();
 
@@ -73,5 +74,35 @@ program
   .requiredOption('--format <format>', 'Output format (markdown)')
   .option('--output <file>', 'Output file (optional, prints to stdout if not specified)')
   .action(reportFormat);
+
+// ---------------------------------------------------------------------------
+// run:local:* — one-liner local development commands
+// ---------------------------------------------------------------------------
+
+const addLocalOpts = (cmd: Command) =>
+  cmd
+    .option('--config <path>', 'Path to config directory', process.cwd())
+    .option('--runId <id>', 'Run identifier (auto-generated if omitted)')
+    .option('--filter <categories>', 'Filter tests by category (forwarded to producer)')
+    .option('--suite <suites>', 'Include only these suites (forwarded to producer)')
+    .option('--exclude-suite <suites>', 'Exclude these suites (forwarded to producer)')
+    .option('--report-dir <dir>', 'Custom report directory');
+
+addLocalOpts(program.command('run:local:desktop'))
+  .description('Run producer + desktop consumer locally (one command)')
+  .action(runLocalDesktop);
+
+addLocalOpts(program.command('run:local:android'))
+  .description('Build, install, launch Android consumer + run producer locally')
+  .option('--skip-build', 'Skip build, only install+launch existing APK')
+  .option('--device <serial>', 'Target specific Android device')
+  .action(runLocalAndroid);
+
+addLocalOpts(program.command('run:local:ios'))
+  .description('Build, install, launch iOS consumer + run producer locally')
+  .option('--skip-build', 'Skip build, only install+launch existing .app')
+  .option('--bundle-suffix <suffix>', 'iOS bundle ID suffix (default: OS username)')
+  .option('--device <udid>', 'Target specific iOS device')
+  .action(runLocalIos);
 
 program.parse();

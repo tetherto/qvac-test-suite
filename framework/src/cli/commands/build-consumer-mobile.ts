@@ -6,11 +6,34 @@ import { loadConfig } from '../../utils/config-loader.js';
 import { generateMobileEnvFile } from '../../utils/mobile-env-baker.js';
 import type { QvacTestConfig } from '../../types/config.js';
 
-interface MobileBuildOptions {
+function detectTeamIdFromKeychain(): string | undefined {
+  if (process.platform !== 'darwin') return undefined;
+  try {
+    const subject = execSync('security find-certificate -a -c "Apple Development" -p | openssl x509 -subject -noout', {
+      encoding: 'utf-8',
+      timeout: 10000,
+    });
+    const match = subject.match(/OU=([A-Z0-9]{10,})/);
+    return match?.[1];
+  } catch {}
+  try {
+    const subject = execSync('security find-certificate -a -c "iPhone Developer" -p | openssl x509 -subject -noout', {
+      encoding: 'utf-8',
+      timeout: 10000,
+    });
+    const match = subject.match(/OU=([A-Z0-9]{10,})/);
+    return match?.[1];
+  } catch {}
+  return undefined;
+}
+
+export interface MobileBuildOptions {
   platform: 'ios' | 'android';
   config: string;
   runId?: string;
   mqttBroker?: string;
+  /** Stop after prebuild (copy templates, generate config, npm install, expo prebuild). Skip native build. */
+  prepareOnly?: boolean;
 }
 
 function resolveConfigValue(value: unknown): unknown {
@@ -184,6 +207,12 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
     console.log('📥 Installing dependencies...');
     execSync('npm install', { cwd: outputDir, stdio: 'inherit' });
 
+    if (options.prepareOnly) {
+      // Skip prebuild -- caller (e.g. expo run:ios) will handle prebuild + build + signing
+      console.log(`\n✅ Prepared ${options.platform} consumer at: ${outputDir}`);
+      return;
+    }
+
     // Run expo prebuild (--clean ensures native project reflects current config)
     console.log('\n🔧 Running expo prebuild...');
     execSync(`npx expo prebuild --clean --platform ${options.platform}`, {
@@ -230,8 +259,9 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
       const archivePath = path.join(iosDir, 'build', `${scheme}.xcarchive`);
       const exportDir = path.join(iosDir, 'build', 'export');
 
-      const teamId = process.env.QVAC_IOS_TEAM_ID;
-      const manualSigning = !!teamId;
+      // Manual signing only when an explicit provisioning profile is provided (CI)
+      const manualSigning = !!process.env.QVAC_IOS_PROVISIONING_PROFILE;
+      const teamId = process.env.QVAC_IOS_TEAM_ID || detectTeamIdFromKeychain();
 
       // Archive
       const archiveArgs = [
@@ -245,9 +275,9 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
         '-quiet',
       ];
 
-      if (manualSigning) {
+      if (manualSigning && teamId) {
         const identity = process.env.QVAC_IOS_CODE_SIGN_IDENTITY || 'Apple Distribution';
-        const profileUuid = process.env.QVAC_IOS_PROVISIONING_PROFILE || '';
+        const profileUuid = process.env.QVAC_IOS_PROVISIONING_PROFILE!;
         archiveArgs.push(
           'CODE_SIGN_STYLE=Manual',
           `PROVISIONING_PROFILE_SPECIFIER="${profileUuid}"`,
@@ -256,7 +286,9 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
         );
         console.log('   Using manual signing (CI mode)');
       } else {
-        console.log('   Using automatic signing (local dev mode)');
+        // Team ID is injected via app.json (ios.appleTeamId) during prebuild
+        archiveArgs.push('-allowProvisioningUpdates');
+        console.log(`   Using automatic signing${teamId ? ` (team: ${teamId})` : ''}`);
       }
 
       archiveArgs.push('clean archive');
@@ -293,7 +325,7 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
 <plist version="1.0">
 <dict>
   <key>method</key>
-  <string>${exportMethod}</string>
+  <string>${exportMethod}</string>${teamId ? `\n  <key>teamID</key>\n  <string>${teamId}</string>` : ''}
   <key>signingStyle</key>
   <string>automatic</string>
 </dict>
@@ -541,6 +573,11 @@ function generateAppJson(
   appConfig.expo.slug = process.env.QVAC_APP_SLUG || 'qvac-test-consumer-mobile';
   appConfig.expo.ios.bundleIdentifier = process.env.QVAC_IOS_BUNDLE_ID || 'io.tether.qvac-test-consumer-mobile';
   appConfig.expo.android.package = process.env.QVAC_ANDROID_PACKAGE || 'io.tether.qvac_test_consumer_mobile';
+
+  const iosTeamId = process.env.QVAC_IOS_TEAM_ID || detectTeamIdFromKeychain();
+  if (iosTeamId) {
+    appConfig.expo.ios.appleTeamId = iosTeamId;
+  }
 
   // Update withNetworkSecurityConfig plugin to include CA cert if provided
   const networkSecurityPluginIndex = appConfig.expo.plugins.findIndex(
