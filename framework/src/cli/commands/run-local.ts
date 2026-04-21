@@ -409,8 +409,12 @@ function cleanDerivedData(scheme: string): void {
 
   const stale = fs.readdirSync(derivedData).filter((d) => d.match(new RegExp(`^${scheme}-`)));
   for (const dir of stale) {
-    const full = path.join(derivedData, dir);
-    fs.rmSync(full, { recursive: true, force: true });
+    try {
+      const full = path.join(derivedData, dir);
+      fs.rmSync(full, { recursive: true, force: true });
+    } catch {
+      // Locked by Xcode or another process -- ignore, xcodebuild will overwrite
+    }
   }
   if (stale.length > 0) {
     console.log(`   Cleaned ${stale.length} stale DerivedData entries`);
