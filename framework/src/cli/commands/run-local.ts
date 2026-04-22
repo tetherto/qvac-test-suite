@@ -175,6 +175,16 @@ export async function runLocalAndroid(opts: AndroidOptions) {
   try {
     console.log('🤖 run:local:android\n');
 
+    // When skipping build, use the runId baked into the existing build
+    if (opts.skipBuild && !opts.runId) {
+      const configDir = path.resolve(opts.config);
+      const bakedId = readBakedRunId(configDir, 'android');
+      if (bakedId) {
+        opts.runId = bakedId;
+        console.log(`   Using baked runId from previous build: ${bakedId}`);
+      }
+    }
+
     const { runId, configDir, reportDir, brokerHandle } = await setupLocal(opts);
 
     // Detect LAN IP and write .env for mobile build
@@ -260,6 +270,16 @@ export async function runLocalAndroid(opts: AndroidOptions) {
 export async function runLocalIos(opts: IosOptions) {
   try {
     console.log('🍎 run:local:ios\n');
+
+    // When skipping build, use the runId baked into the existing build
+    if (opts.skipBuild && !opts.runId) {
+      const configDir = path.resolve(opts.config);
+      const bakedId = readBakedRunId(configDir, 'ios');
+      if (bakedId) {
+        opts.runId = bakedId;
+        console.log(`   Using baked runId from previous build: ${bakedId}`);
+      }
+    }
 
     const { runId, configDir, reportDir, brokerHandle } = await setupLocal(opts);
 
@@ -402,6 +422,21 @@ export async function runLocalIos(opts: IosOptions) {
 // ---------------------------------------------------------------------------
 
 import * as fs from 'node:fs';
+
+/**
+ * Read the baked runId from a previously built mobile consumer.
+ * Returns undefined if not found.
+ */
+function readBakedRunId(configDir: string, platform: 'ios' | 'android'): string | undefined {
+  const configPath = path.join(configDir, 'build', 'consumers', platform, 'consumer-config.ts');
+  try {
+    const content = fs.readFileSync(configPath, 'utf-8');
+    const match = content.match(/runId:\s*"([^"]+)"/);
+    return match?.[1];
+  } catch {
+    return undefined;
+  }
+}
 
 function cleanDerivedData(scheme: string): void {
   const derivedData = path.join(os.homedir(), 'Library/Developer/Xcode/DerivedData');
