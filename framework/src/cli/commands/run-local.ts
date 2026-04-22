@@ -82,6 +82,14 @@ async function setupLocal(opts: LocalOptions): Promise<{
   const configDir = path.resolve(opts.config);
   const runId = opts.runId || generateRunId();
 
+  // Detect LAN IP and ensure .env has correct local WS broker settings
+  // before loading dotenv. This is needed for all platforms since the
+  // producer and config both read from .env.
+  const lanIp = detectLanIp();
+  if (lanIp) {
+    writeLocalMobileEnv(configDir, lanIp);
+  }
+
   loadDotenv({ path: path.join(configDir, '.env') });
 
   console.log(`📂 Config: ${configDir}`);
@@ -187,16 +195,6 @@ export async function runLocalAndroid(opts: AndroidOptions) {
 
     const { runId, configDir, reportDir, brokerHandle } = await setupLocal(opts);
 
-    // Detect LAN IP and write .env for mobile build
-    const lanIp = detectLanIp();
-    if (!lanIp) {
-      console.error('❌ Could not detect LAN IP address. Are you connected to a network?');
-      process.exit(1);
-    }
-    console.log(`🌐 LAN IP: ${lanIp}`);
-    writeLocalMobileEnv(configDir, lanIp);
-    console.log('');
-
     // Detect Android device
     const devices = detectAndroidDevices();
     if (devices.length === 0) {
@@ -282,16 +280,6 @@ export async function runLocalIos(opts: IosOptions) {
     }
 
     const { runId, configDir, reportDir, brokerHandle } = await setupLocal(opts);
-
-    // Detect LAN IP and write .env for mobile build
-    const lanIp = detectLanIp();
-    if (!lanIp) {
-      console.error('❌ Could not detect LAN IP address. Are you connected to a network?');
-      process.exit(1);
-    }
-    console.log(`🌐 LAN IP: ${lanIp}`);
-    writeLocalMobileEnv(configDir, lanIp);
-    console.log('');
 
     // Auto-detect team ID if not set
     if (!process.env.QVAC_IOS_TEAM_ID) {

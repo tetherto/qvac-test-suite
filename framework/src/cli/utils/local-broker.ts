@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as net from 'node:net';
 import * as http from 'node:http';
+import * as readline from 'node:readline';
 import { createRequire } from 'node:module';
 import { execSync } from 'node:child_process';
 import { checkBroker } from './process-manager.js';
@@ -12,6 +13,16 @@ const WS_PORT = 8080;
 export interface BrokerHandle {
   started: boolean;
   cleanup: () => void;
+}
+
+function promptYesNo(question: string): Promise<boolean> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(`${question} [y/N] `, (answer) => {
+      rl.close();
+      resolve(answer.trim().toLowerCase() === 'y');
+    });
+  });
 }
 
 /**
@@ -100,13 +111,30 @@ export async function ensureBroker(brokerUrl: string, reportDir: string): Promis
   const wsStream = tryRequire('websocket-stream');
 
   if (!aedesPkg || !wsStream) {
-    console.error(
-      '\n❌ Cannot start embedded MQTT broker: aedes and/or websocket-stream not found.\n' +
-        '   Install them globally:\n\n' +
-        '     npm install -g aedes websocket-stream\n\n' +
-        '   Or start a broker manually before running this command.\n'
+    console.log(
+      '\n   No MQTT broker is running and the embedded broker dependencies are not installed.\n' +
+        '   The embedded broker provides both TCP (:1883) and WebSocket (:8080) protocols.\n' +
+        '   WebSocket is required for mobile clients to connect.\n'
     );
-    process.exit(1);
+
+    const confirmed = await promptYesNo('   Install aedes + websocket-stream globally? (npm install -g)');
+    if (confirmed) {
+      console.log('\n   Installing...');
+      execSync('npm install -g aedes websocket-stream', { stdio: 'inherit' });
+      console.log('');
+
+      // Retry require after install
+      const aedesRetry = tryRequire('aedes');
+      const wsRetry = tryRequire('websocket-stream');
+      if (!aedesRetry || !wsRetry) {
+        console.error('❌ Installation succeeded but modules still not found. Start a broker manually.');
+        process.exit(1);
+      }
+      return ensureBroker(brokerUrl, reportDir);
+    } else {
+      console.error('\n   Start a broker manually before running this command.');
+      process.exit(1);
+    }
   }
 
   // v1.x CJS: { Aedes } where Aedes.createBroker() is a static method
