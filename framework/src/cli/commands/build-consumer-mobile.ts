@@ -208,9 +208,14 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
     // file:..) are packed-and-copied instead of symlinked. Symlinking exposes
     // the linked package's own node_modules to Metro / Expo autolinking, which
     // can pull in transitive duplicates of react-native and friends.
-    // Also write .npmrc so manual reruns and any nested npm invocations
-    // (e.g. expo prebuild postinstall paths) inherit the same flags.
-    fs.writeFileSync(path.join(outputDir, '.npmrc'), 'install-links=true\nlegacy-peer-deps=false\n');
+    // Also persist install-links=true into .npmrc so manual reruns and nested
+    // npm invocations (e.g. expo prebuild postinstall paths) inherit it.
+    // CRITICAL: merge into any existing .npmrc rather than overwriting; CI
+    // pipelines may pre-populate it with scoped registry auth.
+    upsertNpmrcKeys(path.join(outputDir, '.npmrc'), {
+      'install-links': 'true',
+      'legacy-peer-deps': 'false',
+    });
     console.log('📥 Installing dependencies (with --install-links)...');
     execSync('npm install --install-links=true', { cwd: outputDir, stdio: 'inherit' });
 
@@ -496,6 +501,35 @@ export { tests, default } from './${relativeDefs.replace(/\.ts$/, '')}';
       `   ⚠️  No test-definitions.ts/.js found in ${testDir} — consumer will not have local test definitions`
     );
   }
+}
+
+/**
+ * Idempotently set keys in an .npmrc file.
+ * - If the file does not exist, creates it with just the given keys.
+ * - If a key already exists (uncommented), its value is replaced.
+ * - If a key is missing, it is appended.
+ * - Preserves all unrelated lines, comments, ordering, and trailing newline.
+ *
+ * Note: only handles plain `key=value` lines. Section-scoped keys
+ * (e.g. `@scope:registry=...`) are matched literally as-is.
+ */
+function upsertNpmrcKeys(npmrcPath: string, keys: Record<string, string>): void {
+  let content = fs.existsSync(npmrcPath) ? fs.readFileSync(npmrcPath, 'utf8') : '';
+  const hadTrailingNewline = content.endsWith('\n');
+  const lines = content === '' ? [] : content.replace(/\n$/, '').split('\n');
+
+  for (const [key, value] of Object.entries(keys)) {
+    // Match `key = value` / `key=value`, allowing leading whitespace; ignore commented (#) lines.
+    const re = new RegExp(`^\\s*${key.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\s*=`);
+    const idx = lines.findIndex((l) => !l.trimStart().startsWith('#') && re.test(l));
+    if (idx >= 0) {
+      lines[idx] = `${key}=${value}`;
+    } else {
+      lines.push(`${key}=${value}`);
+    }
+  }
+
+  fs.writeFileSync(npmrcPath, lines.join('\n') + (hadTrailingNewline || lines.length > 0 ? '\n' : ''));
 }
 
 function copyDirectoryRecursive(src: string, dest: string): void {
