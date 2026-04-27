@@ -203,9 +203,16 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
     console.log('⚙️  Configuring app.json...');
     generateAppJson(outputDir, options.platform, mobileConfig.expoPlugins, caCertForAndroid);
 
-    // Install dependencies
-    console.log('📥 Installing dependencies...');
-    execSync('npm install', { cwd: outputDir, stdio: 'inherit' });
+    // Install dependencies.
+    // Use --install-links so file: deps (e.g. monorepo SDKs referenced via
+    // file:..) are packed-and-copied instead of symlinked. Symlinking exposes
+    // the linked package's own node_modules to Metro / Expo autolinking, which
+    // can pull in transitive duplicates of react-native and friends.
+    // Also write .npmrc so manual reruns and any nested npm invocations
+    // (e.g. expo prebuild postinstall paths) inherit the same flags.
+    fs.writeFileSync(path.join(outputDir, '.npmrc'), 'install-links=true\nlegacy-peer-deps=false\n');
+    console.log('📥 Installing dependencies (with --install-links)...');
+    execSync('npm install --install-links=true', { cwd: outputDir, stdio: 'inherit' });
 
     if (options.prepareOnly) {
       // Skip prebuild -- caller (e.g. expo run:ios) will handle prebuild + build + signing
@@ -551,6 +558,21 @@ async function generatePackageJson(
       ...template.dependencies,
       ...dependencies,
     };
+  }
+
+  // Pin RN-stack versions across the entire dependency graph via npm overrides.
+  // Without this, transitive peer ranges like react-native-bare-kit's
+  // `react-native: *` can pull in a different react-native at install time.
+  const pinned = ['react', 'react-native', 'react-native-bare-kit'];
+  const overrides: Record<string, string> = { ...(template.overrides ?? {}) };
+  for (const name of pinned) {
+    const v = template.dependencies?.[name];
+    if (typeof v === 'string' && v.length > 0) {
+      overrides[name] = v;
+    }
+  }
+  if (Object.keys(overrides).length > 0) {
+    template.overrides = overrides;
   }
 
   fs.writeFileSync(path.join(outputDir, 'package.json'), JSON.stringify(template, null, 2));
