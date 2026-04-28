@@ -26,6 +26,10 @@ program
   )
   .option('--suite <suites>', 'Include only tests in these suites (comma-separated, e.g., "smoke,regression")')
   .option('--exclude-suite <suites>', 'Exclude tests in these suites (comma-separated, e.g., "slow,flaky")')
+  .option(
+    '--report-dir <dir>',
+    'Directory to write reports + read device-mem.ndjson from (used by run:local; producer also writes test-timeline.ndjson here)'
+  )
   .action(runProducer);
 
 program

@@ -60,8 +60,14 @@ function resolveCliPath(): string {
   return path.resolve(path.dirname(__filename), '../index.js');
 }
 
-function buildProducerArgs(cliPath: string, runId: string, configDir: string, opts: LocalOptions): string[] {
-  const args = [cliPath, 'run:producer', `--runId=${runId}`, `--config=${configDir}`];
+function buildProducerArgs(
+  cliPath: string,
+  runId: string,
+  configDir: string,
+  reportDir: string,
+  opts: LocalOptions
+): string[] {
+  const args = [cliPath, 'run:producer', `--runId=${runId}`, `--config=${configDir}`, `--report-dir=${reportDir}`];
   if (opts.filter) args.push(`--filter=${opts.filter}`);
   if (opts.suite) args.push(`--suite=${opts.suite}`);
   if (opts.excludeSuite) args.push(`--exclude-suite=${opts.excludeSuite}`);
@@ -151,7 +157,7 @@ export async function runLocalDesktop(opts: LocalOptions) {
     const cliPath = resolveCliPath();
     const tracked: TrackedProcess[] = [];
 
-    const producer = spawnTracked('node', buildProducerArgs(cliPath, runId, configDir, opts), {
+    const producer = spawnTracked('node', buildProducerArgs(cliPath, runId, configDir, reportDir, opts), {
       reportDir,
       name: 'producer',
       cwd: configDir,
@@ -165,7 +171,8 @@ export async function runLocalDesktop(opts: LocalOptions) {
     });
     tracked.push(consumer);
 
-    printPidTable(tracked);
+    const pidEntries = tracked.map((t) => ({ name: t.name, pid: t.pid, logPath: t.logPath }));
+    printPidTable(pidEntries);
     printLogPaths(reportDir);
     setupCleanup(tracked, reportDir, brokerHandle);
   } catch (error: unknown) {
@@ -235,7 +242,7 @@ export async function runLocalAndroid(opts: AndroidOptions) {
     const cliPath = resolveCliPath();
     const tracked: TrackedProcess[] = [];
 
-    const producer = spawnTracked('node', buildProducerArgs(cliPath, runId, configDir, opts), {
+    const producer = spawnTracked('node', buildProducerArgs(cliPath, runId, configDir, reportDir, opts), {
       reportDir,
       name: 'producer',
       cwd: configDir,
@@ -243,6 +250,7 @@ export async function runLocalAndroid(opts: AndroidOptions) {
     tracked.push(producer);
 
     const appPid = getAndroidAppPid(serial, androidPackage);
+
     const pidEntries = tracked.map((t) => ({ name: t.name, pid: t.pid, logPath: t.logPath }));
     if (appPid) {
       pidEntries.push({ name: 'consumer-android', pid: appPid, logPath: '(on device)' });
@@ -383,7 +391,7 @@ export async function runLocalIos(opts: IosOptions) {
     const cliPath = resolveCliPath();
     const tracked: TrackedProcess[] = [];
 
-    const producer = spawnTracked('node', buildProducerArgs(cliPath, runId, configDir, opts), {
+    const producer = spawnTracked('node', buildProducerArgs(cliPath, runId, configDir, reportDir, opts), {
       reportDir,
       name: 'producer',
       cwd: configDir,

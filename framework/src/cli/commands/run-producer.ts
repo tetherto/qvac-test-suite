@@ -14,6 +14,7 @@ interface ProducerOptions {
   filter?: string;
   suite?: string;
   excludeSuite?: string;
+  reportDir?: string;
 }
 
 export async function runProducer(options: ProducerOptions) {
@@ -75,7 +76,15 @@ export async function runProducer(options: ProducerOptions) {
     const consumerInactivityTimeoutSec = parseInt(options.consumerInactivityTimeout || '120', 10);
 
     const client = createMqttClient(mqttConfig, configDir, { clientId: `producer-${runId}` });
-    const orchestrator = new BatchOrchestrator(client, runId, false, consumerTimeoutSec, consumerInactivityTimeoutSec);
+    const reportDir = options.reportDir ? path.resolve(options.reportDir) : undefined;
+    const orchestrator = new BatchOrchestrator(
+      client,
+      runId,
+      false,
+      consumerTimeoutSec,
+      consumerInactivityTimeoutSec,
+      reportDir
+    );
 
     orchestrator.buildTestQueue(tests);
 
