@@ -1,3 +1,5 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import type { MqttClient } from 'mqtt';
 import type { TestDefinition } from '../types/test-definition.js';
 import {
@@ -17,6 +19,7 @@ import {
   type ReportProfilingData,
 } from '../utils/report-generator.js';
 import { getMetricCount } from '../utils/profiler-adapter.js';
+import { aggregateMemory } from '../utils/memory-aggregator.js';
 
 interface TestCase {
   id: string; // Unique test ID
@@ -55,12 +58,16 @@ export class BatchOrchestrator {
   private allowWildcardConsumers: boolean;
   private consumerTimeoutSec: number;
   private consumerInactivityTimeoutMs: number;
+  private reportDir?: string;
+  private timelinePath?: string;
+  private appMemPath?: string;
   private testQueue: TestCase[] = [];
   private assignedTests = new Map<string, TestAssignment>(); // uniqueTestId -> assignment
   private completedTests = new Map<string, TestResult>(); // uniqueTestId -> result
   private consumers = new Map<string, ConsumerInfo>(); // consumerId -> info
   private profilingData = new Map<string, ProfilerExport>(); // consumerId -> profiler export
   private testSuites = new Map<string, string[]>(); // testId -> suites
+  private testCategories = new Map<string, string>(); // testId -> metadata.category
   private initialTotalTests = 0;
   private startTime = 0;
   private batchStarted = false;
@@ -73,14 +80,62 @@ export class BatchOrchestrator {
     runId: string,
     allowWildcardConsumers: boolean = false,
     consumerTimeoutSec: number = 30,
-    consumerInactivityTimeoutSec: number = 120
+    consumerInactivityTimeoutSec: number = 120,
+    reportDir?: string
   ) {
     this.client = client;
     this.runId = runId;
     this.allowWildcardConsumers = allowWildcardConsumers;
     this.consumerTimeoutSec = consumerTimeoutSec;
     this.consumerInactivityTimeoutMs = consumerInactivityTimeoutSec * 1000;
+    this.reportDir = reportDir;
+    if (reportDir) {
+      try {
+        fs.mkdirSync(reportDir, { recursive: true });
+      } catch {}
+      this.timelinePath = path.join(reportDir, 'test-timeline.ndjson');
+      this.appMemPath = path.join(reportDir, 'app-mem.ndjson');
+    }
     this.setupMqttHandlers();
+  }
+
+  private handleAppMemorySample(rawMessage: unknown): void {
+    if (!this.appMemPath) return;
+    if (!rawMessage || typeof rawMessage !== 'object') return;
+    const m = rawMessage as Record<string, unknown>;
+    // Validate the minimum shape; ignore obviously broken entries.
+    if (typeof m.ts !== 'number' || typeof m.memoryKb !== 'number') return;
+    if (typeof m.platform !== 'string') return;
+    const record = {
+      ts: m.ts,
+      pid: typeof m.pid === 'number' ? m.pid : null,
+      memoryKb: m.memoryKb,
+      peakKb: null,
+      limitKb: null,
+      metric: typeof m.metric === 'string' ? m.metric : 'in-app',
+      platform: m.platform,
+      consumerId: typeof m.consumerId === 'string' ? m.consumerId : undefined,
+    };
+    try {
+      fs.appendFileSync(this.appMemPath, JSON.stringify(record) + '\n');
+    } catch {
+      // Non-fatal: app memory ndjson is auxiliary.
+    }
+  }
+
+  private appendTimeline(event: {
+    ts: number;
+    consumerId: string;
+    testId: string;
+    uniqueTestId: string;
+    phase: 'start' | 'end';
+  }): void {
+    if (!this.timelinePath) return;
+    try {
+      fs.appendFileSync(this.timelinePath, JSON.stringify(event) + '\n');
+    } catch {
+      // non-fatal: timeline is auxiliary
+    }
   }
 
   private setupMqttHandlers() {
@@ -91,7 +146,15 @@ export class BatchOrchestrator {
 
       // Subscribe to all coordination topics
       this.client.subscribe(
-        ['qvac/register', 'qvac/request-test', 'qvac/test-start', 'qvac/results', 'qvac/heartbeat', 'qvac/profiling'],
+        [
+          'qvac/register',
+          'qvac/request-test',
+          'qvac/test-start',
+          'qvac/results',
+          'qvac/heartbeat',
+          'qvac/profiling',
+          'qvac/app-memory',
+        ],
         { qos: 1 },
         (err) => {
           if (err) {
@@ -132,6 +195,9 @@ export class BatchOrchestrator {
             break;
           case 'qvac/profiling':
             this.handleProfilingData(message);
+            break;
+          case 'qvac/app-memory':
+            this.handleAppMemorySample(message);
             break;
         }
       } catch (error) {
@@ -252,6 +318,19 @@ export class BatchOrchestrator {
       { qos: 1 }
     );
 
+    // Memory timeline `start` fires at assignment time, not when the
+    // consumer sends test-start. The window between assignment and
+    // consumer-reported start is the setup phase (model loading etc.) --
+    // exactly where OOM crashes during model load happen, and where we
+    // most want to attribute memory usage to the test responsible.
+    this.appendTimeline({
+      ts: assignment.assignedAt,
+      consumerId,
+      testId: nextTest.testId,
+      uniqueTestId: nextTest.id,
+      phase: 'start',
+    });
+
     console.log(`📤 Assigned ${nextTest.testId} (${nextTest.id}) to ${consumerId}`);
     this.displayStatus();
   }
@@ -291,6 +370,14 @@ export class BatchOrchestrator {
     // Store result
     this.completedTests.set(uniqueTestId, message);
     this.assignedTests.delete(uniqueTestId);
+
+    this.appendTimeline({
+      ts: Date.now(),
+      consumerId,
+      testId: assignment.testCase.testId,
+      uniqueTestId,
+      phase: 'end',
+    });
 
     const statusIcon = outcome === 'skipped' ? '⏭️' : outcome === 'success' ? '✅' : '❌';
     console.log(`${statusIcon} Test ${assignment.testCase.testId} ${outcome} (${duration}ms) - ${consumerId}`);
@@ -572,7 +659,19 @@ export class BatchOrchestrator {
       const completedTests = Array.from(this.completedTests.values()).map((result) => ({
         ...result,
         suites: this.testSuites.get(result.testId),
+        category: this.testCategories.get(result.testId),
       }));
+
+      let memorySummary;
+      let memNdjsonPath: string | undefined;
+      if (this.reportDir) {
+        memNdjsonPath = this.appMemPath;
+        try {
+          memorySummary = aggregateMemory(this.reportDir) ?? undefined;
+        } catch (e) {
+          console.warn(`⚠️  Failed to aggregate memory data: ${(e as Error).message}`);
+        }
+      }
 
       const reportData: ReportData = {
         runId: this.runId,
@@ -580,6 +679,8 @@ export class BatchOrchestrator {
         consumers: this.consumers,
         startTime: this.startTime,
         profilingData: profilingDataArray.length > 0 ? profilingDataArray : undefined,
+        memorySummary,
+        reportDir: this.reportDir,
       };
 
       const htmlPath = generateHtmlReport(reportData);
@@ -590,6 +691,20 @@ export class BatchOrchestrator {
       console.log(`   JSON: ${jsonPath}`);
       if (profilingDataArray.length > 0) {
         console.log(`📈 Profiling data included from ${profilingDataArray.length} consumer(s)`);
+      }
+      if (memorySummary) {
+        const peakMb = (memorySummary.peakSuite.memoryKb / 1024).toFixed(1);
+        console.log(
+          `📉 Memory: peak ${peakMb} MB (${memorySummary.metric}, ${memorySummary.chart.length} samples) — ${memNdjsonPath}`
+        );
+      } else if (memNdjsonPath) {
+        // Diagnostic: explain why the memory tab is missing.
+        let reason = 'no samples captured';
+        try {
+          if (!fs.existsSync(memNdjsonPath)) reason = `${memNdjsonPath} not found`;
+          else if (fs.statSync(memNdjsonPath).size === 0) reason = `${memNdjsonPath} is empty`;
+        } catch {}
+        console.log(`📉 Memory: skipped (${reason})`);
       }
     } catch (error) {
       console.error('\n⚠️  Failed to generate reports:', error);
@@ -608,10 +723,12 @@ export class BatchOrchestrator {
     const categories = new Map<string, { passed: number; failed: number; skipped: number }>();
 
     for (const result of this.completedTests.values()) {
-      let category = result.testId;
-      if (category.includes('-')) {
-        category = category.split('-')[0];
-      }
+      // Prefer the test's declared metadata.category over deriving from
+      // testId — splitting "wrong-model-..." would otherwise bucket it
+      // as "wrong" instead of "wrong-model".
+      let category =
+        this.testCategories.get(result.testId) ??
+        (result.testId.includes('-') ? result.testId.split('-')[0] : result.testId);
 
       if (!categories.has(category)) {
         categories.set(category, { passed: 0, failed: 0, skipped: 0 });
@@ -695,6 +812,9 @@ export class BatchOrchestrator {
           timestamp: new Date().toISOString(),
           error: `${test.skip.reason}${test.skip.issue ? ` (${test.skip.issue})` : ''}`,
         });
+        if (typeof test.metadata?.category === 'string' && test.metadata.category.length > 0) {
+          this.testCategories.set(test.testId, test.metadata.category);
+        }
         continue;
       }
 
@@ -707,6 +827,9 @@ export class BatchOrchestrator {
       };
       if (test.suites) {
         this.testSuites.set(test.testId, test.suites);
+      }
+      if (typeof test.metadata?.category === 'string' && test.metadata.category.length > 0) {
+        this.testCategories.set(test.testId, test.metadata.category);
       }
       this.testQueue.push(testCase);
     }

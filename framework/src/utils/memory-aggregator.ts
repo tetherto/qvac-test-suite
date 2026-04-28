@@ -1,0 +1,312 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+/**
+ * Aggregates in-app memory samples + producer-side test timeline into a
+ * `MemorySummary` consumed by the report generator.
+ *
+ * Samples are published from the consumer over MQTT (`qvac/app-memory`) and
+ * appended to `app-mem.ndjson` by the orchestrator. The sample stream is
+ * crash-resilient: messages reach the producer immediately, so a hard crash
+ * on the device does not lose the run-up to the crash.
+ *
+ * Inputs (both NDJSON, both written by the orchestrator):
+ *   - app-mem.ndjson        -- one record per in-app memory sample
+ *   - test-timeline.ndjson  -- start/end events emitted by the orchestrator
+ *
+ * Outputs in `MemorySummary`:
+ *   - peakSuite     -- `max(memoryKb)` across the run, plus active testId at peak
+ *   - perTest       -- per-test peak / mean / growth from samples in window
+ *   - chart         -- raw samples + rolling max5s / max60s for plotting
+ *   - metric        -- in-app metric label
+ *   - platform
+ */
+
+export interface MemorySample {
+  ts: number;
+  pid: number | null;
+  memoryKb: number;
+  peakKb: number | null;
+  limitKb: number | null;
+  metric: string;
+  platform: 'android' | 'ios' | 'desktop';
+}
+
+export interface TimelineEvent {
+  ts: number;
+  consumerId: string;
+  testId: string;
+  uniqueTestId: string;
+  phase: 'start' | 'end';
+}
+
+export interface PerTestMemory {
+  testId: string;
+  uniqueTestId: string;
+  consumerId: string;
+  startTs: number;
+  /**
+   * For completed tests, when the consumer reported the result. For
+   * incomplete tests (consumer crashed before sending result), the last
+   * memory sample timestamp -- so the test still appears in the table
+   * with whatever memory data we captured up to the crash.
+   */
+  endTs: number;
+  durationMs: number;
+  /** First sample observed after the test was assigned. */
+  beforeKb: number | null;
+  peakKb: number;
+  meanKb: number;
+  /** Last sample observed before test end (or before crash for incomplete). */
+  afterKb: number | null;
+  /** afterKb - beforeKb when both are present; null otherwise. */
+  deltaKb: number | null;
+  samples: number;
+  /**
+   * True when the consumer never reported a result for this test --
+   * typically because it crashed mid-test (e.g. OOM kill). The endTs is
+   * synthesized from the last memory sample.
+   */
+  incomplete: boolean;
+}
+
+export interface RollingPoint {
+  ts: number;
+  memoryKb: number;
+  max5sKb: number;
+  max60sKb: number;
+}
+
+export interface MemorySummary {
+  metric: string;
+  platform: 'android' | 'ios' | 'desktop';
+  limitKb: number | null;
+  startTs: number;
+  endTs: number;
+  durationMs: number;
+  peakSuite: {
+    memoryKb: number;
+    ts: number;
+    activeTestId: string | null;
+  };
+  growthKb: number;
+  perTest: PerTestMemory[];
+  chart: RollingPoint[];
+}
+
+const ROLL_5S_MS = 5_000;
+const ROLL_60S_MS = 60_000;
+
+export function readMemorySamples(filePath: string): MemorySample[] {
+  if (!fs.existsSync(filePath)) return [];
+  const raw = fs.readFileSync(filePath, 'utf8');
+  const out: MemorySample[] = [];
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const obj = JSON.parse(trimmed) as Partial<MemorySample>;
+      if (typeof obj.ts !== 'number' || typeof obj.memoryKb !== 'number') continue;
+      if (!obj.platform) continue;
+      out.push({
+        ts: obj.ts,
+        pid: obj.pid ?? null,
+        memoryKb: obj.memoryKb,
+        peakKb: obj.peakKb ?? null,
+        limitKb: obj.limitKb ?? null,
+        metric: obj.metric ?? 'unknown',
+        platform: obj.platform,
+      });
+    } catch {
+      // skip malformed lines (e.g. truncated final line on crash)
+    }
+  }
+  out.sort((a, b) => a.ts - b.ts);
+  return out;
+}
+
+export function readTimeline(filePath: string): TimelineEvent[] {
+  if (!fs.existsSync(filePath)) return [];
+  const raw = fs.readFileSync(filePath, 'utf8');
+  const out: TimelineEvent[] = [];
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const obj = JSON.parse(trimmed) as TimelineEvent;
+      if (typeof obj.ts === 'number' && (obj.phase === 'start' || obj.phase === 'end')) out.push(obj);
+    } catch {
+      // skip
+    }
+  }
+  out.sort((a, b) => a.ts - b.ts);
+  return out;
+}
+
+/**
+ * Compute a sliding-window maximum over a sorted-by-ts series.
+ *
+ * O(n) using a monotonic deque; window is the time interval ending at each
+ * sample's timestamp.
+ */
+function rollingMax(samples: MemorySample[], windowMs: number): number[] {
+  const result: number[] = new Array(samples.length);
+  // deque holds indices into samples, memoryKb descending
+  const deque: number[] = [];
+  for (let i = 0; i < samples.length; i++) {
+    const tCur = samples[i].ts;
+    // pop expired
+    while (deque.length > 0 && samples[deque[0]].ts < tCur - windowMs) deque.shift();
+    // pop smaller-or-equal from the back
+    while (deque.length > 0 && samples[deque[deque.length - 1]].memoryKb <= samples[i].memoryKb) deque.pop();
+    deque.push(i);
+    result[i] = samples[deque[0]].memoryKb;
+  }
+  return result;
+}
+
+function findActiveTest(timeline: TimelineEvent[], ts: number): string | null {
+  // Linear is fine: timeline is small (~2*tests).
+  let active: string | null = null;
+  for (const ev of timeline) {
+    if (ev.ts > ts) break;
+    if (ev.phase === 'start') active = ev.testId;
+    else if (ev.phase === 'end' && active === ev.testId) active = null;
+  }
+  return active;
+}
+
+interface TestWindow {
+  ev: TimelineEvent; // end event
+  start: TimelineEvent; // start event
+}
+
+function aggregatePerTest(samples: MemorySample[], timeline: TimelineEvent[]): PerTestMemory[] {
+  // Pair start/end events into test windows. Tests with a start but no
+  // matching end (consumer crashed before reporting result) are kept as
+  // orphan starts and emitted with incomplete=true; their endTs is the
+  // last sample timestamp so they still appear in the table.
+  const starts = new Map<string, TimelineEvent>();
+  const windows: { start: TimelineEvent; end: TimelineEvent | null }[] = [];
+  for (const ev of timeline) {
+    if (ev.phase === 'start') {
+      starts.set(ev.uniqueTestId, ev);
+      continue;
+    }
+    const start = starts.get(ev.uniqueTestId);
+    if (!start) continue;
+    starts.delete(ev.uniqueTestId);
+    windows.push({ start, end: ev });
+  }
+  // Anything left in `starts` is an orphan (no end event seen).
+  for (const start of starts.values()) {
+    windows.push({ start, end: null });
+  }
+  windows.sort((a, b) => a.start.ts - b.start.ts);
+
+  const lastSampleTs = samples.length > 0 ? samples[samples.length - 1].ts : 0;
+  const out: PerTestMemory[] = [];
+
+  for (const w of windows) {
+    const start = w.start;
+    const incomplete = w.end === null;
+    // For incomplete (orphan-start) tests, treat the last memory sample as
+    // a synthetic end so they still get a row. Tests crash mid-test, so
+    // memory data up to the crash is what we have.
+    const endTs = w.end ? w.end.ts : lastSampleTs;
+    const inWindow = samples.filter((s) => s.ts >= start.ts && s.ts <= endTs);
+
+    let peakKb = 0;
+    let meanKb = 0;
+    if (inWindow.length > 0) {
+      peakKb = inWindow[0].memoryKb;
+      let sum = 0;
+      for (const s of inWindow) {
+        if (s.memoryKb > peakKb) peakKb = s.memoryKb;
+        sum += s.memoryKb;
+      }
+      meanKb = Math.round(sum / inWindow.length);
+    }
+
+    // Before / After are taken from samples observed while the test was
+    // running (in-window). An earlier iteration used the inter-test gap,
+    // which gave "after settling, before next test" -- but at sub-second
+    // test durations and ~500 ms sample cadence, the gap sample frequently
+    // catches the next test's setup work. In-window samples are
+    // uncontaminated; the chart still surfaces post-cleanup state.
+    const beforeKb = inWindow.length > 0 ? inWindow[0].memoryKb : null;
+    const afterKb = inWindow.length > 0 ? inWindow[inWindow.length - 1].memoryKb : null;
+    const deltaKb = beforeKb !== null && afterKb !== null ? afterKb - beforeKb : null;
+
+    out.push({
+      testId: start.testId,
+      uniqueTestId: start.uniqueTestId,
+      consumerId: start.consumerId,
+      startTs: start.ts,
+      endTs,
+      durationMs: endTs - start.ts,
+      beforeKb,
+      peakKb,
+      meanKb,
+      afterKb,
+      deltaKb,
+      samples: inWindow.length,
+      incomplete,
+    });
+  }
+
+  return out;
+}
+
+export function aggregateMemory(reportDir: string): MemorySummary | null {
+  const samples = readMemorySamples(path.join(reportDir, 'app-mem.ndjson'));
+  if (samples.length === 0) return null;
+
+  const timeline = readTimeline(path.join(reportDir, 'test-timeline.ndjson'));
+
+  const first = samples[0];
+  const last = samples[samples.length - 1];
+
+  // Suite peak
+  let peakSampleIdx = 0;
+  for (let i = 1; i < samples.length; i++) {
+    if (samples[i].memoryKb > samples[peakSampleIdx].memoryKb) peakSampleIdx = i;
+  }
+  const peakSample = samples[peakSampleIdx];
+
+  // Rolling windows
+  const max5s = rollingMax(samples, ROLL_5S_MS);
+  const max60s = rollingMax(samples, ROLL_60S_MS);
+  const chart: RollingPoint[] = samples.map((s, i) => ({
+    ts: s.ts,
+    memoryKb: s.memoryKb,
+    max5sKb: max5s[i],
+    max60sKb: max60s[i],
+  }));
+
+  // Per-test
+  const perTest = aggregatePerTest(samples, timeline).sort((a, b) => b.peakKb - a.peakKb);
+
+  // Limit (latest non-null)
+  let limitKb: number | null = null;
+  for (const s of samples) {
+    if (s.limitKb !== null) limitKb = s.limitKb;
+  }
+
+  return {
+    metric: first.metric,
+    platform: first.platform,
+    limitKb,
+    startTs: first.ts,
+    endTs: last.ts,
+    durationMs: last.ts - first.ts,
+    peakSuite: {
+      memoryKb: peakSample.memoryKb,
+      ts: peakSample.ts,
+      activeTestId: findActiveTest(timeline, peakSample.ts),
+    },
+    growthKb: last.memoryKb - first.memoryKb,
+    perTest,
+    chart,
+  };
+}
