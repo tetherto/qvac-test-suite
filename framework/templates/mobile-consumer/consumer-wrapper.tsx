@@ -296,9 +296,14 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
           memMeasureHandle = setInterval(measure, measureIntervalMs);
           memReportHandle = setInterval(report, reportIntervalMs);
 
-          // Also stop on MQTT close so we don't publish to a dead client
-          // even before the React unmount cleanup fires.
-          client.on('close', stopMemoryPoller);
+          // Stop the poller only on real teardown (client.end()), not on
+          // transient `close` events that fire during normal MQTT reconnect
+          // cycles -- otherwise the first transient disconnect would
+          // permanently clear both intervals and memory metrics would go
+          // silent for the rest of the run. The measure/report callbacks
+          // already self-guard via isShuttingDown for the in-flight
+          // shutdown race.
+          client.on('end', stopMemoryPoller);
           log(
             `📈 In-app memory poller started (measure ${measureIntervalMs}ms, report ${reportIntervalMs}ms, window-max)`
           );
