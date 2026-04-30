@@ -3,9 +3,12 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import type { ProfilerExport } from '../schemas/messages.js';
 import { parseProfilerExport, renderRawProfilerFallback, escapeHtml } from './profiler-adapter.js';
+import type { MemorySummary } from './memory-aggregator.js';
 
 export interface ReportTestResult {
   testId: string;
+  /** Unique test-instance ID (matches per-test memory window). */
+  uniqueTestId?: string;
   consumerId: string;
   outcome: 'success' | 'failure' | 'skipped';
   duration: number;
@@ -14,6 +17,12 @@ export interface ReportTestResult {
   expected?: string;
   actual?: string;
   suites?: string[];
+  /**
+   * Test's declared metadata.category. Preferred over deriving from testId
+   * via prefix-split, which mangles multi-word categories like "wrong-model"
+   * into "wrong".
+   */
+  category?: string;
 }
 
 export interface ReportConsumerInfo {
@@ -32,6 +41,10 @@ export interface ReportData {
   consumers: Map<string, ReportConsumerInfo>;
   startTime: number;
   profilingData?: ReportProfilingData[];
+  /** Optional aggregated in-app memory data; report omits the Memory tab when absent. */
+  memorySummary?: MemorySummary;
+  /** Override the default `reports/` output directory (used by run:local). */
+  reportDir?: string;
 }
 
 // Collect system information for the report
@@ -48,18 +61,18 @@ const systemInfo = {
 };
 
 export function generateHtmlReport(data: ReportData): string {
-  // Create reports directory if it doesn't exist
-  if (!fs.existsSync('reports')) {
-    fs.mkdirSync('reports');
+  const outDir = data.reportDir || 'reports';
+  if (!fs.existsSync(outDir)) {
+    fs.mkdirSync(outDir, { recursive: true });
   }
 
   // Try filename with run ID first
-  let filename = `reports/batch-report-${data.runId}.html`;
+  let filename = path.join(outDir, `batch-report-${data.runId}.html`);
 
   // If file exists, add timestamp to make it unique
   if (fs.existsSync(filename)) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    filename = `reports/batch-report-${data.runId}-${timestamp}.html`;
+    filename = path.join(outDir, `batch-report-${data.runId}-${timestamp}.html`);
   }
 
   const elapsed = data.startTime > 0 ? (Date.now() - data.startTime) / 1000 : 0;
@@ -78,10 +91,12 @@ export function generateHtmlReport(data: ReportData): string {
     testsByConsumer.get(test.consumerId)!.push(test);
   }
 
-  // Group tests by category
+  // Group tests by category. Prefer the test's declared metadata.category
+  // (passed through ReportTestResult.category by the orchestrator) over
+  // the fallback testId-prefix split.
   const testsByCategory = new Map<string, ReportTestResult[]>();
   for (const test of data.completedTests) {
-    const category = test.testId.split('-')[0];
+    const category = test.category ?? (test.testId.includes('-') ? test.testId.split('-')[0] : test.testId);
     if (!testsByCategory.has(category)) {
       testsByCategory.set(category, []);
     }
@@ -407,6 +422,7 @@ export function generateHtmlReport(data: ReportData): string {
           })
           .join('')}
 				<button class="tab" onclick="switchTab('all-tests')">📋 All Tests</button>
+				${data.memorySummary ? '<button class="tab" onclick="switchTab(\'memory\')">📈 Memory</button>' : ''}
 				${data.profilingData && data.profilingData.length > 0 ? '<button class="tab" onclick="switchTab(\'profiling\')">📈 Profiling</button>' : ''}
 			</div>
 
@@ -765,6 +781,9 @@ export function generateHtmlReport(data: ReportData): string {
 				</table>
 			</div>
 
+			<!-- Memory Tab -->
+			${data.memorySummary ? renderMemoryTab(data.memorySummary, data.completedTests) : ''}
+
 			<!-- Profiling Tab -->
 			${
         data.profilingData && data.profilingData.length > 0
@@ -991,16 +1010,16 @@ export function generateHtmlReport(data: ReportData): string {
  * Generate JSON report
  */
 export function generateJsonReport(data: ReportData): string {
-  // Create reports directory if it doesn't exist
-  if (!fs.existsSync('reports')) {
-    fs.mkdirSync('reports');
+  const outDir = data.reportDir || 'reports';
+  if (!fs.existsSync(outDir)) {
+    fs.mkdirSync(outDir, { recursive: true });
   }
 
   // Generate filename
-  let filename = `reports/results-${data.runId}.json`;
+  let filename = path.join(outDir, `results-${data.runId}.json`);
   if (fs.existsSync(filename)) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    filename = `reports/results-${data.runId}-${timestamp}.json`;
+    filename = path.join(outDir, `results-${data.runId}-${timestamp}.json`);
   }
 
   const elapsed = data.startTime > 0 ? (Date.now() - data.startTime) / 1000 : 0;
@@ -1008,10 +1027,10 @@ export function generateJsonReport(data: ReportData): string {
   const failureCount = data.completedTests.filter((t) => t.outcome === 'failure').length;
   const skippedCount = data.completedTests.filter((t) => t.outcome === 'skipped').length;
 
-  // Group by category
+  // Group by category — same metadata.category-first rule as the HTML side.
   const byCategory: Record<string, { passed: number; failed: number; skipped: number; total: number }> = {};
   for (const test of data.completedTests) {
-    const category = test.testId.split('-')[0];
+    const category = test.category ?? (test.testId.includes('-') ? test.testId.split('-')[0] : test.testId);
     if (!byCategory[category]) {
       byCategory[category] = { passed: 0, failed: 0, skipped: 0, total: 0 };
     }
@@ -1069,6 +1088,7 @@ export function generateJsonReport(data: ReportData): string {
       consumerId: pd.consumerId,
       ...pd.profilerExport,
     })),
+    memory: data.memorySummary,
   };
 
   try {
@@ -1079,4 +1099,309 @@ export function generateJsonReport(data: ReportData): string {
     console.error(`\n❌ Failed to generate JSON report:`, error);
     throw error;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Memory tab rendering
+// ---------------------------------------------------------------------------
+
+function formatKb(kb: number): string {
+  if (kb < 1024) return `${kb} KB`;
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb.toFixed(1)} MB`;
+  return `${(mb / 1024).toFixed(2)} GB`;
+}
+
+function metricLabel(metric: string): string {
+  switch (metric) {
+    case 'VmRSS':
+      return 'RSS (VmRSS)';
+    case 'physFootprint':
+      return 'Phys footprint';
+    case 'rss':
+      return 'RSS';
+    default:
+      return metric;
+  }
+}
+
+function renderMemoryTab(summary: MemorySummary, completedTests: ReportTestResult[]): string {
+  const peakMb = formatKb(summary.peakSuite.memoryKb);
+  const growthMb = formatKb(Math.abs(summary.growthKb));
+  const growthSign = summary.growthKb >= 0 ? '+' : '-';
+  const limitFrac =
+    summary.limitKb && summary.limitKb > 0
+      ? `${((summary.peakSuite.memoryKb / summary.limitKb) * 100).toFixed(1)}%`
+      : null;
+
+  // Index test results by uniqueTestId so each per-test memory row can be
+  // tagged with the test's outcome (success / failure / skipped). Falls back
+  // to keying by testId+consumerId for backwards compat with older runs that
+  // didn't include uniqueTestId in the test-result payload.
+  const outcomeByUid = new Map<string, ReportTestResult['outcome']>();
+  const outcomeByTestKey = new Map<string, ReportTestResult['outcome']>();
+  for (const t of completedTests) {
+    if (t.uniqueTestId) outcomeByUid.set(t.uniqueTestId, t.outcome);
+    outcomeByTestKey.set(`${t.testId}|${t.consumerId}`, t.outcome);
+  }
+  const outcomeFor = (uniqueTestId: string, testId: string, consumerId: string) =>
+    outcomeByUid.get(uniqueTestId) ?? outcomeByTestKey.get(`${testId}|${consumerId}`) ?? 'success';
+
+  // Render rows; sorted by peak desc by default. Client-side JS in the
+  // page resorts on header click without re-rendering the data.
+  let perTestSkippedCount = 0;
+  let perTestFailedCount = 0;
+  let perTestPassedCount = 0;
+  let perTestIncompleteCount = 0;
+  const rows = summary.perTest
+    .map((t) => {
+      const consumerShort = t.consumerId.split('-').slice(1, 3).join('-');
+      const startedSec = ((t.startTs - summary.startTs) / 1000).toFixed(1);
+      // Incomplete = orphan start (no result MQTT received -- consumer
+      // crashed mid-test, e.g. OOM kill). Show as a distinct outcome so
+      // the table doesn't silently drop the test the user most cares
+      // about (often the one responsible for the suite peak).
+      const baseOutcome = outcomeFor(t.uniqueTestId, t.testId, t.consumerId);
+      const outcome: 'success' | 'failure' | 'skipped' | 'crashed' = t.incomplete ? 'crashed' : baseOutcome;
+      if (outcome === 'skipped') perTestSkippedCount++;
+      else if (outcome === 'failure') perTestFailedCount++;
+      else if (outcome === 'crashed') perTestIncompleteCount++;
+      else perTestPassedCount++;
+
+      const fmtBefore = t.beforeKb !== null ? formatKb(t.beforeKb) : '—';
+      const fmtAfter = t.afterKb !== null ? formatKb(t.afterKb) : '—';
+      const fmtPeak = t.peakKb > 0 ? formatKb(t.peakKb) : '—';
+      const fmtMean = t.meanKb > 0 ? formatKb(t.meanKb) : '—';
+      const fmtDelta = t.deltaKb === null ? '—' : `${t.deltaKb >= 0 ? '+' : '-'}${formatKb(Math.abs(t.deltaKb))}`;
+      const deltaColor = t.deltaKb === null ? '' : `color:${t.deltaKb >= 0 ? '#ef4444' : '#10b981'};`;
+      const rowStyle =
+        outcome === 'skipped' ? ' style="opacity:0.55;"' : outcome === 'crashed' ? ' style="background:#fef2f2;"' : '';
+      // data-* attributes carry sortable raw numbers so client-side sort
+      // can avoid re-parsing the formatted values.
+      return `
+					<tr${rowStyle}>
+						<td data-sort="${escapeHtml(t.testId)}"><code>${escapeHtml(t.testId)}</code></td>
+						<td data-sort="${escapeHtml(outcome)}"><span class="badge ${outcome === 'crashed' ? 'failure' : escapeHtml(outcome)}">${escapeHtml(outcome.toUpperCase())}</span></td>
+						<td data-sort="${escapeHtml(t.consumerId)}" title="${escapeHtml(t.consumerId)}">${escapeHtml(consumerShort)}</td>
+						<td data-sort="${t.startTs}">+${startedSec}s</td>
+						<td data-sort="${t.beforeKb ?? ''}">${fmtBefore}</td>
+						<td data-sort="${t.peakKb}">${fmtPeak}</td>
+						<td data-sort="${t.afterKb ?? ''}">${fmtAfter}</td>
+						<td data-sort="${t.deltaKb ?? ''}" style="${deltaColor}">${fmtDelta}</td>
+						<td data-sort="${t.meanKb}">${fmtMean}</td>
+						<td data-sort="${t.durationMs}">${(t.durationMs / 1000).toFixed(1)}s</td>
+						<td data-sort="${t.samples}">${t.samples}</td>
+					</tr>`;
+    })
+    .join('');
+
+  return `
+		<div id="memory" class="tab-content">
+			<h2>📈 Memory</h2>
+			<p style="color:#6b7280;margin-bottom:20px;">
+				OOM-relevant metric: <code>${escapeHtml(metricLabel(summary.metric))}</code> on
+				<code>${escapeHtml(summary.platform)}</code>. Click any column header to resort.
+			</p>
+
+			<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:15px;margin-bottom:20px;">
+				<div class="stat-card info">
+					<h3>Suite peak</h3>
+					<div class="value">${peakMb}</div>
+					${summary.peakSuite.activeTestId ? `<div style="font-size:12px;color:#6b7280;margin-top:5px;">during <code>${escapeHtml(summary.peakSuite.activeTestId)}</code></div>` : ''}
+				</div>
+				<div class="stat-card info">
+					<h3>Net Δ across run</h3>
+					<div class="value" style="color:${summary.growthKb >= 0 ? '#ef4444' : '#10b981'};">${growthSign}${growthMb}</div>
+					<div style="font-size:12px;color:#6b7280;margin-top:5px;">last sample minus first</div>
+				</div>
+				${
+          summary.limitKb
+            ? `<div class="stat-card info">
+					<h3>Memory limit</h3>
+					<div class="value">${formatKb(summary.limitKb)}</div>
+					${limitFrac ? `<div style="font-size:12px;color:#6b7280;margin-top:5px;">peak: ${limitFrac} of limit</div>` : ''}
+				</div>`
+            : ''
+        }
+				<div class="stat-card info">
+					<h3>Duration</h3>
+					<div class="value">${(summary.durationMs / 1000).toFixed(0)}s</div>
+				</div>
+			</div>
+
+			<h3 style="margin:20px 0 10px 0;color:#374151;">Memory over time</h3>
+			${renderMemoryChart(summary)}
+
+			<h3 style="margin:30px 0 10px 0;color:#374151;">Per-test memory</h3>
+			<p style="color:#6b7280;font-size:13px;margin-bottom:10px;">
+				<strong>Before</strong> = first sample observed while this test was running.
+				<strong>After</strong> = last sample observed while this test was running.
+				<strong>Δ</strong> = After − Before, the test's effect on resident memory across its observable
+				window. Inter-test gaps are visible in the chart above (samples between test boundaries reflect
+				cleanup of the previous test plus setup of the next). Click any column header to sort.
+			</p>
+			${
+        perTestSkippedCount + perTestFailedCount + perTestPassedCount + perTestIncompleteCount > 0
+          ? `<div style="font-size:12px;color:#6b7280;margin-bottom:10px;">
+				<span style="color:#10b981;">${perTestPassedCount} passed</span>
+				${perTestFailedCount > 0 ? `&nbsp;·&nbsp;<span style="color:#ef4444;">${perTestFailedCount} failed</span>` : ''}
+				${perTestIncompleteCount > 0 ? `&nbsp;·&nbsp;<span style="color:#991b1b;font-weight:600;">${perTestIncompleteCount} crashed</span> (no result returned; row uses last sample before crash as end)` : ''}
+				${perTestSkippedCount > 0 ? `&nbsp;·&nbsp;<span style="color:#92400e;">${perTestSkippedCount} skipped</span> (faded rows; memory window not representative)` : ''}
+			</div>`
+          : ''
+      }
+			<table id="memory-per-test-table">
+				<thead>
+					<tr>
+						<th onclick="sortMemTable(this,'asc')" style="cursor:pointer;" title="Sort">Test ▾</th>
+						<th onclick="sortMemTable(this,'asc')" style="cursor:pointer;" title="Sort by outcome">Outcome ▾</th>
+						<th onclick="sortMemTable(this,'asc')" style="cursor:pointer;" title="Sort">Consumer ▾</th>
+						<th onclick="sortMemTable(this,'asc')" style="cursor:pointer;" title="Sort chronologically">Started ▾</th>
+						<th onclick="sortMemTable(this,'desc')" style="cursor:pointer;" title="Sort">Before ▾</th>
+						<th onclick="sortMemTable(this,'desc')" class="active" style="cursor:pointer;" title="Sort">Peak ▾</th>
+						<th onclick="sortMemTable(this,'desc')" style="cursor:pointer;" title="Sort">After ▾</th>
+						<th onclick="sortMemTable(this,'desc')" style="cursor:pointer;" title="Sort by net change">Δ ▾</th>
+						<th onclick="sortMemTable(this,'desc')" style="cursor:pointer;" title="Sort">Mean ▾</th>
+						<th onclick="sortMemTable(this,'desc')" style="cursor:pointer;" title="Sort">Duration ▾</th>
+						<th onclick="sortMemTable(this,'desc')" style="cursor:pointer;" title="Sort">Samples ▾</th>
+					</tr>
+				</thead>
+				<tbody>${rows}
+				</tbody>
+			</table>
+			<script>
+				function sortMemTable(th, defaultDir) {
+					var table = document.getElementById('memory-per-test-table');
+					if (!table) return;
+					var headerRow = th.parentNode;
+					var headers = Array.prototype.slice.call(headerRow.children);
+					var idx = headers.indexOf(th);
+					// Toggle direction if same column already active.
+					var dir = th.classList.contains('active')
+						? th.getAttribute('data-dir') === 'asc' ? 'desc' : 'asc'
+						: (defaultDir || 'asc');
+					headers.forEach(function (h) {
+						h.classList.remove('active');
+						h.removeAttribute('data-dir');
+					});
+					th.classList.add('active');
+					th.setAttribute('data-dir', dir);
+					var tbody = table.tBodies[0];
+					var rows = Array.prototype.slice.call(tbody.rows);
+					rows.sort(function (a, b) {
+						var av = a.cells[idx].getAttribute('data-sort') || '';
+						var bv = b.cells[idx].getAttribute('data-sort') || '';
+						var an = av === '' ? NaN : parseFloat(av);
+						var bn = bv === '' ? NaN : parseFloat(bv);
+						// Missing values always sort to the bottom, regardless of direction.
+						if (isNaN(an) && isNaN(bn)) return av.localeCompare(bv);
+						if (isNaN(an)) return 1;
+						if (isNaN(bn)) return -1;
+						// Both parsed as finite numbers -> numeric compare. parseFloat
+						// returning a finite number also implies the string starts with a
+						// digit, so this won't false-match alpha values like "abc".
+						var cmp = isFinite(an) && isFinite(bn) ? an - bn : av.localeCompare(bv);
+						return dir === 'asc' ? cmp : -cmp;
+					});
+					rows.forEach(function (r) { tbody.appendChild(r); });
+				}
+			</script>
+		</div>`;
+}
+
+function renderMemoryChart(summary: MemorySummary): string {
+  const points = summary.chart;
+  if (points.length < 2) {
+    return '<p style="color:#6b7280;">Not enough samples to draw chart.</p>';
+  }
+
+  const W = 1000;
+  const H = 320;
+  const padL = 60;
+  const padR = 20;
+  const padT = 20;
+  const padB = 40;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+
+  const t0 = points[0].ts;
+  const t1 = points[points.length - 1].ts;
+  const tSpan = Math.max(1, t1 - t0);
+
+  let yMax = 0;
+  for (const p of points) {
+    if (p.memoryKb > yMax) yMax = p.memoryKb;
+    if (p.max60sKb > yMax) yMax = p.max60sKb;
+  }
+  if (summary.limitKb && summary.limitKb > yMax) yMax = summary.limitKb;
+  if (yMax === 0) yMax = 1;
+  // Round up to the next nice value (next 50 MB).
+  const yMaxRounded = Math.ceil(yMax / (50 * 1024)) * (50 * 1024);
+
+  const x = (ts: number) => padL + ((ts - t0) / tSpan) * innerW;
+  const y = (kb: number) => padT + innerH - (kb / yMaxRounded) * innerH;
+
+  // Downsample to keep SVG manageable for very long runs (>3000 points).
+  let series = points;
+  if (points.length > 3000) {
+    const stride = Math.ceil(points.length / 3000);
+    series = points.filter((_, i) => i % stride === 0);
+    if (series[series.length - 1] !== points[points.length - 1]) series.push(points[points.length - 1]);
+  }
+
+  const lineCur = series
+    .map((p, i) => `${i === 0 ? 'M' : 'L'}${x(p.ts).toFixed(1)},${y(p.memoryKb).toFixed(1)}`)
+    .join(' ');
+  const line60s = series
+    .map((p, i) => `${i === 0 ? 'M' : 'L'}${x(p.ts).toFixed(1)},${y(p.max60sKb).toFixed(1)}`)
+    .join(' ');
+
+  // Y-axis grid lines + labels at 0, 25, 50, 75, 100%.
+  const gridLines = [0, 0.25, 0.5, 0.75, 1.0]
+    .map((frac) => {
+      const yPos = padT + innerH - frac * innerH;
+      const label = formatKb(yMaxRounded * frac);
+      return (
+        `<line x1="${padL}" x2="${W - padR}" y1="${yPos}" y2="${yPos}" stroke="#e5e7eb" stroke-width="1"/>` +
+        `<text x="${padL - 6}" y="${yPos + 4}" text-anchor="end" font-size="11" fill="#6b7280">${label}</text>`
+      );
+    })
+    .join('');
+
+  // X-axis labels (start, mid, end) as elapsed seconds from t0.
+  const xLabels = [0, 0.5, 1.0]
+    .map((frac) => {
+      const xPos = padL + frac * innerW;
+      const elapsedSec = ((tSpan * frac) / 1000).toFixed(0);
+      return `<text x="${xPos}" y="${H - 12}" text-anchor="middle" font-size="11" fill="#6b7280">${elapsedSec}s</text>`;
+    })
+    .join('');
+
+  // Memory limit line if present.
+  const limitLine = summary.limitKb
+    ? `<line x1="${padL}" x2="${W - padR}" y1="${y(summary.limitKb)}" y2="${y(summary.limitKb)}" stroke="#ef4444" stroke-dasharray="4 3" stroke-width="1"/>` +
+      `<text x="${W - padR - 4}" y="${y(summary.limitKb) - 4}" text-anchor="end" font-size="11" fill="#ef4444">limit: ${formatKb(summary.limitKb)}</text>`
+    : '';
+
+  // Peak marker.
+  const peak = summary.peakSuite;
+  const peakX = x(peak.ts);
+  const peakY = y(peak.memoryKb);
+  const peakMarker =
+    `<circle cx="${peakX}" cy="${peakY}" r="4" fill="#ef4444"/>` +
+    `<text x="${peakX}" y="${peakY - 8}" text-anchor="middle" font-size="11" fill="#ef4444">peak: ${formatKb(peak.memoryKb)}</text>`;
+
+  return `
+		<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;background:#fafafa;border-radius:6px;">
+			${gridLines}
+			${limitLine}
+			<path d="${line60s}" fill="none" stroke="#a78bfa" stroke-width="1" opacity="0.7"/>
+			<path d="${lineCur}" fill="none" stroke="#3b82f6" stroke-width="1.4"/>
+			${peakMarker}
+			${xLabels}
+			<text x="${W - padR}" y="${padT + 12}" text-anchor="end" font-size="11" fill="#6b7280">
+				<tspan fill="#3b82f6">— ${escapeHtml(metricLabel(summary.metric))}</tspan>
+				<tspan dx="10" fill="#a78bfa">— max(60s)</tspan>
+			</text>
+		</svg>`;
 }
