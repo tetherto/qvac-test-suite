@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ConsumerBase, type TestExecutor } from '../../core/consumer-base.js';
+import type { TestDefinition } from '../../types/test-definition.js';
 import { startDesktopMemoryPoller } from '../../core/desktop-memory-poller.js';
 import { loadConfig } from '../../utils/config-loader.js';
 import { loadTests } from '../../utils/test-loader.js';
@@ -26,7 +27,9 @@ function requireArg(args: string[], name: string): string {
 
 interface ConsumerEntry {
   executor: TestExecutor;
-  bootstrap?: () => Promise<void>;
+  // Mirrors ConsumerCallbacks.onBootstrap; `() => Promise<void>` user
+  // bootstraps remain compatible (TS fewer-params variance).
+  bootstrap?: (filteredTests?: TestDefinition[]) => Promise<void>;
 }
 
 async function loadConsumerEntry(entryAbsPath: string): Promise<ConsumerEntry> {

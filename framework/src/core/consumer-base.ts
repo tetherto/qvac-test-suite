@@ -34,7 +34,14 @@ export interface ConsumerCallbacks {
     currentTest?: string;
     isComplete?: boolean;
   }) => void;
-  onBootstrap?: () => Promise<void>;
+  /**
+   * Runs once after register-ack. `filteredTests` is the post-filter test
+   * set resolved from `registerAck.filteredTestIds` against local
+   * `testDefinitions`; `undefined` if the producer didn't send the field
+   * (older framework) or the consumer has no local definitions — callers
+   * should then fall back to their "no filter" path.
+   */
+  onBootstrap?: (filteredTests?: TestDefinition[]) => Promise<void>;
   onShutdown?: () => void | Promise<void>;
 }
 
@@ -57,7 +64,6 @@ export class ConsumerBase {
   protected shutdownRequested = false;
   protected callbacks: ConsumerCallbacks;
   private messageQueue: Promise<void> = Promise.resolve();
-  private bootstrapPromise?: Promise<void>;
   private heartbeatTimer?: ReturnType<typeof setInterval>;
 
   constructor(
@@ -140,24 +146,8 @@ export class ConsumerBase {
           }
           this.log('📡 Subscribed to topics\n');
 
-          // Start bootstrap in parallel with registration (doesn't need ack)
-          if (this.callbacks.onBootstrap && !this.bootstrapped) {
-            this.log('🔧 Running bootstrap...');
-            const start = Date.now();
-            this.bootstrapPromise = this.callbacks
-              .onBootstrap()
-              .then(() => {
-                this.bootstrapped = true;
-                this.log(`🔧 Bootstrap completed in ${Date.now() - start}ms\n`);
-              })
-              .catch((error: unknown) => {
-                const errorMsg = error instanceof Error ? error.message : String(error);
-                this.log(`❌ Bootstrap failed: ${errorMsg}`);
-                this.shutdown();
-              });
-          } else {
-            this.bootstrapped = true;
-          }
+          // Bootstrap is deferred to handleRegistrationAck — we need the
+          // producer's filteredTestIds before we can scope it. Costs ~1 RTT.
 
           // Register with producer (with retry)
           this.sendRegistration();
@@ -227,9 +217,10 @@ export class ConsumerBase {
     );
   }
 
-  protected async handleRegistrationAck(message: { totalTests?: number; runId?: string }) {
+  protected async handleRegistrationAck(message: { totalTests?: number; runId?: string; filteredTestIds?: string[] }) {
     this.totalTests = Math.max(this.totalTests, message.totalTests ?? 0);
 
+    // Re-acks fire on every reconnect; only the first one bootstraps.
     if (this.registered) {
       return;
     }
@@ -239,13 +230,41 @@ export class ConsumerBase {
     this.updateStats({ totalTests: this.totalTests });
     this.startHeartbeat();
 
-    // Wait for bootstrap if still running (started at connect time)
-    if (this.bootstrapPromise) {
-      await this.bootstrapPromise;
-    }
+    if (this.callbacks.onBootstrap && !this.bootstrapped) {
+      // Resolve producer's testIds against local definitions; unresolved
+      // ids (outdated consumer build) are dropped and surfaced in logs.
+      // Pass undefined when the producer didn't send the field at all so
+      // callbacks can hit their "no filter" fallback.
+      let filteredTests: TestDefinition[] | undefined;
+      if (message.filteredTestIds && this.testDefinitions.size > 0) {
+        filteredTests = [];
+        for (const testId of message.filteredTestIds) {
+          const def = this.testDefinitions.get(testId);
+          if (def) {
+            filteredTests.push(def);
+          }
+        }
+        if (filteredTests.length !== message.filteredTestIds.length) {
+          this.log(
+            `⚠️  Producer sent ${message.filteredTestIds.length} testId(s); only ${filteredTests.length} resolve against local definitions`
+          );
+        }
+      }
 
-    if (!this.bootstrapped) {
-      return;
+      this.log('🔧 Running bootstrap...');
+      const start = Date.now();
+      try {
+        await this.callbacks.onBootstrap(filteredTests);
+        this.bootstrapped = true;
+        this.log(`🔧 Bootstrap completed in ${Date.now() - start}ms\n`);
+      } catch (error: unknown) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        this.log(`❌ Bootstrap failed: ${errorMsg}`);
+        this.shutdown();
+        return;
+      }
+    } else {
+      this.bootstrapped = true;
     }
 
     this.requestNextTest();
