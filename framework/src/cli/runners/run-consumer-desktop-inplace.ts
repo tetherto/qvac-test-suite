@@ -28,7 +28,7 @@ function requireArg(args: string[], name: string): string {
 interface ConsumerEntry {
   executor: TestExecutor;
   // Mirrors ConsumerCallbacks.onBootstrap; `() => Promise<void>` user
-  // bootstraps remain compatible (TS fewer-params variance).
+  // bootstraps remain compatible (TS fewer-params variance)
   bootstrap?: (filteredTests?: TestDefinition[]) => Promise<void>;
 }
 
