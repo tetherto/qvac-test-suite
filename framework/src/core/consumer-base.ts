@@ -1,6 +1,6 @@
 import type { MqttClient } from 'mqtt';
 import type { TestDefinition } from '../types/test-definition.js';
-import type { ProfilerExport } from '../schemas/messages.js';
+import { registerAckSchema, type ProfilerExport, type RegisterAck } from '../schemas/messages.js';
 
 export interface TestAssignment {
   status: string;
@@ -109,7 +109,11 @@ export class ConsumerBase {
   }
 
   protected requestNextTest() {
-    if (!this.registered || this.isProcessingTest || this.shutdownRequested) {
+    // `registered` flips before `await onBootstrap`, so a reconnect during
+    // bootstrap could otherwise pull a test the consumer can't run yet. The
+    // trailing requestNextTest() in handleRegistrationAck (or shutdown on
+    // bootstrap failure) covers the suppressed call.
+    if (!this.registered || !this.bootstrapped || this.isProcessingTest || this.shutdownRequested) {
       return;
     }
 
@@ -147,7 +151,7 @@ export class ConsumerBase {
           this.log('📡 Subscribed to topics\n');
 
           // Bootstrap is deferred to handleRegistrationAck — we need the
-          // producer's filteredTestIds before we can scope it. Costs ~1 RTT.
+          // producer's filteredTestIds before we can scope it.
 
           // Register with producer (with retry)
           this.sendRegistration();
@@ -217,8 +221,15 @@ export class ConsumerBase {
     );
   }
 
-  protected async handleRegistrationAck(message: { totalTests?: number; runId?: string; filteredTestIds?: string[] }) {
-    this.totalTests = Math.max(this.totalTests, message.totalTests ?? 0);
+  protected async handleRegistrationAck(rawMessage: unknown) {
+    const parsed = registerAckSchema.safeParse(rawMessage);
+    if (!parsed.success) {
+      this.log(`⚠️  Invalid register-ack payload: ${parsed.error.message}`);
+      return;
+    }
+    const message: RegisterAck = parsed.data;
+
+    this.totalTests = Math.max(this.totalTests, message.totalTests);
 
     // Re-acks fire on every reconnect; only the first one bootstraps.
     if (this.registered) {
@@ -231,22 +242,36 @@ export class ConsumerBase {
     this.startHeartbeat();
 
     if (this.callbacks.onBootstrap && !this.bootstrapped) {
-      // Resolve producer's testIds against local definitions; unresolved
-      // ids (outdated consumer build) are dropped and surfaced in logs.
-      // Pass undefined when the producer didn't send the field at all so
-      // callbacks can hit their "no filter" fallback.
+      // Resolve producer's testIds against local definitions; drop ids
+      // unknown to this consumer build and tests skipped on this platform
+      // (the producer can't pre-filter per consumer). Pass undefined when
+      // the producer didn't send the field at all so callbacks fall back
+      // to their "no filter" path.
       let filteredTests: TestDefinition[] | undefined;
       if (message.filteredTestIds && this.testDefinitions.size > 0) {
         filteredTests = [];
+        let unresolvedCount = 0;
+        let platformSkippedCount = 0;
         for (const testId of message.filteredTestIds) {
           const def = this.testDefinitions.get(testId);
-          if (def) {
-            filteredTests.push(def);
+          if (!def) {
+            unresolvedCount++;
+            continue;
           }
+          if (def.skip?.platforms?.includes(this.platform)) {
+            platformSkippedCount++;
+            continue;
+          }
+          filteredTests.push(def);
         }
-        if (filteredTests.length !== message.filteredTestIds.length) {
+        if (unresolvedCount > 0) {
           this.log(
-            `⚠️  Producer sent ${message.filteredTestIds.length} testId(s); only ${filteredTests.length} resolve against local definitions`
+            `⚠️  Producer sent ${message.filteredTestIds.length} testId(s); ${unresolvedCount} don't resolve against local definitions`
+          );
+        }
+        if (platformSkippedCount > 0) {
+          this.log(
+            `⏭️  Dropping bootstrap deps for ${platformSkippedCount} test(s) marked as skipped on platform '${this.platform}'`
           );
         }
       }

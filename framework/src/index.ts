@@ -21,6 +21,7 @@ export {
   registerAckSchema,
   testAssignmentSchema,
 } from './schemas/messages.js';
+export type { RegisterAck } from './schemas/messages.js';
 
 // Helper function exports
 export { defineTests } from './core/define-tests.js';
