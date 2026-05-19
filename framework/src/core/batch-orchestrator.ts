@@ -292,6 +292,22 @@ export class BatchOrchestrator {
 
     consumer.lastSeen = Date.now();
 
+    // Belt-and-suspenders against duplicate request-test publishes
+    // (consumer-side bug, broker QoS-1 duplicate, future regression):
+    // never hand out a second test while the consumer still has one
+    // outstanding. Without this guard the orphaned first assignment
+    // sits in `assignedTests` until it trips the 180 s timeout, and
+    // the consumer's view of "what am I running" silently drifts from
+    // the producer's view.
+    for (const existing of this.assignedTests.values()) {
+      if (existing.consumerId === consumerId) {
+        console.warn(
+          `⚠️  Ignoring request-test from ${consumerId}: already has ${existing.testCase.testId} (${existing.testCase.id}) assigned`
+        );
+        return;
+      }
+    }
+
     // Find next available test in queue
     const nextTest = this.getNextTestForConsumer(consumerId);
 

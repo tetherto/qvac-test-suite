@@ -65,6 +65,14 @@ export class ConsumerBase {
   protected callbacks: ConsumerCallbacks;
   private messageQueue: Promise<void> = Promise.resolve();
   private heartbeatTimer?: ReturnType<typeof setInterval>;
+  // True between publishing `qvac/request-test` and receiving the matching
+  // `qvac/test-assigned` reply. Without this, any caller of
+  // `requestNextTest()` that fires inside that on-the-wire window (e.g. the
+  // `connect` handler on an MQTT reconnect, or a stacked `setTimeout`
+  // retry) would re-publish and the producer would assign a second test,
+  // leaving the first one orphaned in its `assignedTests` map until it
+  // hits the 180 s timeout.
+  private outstandingRequest = false;
 
   constructor(
     client: MqttClient,
@@ -113,10 +121,22 @@ export class ConsumerBase {
     // bootstrap could otherwise pull a test the consumer can't run yet. The
     // trailing requestNextTest() in handleRegistrationAck (or shutdown on
     // bootstrap failure) covers the suppressed call.
-    if (!this.registered || !this.bootstrapped || this.isProcessingTest || this.shutdownRequested) {
+    //
+    // `outstandingRequest` covers the symmetric race on the other side: a
+    // request-test is on the wire, the producer hasn't replied yet, so
+    // `isProcessingTest` is still false but a second publish would still
+    // get a second assignment. Cleared in `handleTestAssignment`.
+    if (
+      !this.registered ||
+      !this.bootstrapped ||
+      this.isProcessingTest ||
+      this.outstandingRequest ||
+      this.shutdownRequested
+    ) {
       return;
     }
 
+    this.outstandingRequest = true;
     this.client.publish(
       'qvac/request-test',
       JSON.stringify({
@@ -296,6 +316,13 @@ export class ConsumerBase {
   }
 
   protected async handleTestAssignment(assignment: TestAssignment) {
+    // Producer replied to our request-test (whether with an assignment,
+    // queue-empty, or anything else). Clear the in-flight flag so the
+    // next requestNextTest() can publish; otherwise the flag would stick
+    // forever after queue-empty and any reconnect path would silently
+    // no-op.
+    this.outstandingRequest = false;
+
     if (assignment.status === 'queue-empty') {
       this.log('📭 No more tests in queue - waiting for batch-complete');
       return;
