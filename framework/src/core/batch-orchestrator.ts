@@ -68,6 +68,10 @@ export class BatchOrchestrator {
   private profilingData = new Map<string, ProfilerExport>(); // consumerId -> profiler export
   private testSuites = new Map<string, string[]>(); // testId -> suites
   private testCategories = new Map<string, string>(); // testId -> metadata.category
+  // Unique post-filter testIds, snapshotted in buildTestQueue and replayed
+  // in every register-ack so late-joining/reconnecting consumers see a
+  // stable set even after testQueue starts shrinking.
+  private filteredTestIds: string[] = [];
   private initialTotalTests = 0;
   private startTime = 0;
   private batchStarted = false;
@@ -233,7 +237,12 @@ export class BatchOrchestrator {
       // Always re-send ack (consumer may not have received it yet)
       this.client.publish(
         `qvac/register-ack/${consumerId}`,
-        JSON.stringify({ runId: this.runId, status: 'registered', totalTests: this.initialTotalTests }),
+        JSON.stringify({
+          runId: this.runId,
+          status: 'registered',
+          totalTests: this.initialTotalTests,
+          filteredTestIds: this.filteredTestIds,
+        }),
         { qos: 1 }
       );
       return;
@@ -258,9 +267,15 @@ export class BatchOrchestrator {
     this.displayStatus();
 
     // Send acknowledgment with initial total (not current queue length, which shrinks as tests are assigned)
+    // filteredTestIds lets the consumer scope its bootstrap to only the deps these tests will hit.
     this.client.publish(
       `qvac/register-ack/${consumerId}`,
-      JSON.stringify({ runId: this.runId, status: 'registered', totalTests: this.initialTotalTests }),
+      JSON.stringify({
+        runId: this.runId,
+        status: 'registered',
+        totalTests: this.initialTotalTests,
+        filteredTestIds: this.filteredTestIds,
+      }),
       { qos: 1 }
     );
   }
@@ -276,6 +291,22 @@ export class BatchOrchestrator {
     }
 
     consumer.lastSeen = Date.now();
+
+    // Belt-and-suspenders against duplicate request-test publishes
+    // (consumer-side bug, broker QoS-1 duplicate, future regression):
+    // never hand out a second test while the consumer still has one
+    // outstanding. Without this guard the orphaned first assignment
+    // sits in `assignedTests` until it trips the 180 s timeout, and
+    // the consumer's view of "what am I running" silently drifts from
+    // the producer's view.
+    for (const existing of this.assignedTests.values()) {
+      if (existing.consumerId === consumerId) {
+        console.warn(
+          `⚠️  Ignoring request-test from ${consumerId}: already has ${existing.testCase.testId} (${existing.testCase.id}) assigned`
+        );
+        return;
+      }
+    }
 
     // Find next available test in queue
     const nextTest = this.getNextTestForConsumer(consumerId);
@@ -846,6 +877,8 @@ export class BatchOrchestrator {
     }
 
     this.initialTotalTests = this.testQueue.length + this.completedTests.size;
+    // Dedupe N-iteration tests; consumers only need each testId once.
+    this.filteredTestIds = Array.from(new Set(this.testQueue.map((t) => t.testId)));
 
     console.log(`📦 Built ${this.testQueue.length} tests:`);
     for (const [category, count] of byCategory) {

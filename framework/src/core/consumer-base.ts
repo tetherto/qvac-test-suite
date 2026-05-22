@@ -1,6 +1,6 @@
 import type { MqttClient } from 'mqtt';
 import type { TestDefinition } from '../types/test-definition.js';
-import type { ProfilerExport } from '../schemas/messages.js';
+import { registerAckSchema, type ProfilerExport, type RegisterAck } from '../schemas/messages.js';
 
 export interface TestAssignment {
   status: string;
@@ -34,7 +34,14 @@ export interface ConsumerCallbacks {
     currentTest?: string;
     isComplete?: boolean;
   }) => void;
-  onBootstrap?: () => Promise<void>;
+  /**
+   * Runs once after register-ack. `filteredTests` is the post-filter test
+   * set resolved from `registerAck.filteredTestIds` against local
+   * `testDefinitions`; `undefined` if the producer didn't send the field
+   * (older framework) or the consumer has no local definitions — callers
+   * should then fall back to their "no filter" path.
+   */
+  onBootstrap?: (filteredTests?: TestDefinition[]) => Promise<void>;
   onShutdown?: () => void | Promise<void>;
 }
 
@@ -57,8 +64,15 @@ export class ConsumerBase {
   protected shutdownRequested = false;
   protected callbacks: ConsumerCallbacks;
   private messageQueue: Promise<void> = Promise.resolve();
-  private bootstrapPromise?: Promise<void>;
   private heartbeatTimer?: ReturnType<typeof setInterval>;
+  // True between publishing `qvac/request-test` and receiving the matching
+  // `qvac/test-assigned` reply. Without this, any caller of
+  // `requestNextTest()` that fires inside that on-the-wire window (e.g. the
+  // `connect` handler on an MQTT reconnect, or a stacked `setTimeout`
+  // retry) would re-publish and the producer would assign a second test,
+  // leaving the first one orphaned in its `assignedTests` map until it
+  // hits the 180 s timeout.
+  private outstandingRequest = false;
 
   constructor(
     client: MqttClient,
@@ -103,10 +117,26 @@ export class ConsumerBase {
   }
 
   protected requestNextTest() {
-    if (!this.registered || this.isProcessingTest || this.shutdownRequested) {
+    // `registered` flips before `await onBootstrap`, so a reconnect during
+    // bootstrap could otherwise pull a test the consumer can't run yet. The
+    // trailing requestNextTest() in handleRegistrationAck (or shutdown on
+    // bootstrap failure) covers the suppressed call.
+    //
+    // `outstandingRequest` covers the symmetric race on the other side: a
+    // request-test is on the wire, the producer hasn't replied yet, so
+    // `isProcessingTest` is still false but a second publish would still
+    // get a second assignment. Cleared in `handleTestAssignment`.
+    if (
+      !this.registered ||
+      !this.bootstrapped ||
+      this.isProcessingTest ||
+      this.outstandingRequest ||
+      this.shutdownRequested
+    ) {
       return;
     }
 
+    this.outstandingRequest = true;
     this.client.publish(
       'qvac/request-test',
       JSON.stringify({
@@ -140,24 +170,8 @@ export class ConsumerBase {
           }
           this.log('📡 Subscribed to topics\n');
 
-          // Start bootstrap in parallel with registration (doesn't need ack)
-          if (this.callbacks.onBootstrap && !this.bootstrapped) {
-            this.log('🔧 Running bootstrap...');
-            const start = Date.now();
-            this.bootstrapPromise = this.callbacks
-              .onBootstrap()
-              .then(() => {
-                this.bootstrapped = true;
-                this.log(`🔧 Bootstrap completed in ${Date.now() - start}ms\n`);
-              })
-              .catch((error: unknown) => {
-                const errorMsg = error instanceof Error ? error.message : String(error);
-                this.log(`❌ Bootstrap failed: ${errorMsg}`);
-                this.shutdown();
-              });
-          } else {
-            this.bootstrapped = true;
-          }
+          // Bootstrap is deferred to handleRegistrationAck — we need the
+          // producer's filteredTestIds before we can scope it.
 
           // Register with producer (with retry)
           this.sendRegistration();
@@ -227,9 +241,17 @@ export class ConsumerBase {
     );
   }
 
-  protected async handleRegistrationAck(message: { totalTests?: number; runId?: string }) {
-    this.totalTests = Math.max(this.totalTests, message.totalTests ?? 0);
+  protected async handleRegistrationAck(rawMessage: unknown) {
+    const parsed = registerAckSchema.safeParse(rawMessage);
+    if (!parsed.success) {
+      this.log(`⚠️  Invalid register-ack payload: ${parsed.error.message}`);
+      return;
+    }
+    const message: RegisterAck = parsed.data;
 
+    this.totalTests = Math.max(this.totalTests, message.totalTests);
+
+    // Re-acks fire on every reconnect; only the first one bootstraps.
     if (this.registered) {
       return;
     }
@@ -239,19 +261,68 @@ export class ConsumerBase {
     this.updateStats({ totalTests: this.totalTests });
     this.startHeartbeat();
 
-    // Wait for bootstrap if still running (started at connect time)
-    if (this.bootstrapPromise) {
-      await this.bootstrapPromise;
-    }
+    if (this.callbacks.onBootstrap && !this.bootstrapped) {
+      // Resolve producer's testIds against local definitions; drop ids
+      // unknown to this consumer build and tests skipped on this platform
+      // (the producer can't pre-filter per consumer). Pass undefined when
+      // the producer didn't send the field at all so callbacks fall back
+      // to their "no filter" path.
+      let filteredTests: TestDefinition[] | undefined;
+      if (message.filteredTestIds && this.testDefinitions.size > 0) {
+        filteredTests = [];
+        let unresolvedCount = 0;
+        let platformSkippedCount = 0;
+        for (const testId of message.filteredTestIds) {
+          const def = this.testDefinitions.get(testId);
+          if (!def) {
+            unresolvedCount++;
+            continue;
+          }
+          if (def.skip?.platforms?.includes(this.platform)) {
+            platformSkippedCount++;
+            continue;
+          }
+          filteredTests.push(def);
+        }
+        if (unresolvedCount > 0) {
+          this.log(
+            `⚠️  Producer sent ${message.filteredTestIds.length} testId(s); ${unresolvedCount} don't resolve against local definitions`
+          );
+        }
+        if (platformSkippedCount > 0) {
+          this.log(
+            `⏭️  Dropping bootstrap deps for ${platformSkippedCount} test(s) marked as skipped on platform '${this.platform}'`
+          );
+        }
+      }
 
-    if (!this.bootstrapped) {
-      return;
+      this.log('🔧 Running bootstrap...');
+      const start = Date.now();
+      try {
+        await this.callbacks.onBootstrap(filteredTests);
+        this.bootstrapped = true;
+        this.log(`🔧 Bootstrap completed in ${Date.now() - start}ms\n`);
+      } catch (error: unknown) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        this.log(`❌ Bootstrap failed: ${errorMsg}`);
+        this.shutdown();
+        return;
+      }
+    } else {
+      this.bootstrapped = true;
     }
 
     this.requestNextTest();
   }
 
   protected async handleTestAssignment(assignment: TestAssignment) {
+    // Producer replied to our request-test (whether with an assignment,
+    // queue-empty, or anything else). Clear the in-flight flag so the
+    // next requestNextTest() can publish; otherwise the flag would stick
+    // forever after queue-empty and any reconnect path would silently
+    // no-op.
+    this.outstandingRequest = false;
+
     if (assignment.status === 'queue-empty') {
       this.log('📭 No more tests in queue - waiting for batch-complete');
       return;

@@ -85,6 +85,9 @@ export const registerAckSchema = z.object({
   runId: z.string(),
   status: z.literal('registered'),
   totalTests: z.number(),
+  // Unique testIds left in the producer queue after --filter/--suite/--exclude-suite/skip.
+  // Consumers can use this to scope bootstrap. Optional for back-compat with older producers.
+  filteredTestIds: z.array(z.string()).optional(),
 });
 
 export type RegisterAck = z.infer<typeof registerAckSchema>;
