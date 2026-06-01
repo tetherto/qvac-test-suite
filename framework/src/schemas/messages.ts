@@ -58,6 +58,11 @@ export type TestResult = z.infer<typeof testResultSchema>;
 export const heartbeatSchema = z.object({
   runId: z.string(),
   consumerId: z.string(),
+  bootstrapped: z.boolean().optional(),
+  isProcessingTest: z.boolean().optional(),
+  outstandingRequest: z.boolean().optional(),
+  currentTestId: z.string().optional(),
+  currentUniqueTestId: z.string().optional(),
   timestamp: z.string().optional(),
 });
 

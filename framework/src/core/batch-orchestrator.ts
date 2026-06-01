@@ -44,6 +44,11 @@ interface ConsumerInfo {
   lastSeen: number;
   testsCompleted: number;
   testsRunning: number;
+  bootstrapped?: boolean;
+  isProcessingTest?: boolean;
+  outstandingRequest?: boolean;
+  currentTestId?: string;
+  currentUniqueTestId?: string;
 }
 
 // Test result type imported from schemas
@@ -292,17 +297,25 @@ export class BatchOrchestrator {
 
     consumer.lastSeen = Date.now();
 
-    // Belt-and-suspenders against duplicate request-test publishes
-    // (consumer-side bug, broker QoS-1 duplicate, future regression):
-    // never hand out a second test while the consumer still has one
-    // outstanding. Without this guard the orphaned first assignment
-    // sits in `assignedTests` until it trips the 180 s timeout, and
-    // the consumer's view of "what am I running" silently drifts from
-    // the producer's view.
+    // Idempotent request handling: duplicate request-test publishes
+    // (consumer-side retry, broker QoS-1 duplicate, future regression)
+    // must not hand out a second test while the consumer still has one
+    // outstanding. Re-send the current assignment instead, so a consumer can
+    // recover if the original test-assigned reply was lost in transit.
     for (const existing of this.assignedTests.values()) {
       if (existing.consumerId === consumerId) {
         console.warn(
-          `⚠️  Ignoring request-test from ${consumerId}: already has ${existing.testCase.testId} (${existing.testCase.id}) assigned`
+          `⚠️  Re-sending assignment to ${consumerId}: already has ${existing.testCase.testId} (${existing.testCase.id}) assigned`
+        );
+        this.client.publish(
+          `qvac/test-assigned/${consumerId}`,
+          JSON.stringify({
+            runId: this.runId,
+            status: 'assigned',
+            uniqueTestId: existing.testCase.id,
+            testId: existing.testCase.testId,
+          }),
+          { qos: 1 }
         );
         return;
       }
@@ -434,6 +447,11 @@ export class BatchOrchestrator {
     const consumer = this.consumers.get(consumerId);
     if (consumer) {
       consumer.lastSeen = Date.now();
+      consumer.bootstrapped = message.bootstrapped;
+      consumer.isProcessingTest = message.isProcessingTest;
+      consumer.outstandingRequest = message.outstandingRequest;
+      consumer.currentTestId = message.currentTestId;
+      consumer.currentUniqueTestId = message.currentUniqueTestId;
     }
   }
 
@@ -595,6 +613,16 @@ export class BatchOrchestrator {
         console.log(
           `   ⏳ ${assignment.testCase.testId} → ${assignment.consumerId} (${phase}, ${waitSec}s / ${timeoutSec}s)`
         );
+      }
+    }
+    if (running === 0 && queued > 0) {
+      for (const consumer of this.consumers.values()) {
+        if (!consumer.outstandingRequest && consumer.bootstrapped !== false) {
+          continue;
+        }
+        const state = consumer.outstandingRequest ? 'waiting for assignment' : 'bootstrapping';
+        const detail = consumer.currentTestId ? `, current=${consumer.currentTestId}` : '';
+        console.log(`   🫀 ${consumer.consumerId}: ${state}${detail}`);
       }
     }
     console.log();

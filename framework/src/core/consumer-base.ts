@@ -45,6 +45,8 @@ export interface ConsumerCallbacks {
   onShutdown?: () => void | Promise<void>;
 }
 
+const DEFAULT_REQUEST_ASSIGNMENT_TIMEOUT_MS = 10000;
+
 export class ConsumerBase {
   protected client: MqttClient;
   protected consumerId: string;
@@ -65,6 +67,7 @@ export class ConsumerBase {
   protected callbacks: ConsumerCallbacks;
   private messageQueue: Promise<void> = Promise.resolve();
   private heartbeatTimer?: ReturnType<typeof setInterval>;
+  private outstandingRequestTimer?: ReturnType<typeof setTimeout>;
   // True between publishing `qvac/request-test` and receiving the matching
   // `qvac/test-assigned` reply. Without this, any caller of
   // `requestNextTest()` that fires inside that on-the-wire window (e.g. the
@@ -73,6 +76,10 @@ export class ConsumerBase {
   // leaving the first one orphaned in its `assignedTests` map until it
   // hits the 180 s timeout.
   private outstandingRequest = false;
+  private seenAssignmentIds = new Set<string>();
+  protected requestAssignmentTimeoutMs = DEFAULT_REQUEST_ASSIGNMENT_TIMEOUT_MS;
+  protected currentTestId?: string;
+  protected currentUniqueTestId?: string;
 
   constructor(
     client: MqttClient,
@@ -137,6 +144,10 @@ export class ConsumerBase {
     }
 
     this.outstandingRequest = true;
+    this.publishTestRequest();
+  }
+
+  private publishTestRequest() {
     this.client.publish(
       'qvac/request-test',
       JSON.stringify({
@@ -146,6 +157,42 @@ export class ConsumerBase {
       }),
       { qos: 1 }
     );
+    this.armOutstandingRequestTimer();
+  }
+
+  private armOutstandingRequestTimer() {
+    if (this.outstandingRequestTimer) {
+      clearTimeout(this.outstandingRequestTimer);
+    }
+
+    this.outstandingRequestTimer = setTimeout(() => {
+      this.outstandingRequestTimer = undefined;
+      if (!this.outstandingRequest || this.shutdownRequested) {
+        return;
+      }
+
+      if (!this.registered || !this.bootstrapped || this.isProcessingTest) {
+        this.clearOutstandingRequest();
+        return;
+      }
+
+      this.log(
+        `⚠️  No test assignment received within ${Math.round(this.requestAssignmentTimeoutMs / 1000)}s - re-sending request`
+      );
+      this.publishTestRequest();
+    }, this.requestAssignmentTimeoutMs);
+  }
+
+  private clearOutstandingRequest() {
+    this.outstandingRequest = false;
+    if (this.outstandingRequestTimer) {
+      clearTimeout(this.outstandingRequestTimer);
+      this.outstandingRequestTimer = undefined;
+    }
+  }
+
+  private rememberAssignment(uniqueTestId: string) {
+    this.seenAssignmentIds.add(uniqueTestId);
   }
 
   public setupMqttHandlers() {
@@ -316,12 +363,29 @@ export class ConsumerBase {
   }
 
   protected async handleTestAssignment(assignment: TestAssignment) {
+    if (assignment.status === 'assigned' && assignment.uniqueTestId) {
+      if (this.seenAssignmentIds.has(assignment.uniqueTestId)) {
+        this.log(`⚠️  Ignoring duplicate assignment for already handled test: ${assignment.uniqueTestId}`);
+        this.clearOutstandingRequest();
+        if (!this.shutdownRequested && !this.isProcessingTest) {
+          setTimeout(() => this.requestNextTest(), 100);
+        }
+        return;
+      }
+
+      if (this.isProcessingTest) {
+        this.log(`⚠️  Ignoring assignment while already processing a test: ${assignment.uniqueTestId}`);
+        this.clearOutstandingRequest();
+        return;
+      }
+    }
+
     // Producer replied to our request-test (whether with an assignment,
     // queue-empty, or anything else). Clear the in-flight flag so the
     // next requestNextTest() can publish; otherwise the flag would stick
     // forever after queue-empty and any reconnect path would silently
     // no-op.
-    this.outstandingRequest = false;
+    this.clearOutstandingRequest();
 
     if (assignment.status === 'queue-empty') {
       this.log('📭 No more tests in queue - waiting for batch-complete');
@@ -329,6 +393,7 @@ export class ConsumerBase {
     }
 
     if (assignment.status === 'assigned' && assignment.testId && assignment.uniqueTestId) {
+      this.rememberAssignment(assignment.uniqueTestId);
       const definition = this.testDefinitions.get(assignment.testId);
       if (!definition) {
         this.log(`❌ No local test definition for: ${assignment.testId}`);
@@ -368,6 +433,7 @@ export class ConsumerBase {
     this.log(`⏱️  Duration: ${((message.duration || 0) / 1000).toFixed(2)}s`);
 
     this.shutdownRequested = true;
+    this.clearOutstandingRequest();
     this.updateStats({ isComplete: true });
 
     if (this.isProcessingTest) {
@@ -410,6 +476,8 @@ export class ConsumerBase {
   protected async executeTest(uniqueTestId: string, definition: TestDefinition) {
     this.isProcessingTest = true;
     const { testId, params, expectation } = definition;
+    this.currentTestId = testId;
+    this.currentUniqueTestId = uniqueTestId;
 
     const progress = this.totalTests > 0 ? `[${this.testsCompleted + 1}/${this.totalTests}]` : '';
     this.log(`▶️  ${progress} ${testId}`);
@@ -437,6 +505,8 @@ export class ConsumerBase {
         { qos: 1 }
       );
       this.isProcessingTest = false;
+      this.currentTestId = undefined;
+      this.currentUniqueTestId = undefined;
       if (!this.shutdownRequested) {
         setTimeout(() => this.requestNextTest(), 100);
       }
@@ -475,6 +545,8 @@ export class ConsumerBase {
           { qos: 1 }
         );
         this.isProcessingTest = false;
+        this.currentTestId = undefined;
+        this.currentUniqueTestId = undefined;
         if (!this.shutdownRequested) {
           setTimeout(() => this.requestNextTest(), 100);
         }
@@ -598,6 +670,8 @@ export class ConsumerBase {
       }
 
       this.isProcessingTest = false;
+      this.currentTestId = undefined;
+      this.currentUniqueTestId = undefined;
 
       if (!this.shutdownRequested) {
         setTimeout(() => this.requestNextTest(), 100);
@@ -636,6 +710,11 @@ export class ConsumerBase {
           JSON.stringify({
             runId: this.runId,
             consumerId: this.consumerId,
+            bootstrapped: this.bootstrapped,
+            isProcessingTest: this.isProcessingTest,
+            outstandingRequest: this.outstandingRequest,
+            currentTestId: this.currentTestId,
+            currentUniqueTestId: this.currentUniqueTestId,
             timestamp: new Date().toISOString(),
           }),
           { qos: 0 }
@@ -650,6 +729,7 @@ export class ConsumerBase {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = undefined;
     }
+    this.clearOutstandingRequest();
 
     if (this.callbacks.onShutdown) {
       try {
