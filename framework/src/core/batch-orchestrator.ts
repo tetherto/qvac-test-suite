@@ -45,10 +45,7 @@ interface ConsumerInfo {
   testsCompleted: number;
   testsRunning: number;
   bootstrapped?: boolean;
-  isProcessingTest?: boolean;
   outstandingRequest?: boolean;
-  currentTestId?: string;
-  currentUniqueTestId?: string;
 }
 
 // Test result type imported from schemas
@@ -448,10 +445,7 @@ export class BatchOrchestrator {
     if (consumer) {
       consumer.lastSeen = Date.now();
       consumer.bootstrapped = message.bootstrapped;
-      consumer.isProcessingTest = message.isProcessingTest;
       consumer.outstandingRequest = message.outstandingRequest;
-      consumer.currentTestId = message.currentTestId;
-      consumer.currentUniqueTestId = message.currentUniqueTestId;
     }
   }
 
@@ -615,15 +609,14 @@ export class BatchOrchestrator {
         );
       }
     }
-    if (running === 0 && queued > 0) {
-      for (const consumer of this.consumers.values()) {
-        if (!consumer.outstandingRequest && consumer.bootstrapped !== false) {
-          continue;
-        }
-        const state = consumer.outstandingRequest ? 'waiting for assignment' : 'bootstrapping';
-        const detail = consumer.currentTestId ? `, current=${consumer.currentTestId}` : '';
-        console.log(`   🫀 ${consumer.consumerId}: ${state}${detail}`);
-      }
+    if (this.consumers.size > 0) {
+      const consumerStates = Array.from(this.consumers.values())
+        .map(
+          (c) =>
+            `${c.consumerId} <bootstrapped=${c.bootstrapped ?? false}, outstandingRequest=${c.outstandingRequest ?? false}>`
+        )
+        .join(', ');
+      console.log(`   🫀 ${consumerStates}`);
     }
     console.log();
   }

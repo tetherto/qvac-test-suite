@@ -78,8 +78,6 @@ export class ConsumerBase {
   private outstandingRequest = false;
   private seenAssignmentIds = new Set<string>();
   protected requestAssignmentTimeoutMs = DEFAULT_REQUEST_ASSIGNMENT_TIMEOUT_MS;
-  protected currentTestId?: string;
-  protected currentUniqueTestId?: string;
 
   constructor(
     client: MqttClient,
@@ -476,8 +474,6 @@ export class ConsumerBase {
   protected async executeTest(uniqueTestId: string, definition: TestDefinition) {
     this.isProcessingTest = true;
     const { testId, params, expectation } = definition;
-    this.currentTestId = testId;
-    this.currentUniqueTestId = uniqueTestId;
 
     const progress = this.totalTests > 0 ? `[${this.testsCompleted + 1}/${this.totalTests}]` : '';
     this.log(`▶️  ${progress} ${testId}`);
@@ -505,8 +501,6 @@ export class ConsumerBase {
         { qos: 1 }
       );
       this.isProcessingTest = false;
-      this.currentTestId = undefined;
-      this.currentUniqueTestId = undefined;
       if (!this.shutdownRequested) {
         setTimeout(() => this.requestNextTest(), 100);
       }
@@ -545,8 +539,6 @@ export class ConsumerBase {
           { qos: 1 }
         );
         this.isProcessingTest = false;
-        this.currentTestId = undefined;
-        this.currentUniqueTestId = undefined;
         if (!this.shutdownRequested) {
           setTimeout(() => this.requestNextTest(), 100);
         }
@@ -670,8 +662,6 @@ export class ConsumerBase {
       }
 
       this.isProcessingTest = false;
-      this.currentTestId = undefined;
-      this.currentUniqueTestId = undefined;
 
       if (!this.shutdownRequested) {
         setTimeout(() => this.requestNextTest(), 100);
@@ -711,10 +701,7 @@ export class ConsumerBase {
             runId: this.runId,
             consumerId: this.consumerId,
             bootstrapped: this.bootstrapped,
-            isProcessingTest: this.isProcessingTest,
             outstandingRequest: this.outstandingRequest,
-            currentTestId: this.currentTestId,
-            currentUniqueTestId: this.currentUniqueTestId,
             timestamp: new Date().toISOString(),
           }),
           { qos: 0 }
