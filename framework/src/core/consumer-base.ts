@@ -1,13 +1,12 @@
 import type { MqttClient } from 'mqtt';
 import type { TestDefinition } from '../types/test-definition.js';
-import { registerAckSchema, type ProfilerExport, type RegisterAck } from '../schemas/messages.js';
-
-export interface TestAssignment {
-  status: string;
-  uniqueTestId?: string;
-  testId?: string;
-  runId?: string;
-}
+import {
+  registerAckSchema,
+  testAssignmentSchema,
+  type ProfilerExport,
+  type RegisterAck,
+  type TestAssignment,
+} from '../schemas/messages.js';
 
 export interface TestResult {
   passed: boolean;
@@ -46,6 +45,7 @@ export interface ConsumerCallbacks {
 }
 
 const DEFAULT_REQUEST_ASSIGNMENT_TIMEOUT_MS = 10000;
+const DEFAULT_TEARDOWN_TIMEOUT_MS = 120000;
 
 export class ConsumerBase {
   protected client: MqttClient;
@@ -78,6 +78,7 @@ export class ConsumerBase {
   private outstandingRequest = false;
   private seenAssignmentIds = new Set<string>();
   protected requestAssignmentTimeoutMs = DEFAULT_REQUEST_ASSIGNMENT_TIMEOUT_MS;
+  protected teardownTimeoutMs = DEFAULT_TEARDOWN_TIMEOUT_MS;
 
   constructor(
     client: MqttClient,
@@ -360,7 +361,14 @@ export class ConsumerBase {
     this.requestNextTest();
   }
 
-  protected async handleTestAssignment(assignment: TestAssignment) {
+  protected async handleTestAssignment(rawAssignment: unknown) {
+    const parsed = testAssignmentSchema.safeParse(rawAssignment);
+    if (!parsed.success) {
+      this.log(`⚠️  Invalid test-assigned payload: ${parsed.error.message}`);
+      return;
+    }
+
+    const assignment: TestAssignment = parsed.data;
     if (assignment.status === 'assigned' && assignment.uniqueTestId) {
       if (this.seenAssignmentIds.has(assignment.uniqueTestId)) {
         this.log(`⚠️  Ignoring duplicate assignment for already handled test: ${assignment.uniqueTestId}`);
@@ -651,15 +659,7 @@ export class ConsumerBase {
         { qos: 1 }
       );
     } finally {
-      // Teardown phase: runs after test execution regardless of outcome
-      if (this.executor.teardown) {
-        try {
-          await this.executor.teardown(testId, context);
-        } catch (teardownError: unknown) {
-          const msg = teardownError instanceof Error ? teardownError.message : String(teardownError);
-          this.log(`⚠️  ${testId} teardown error: ${msg}`);
-        }
-      }
+      await this.runTeardown(testId, context);
 
       this.isProcessingTest = false;
 
@@ -667,6 +667,31 @@ export class ConsumerBase {
         setTimeout(() => this.requestNextTest(), 100);
       } else {
         await this.finalize();
+      }
+    }
+  }
+
+  private async runTeardown(testId: string, context: unknown) {
+    if (!this.executor.teardown) {
+      return;
+    }
+
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        this.executor.teardown(testId, context),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => {
+            reject(new Error(`Teardown timeout after ${Math.round(this.teardownTimeoutMs / 1000)}s`));
+          }, this.teardownTimeoutMs);
+        }),
+      ]);
+    } catch (teardownError: unknown) {
+      const msg = teardownError instanceof Error ? teardownError.message : String(teardownError);
+      this.log(`⚠️  ${testId} teardown error: ${msg}`);
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
       }
     }
   }
