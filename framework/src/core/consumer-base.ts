@@ -1,13 +1,12 @@
 import type { MqttClient } from 'mqtt';
 import type { TestDefinition } from '../types/test-definition.js';
-import { registerAckSchema, type ProfilerExport, type RegisterAck } from '../schemas/messages.js';
-
-export interface TestAssignment {
-  status: string;
-  uniqueTestId?: string;
-  testId?: string;
-  runId?: string;
-}
+import {
+  registerAckSchema,
+  testAssignmentSchema,
+  type ProfilerExport,
+  type RegisterAck,
+  type TestAssignment,
+} from '../schemas/messages.js';
 
 export interface TestResult {
   passed: boolean;
@@ -45,6 +44,9 @@ export interface ConsumerCallbacks {
   onShutdown?: () => void | Promise<void>;
 }
 
+const DEFAULT_REQUEST_ASSIGNMENT_TIMEOUT_MS = 10000;
+const DEFAULT_TEARDOWN_TIMEOUT_MS = 120000;
+
 export class ConsumerBase {
   protected client: MqttClient;
   protected consumerId: string;
@@ -65,6 +67,7 @@ export class ConsumerBase {
   protected callbacks: ConsumerCallbacks;
   private messageQueue: Promise<void> = Promise.resolve();
   private heartbeatTimer?: ReturnType<typeof setInterval>;
+  private outstandingRequestTimer?: ReturnType<typeof setTimeout>;
   // True between publishing `qvac/request-test` and receiving the matching
   // `qvac/test-assigned` reply. Without this, any caller of
   // `requestNextTest()` that fires inside that on-the-wire window (e.g. the
@@ -73,6 +76,9 @@ export class ConsumerBase {
   // leaving the first one orphaned in its `assignedTests` map until it
   // hits the 180 s timeout.
   private outstandingRequest = false;
+  private seenAssignmentIds = new Set<string>();
+  protected requestAssignmentTimeoutMs = DEFAULT_REQUEST_ASSIGNMENT_TIMEOUT_MS;
+  protected teardownTimeoutMs = DEFAULT_TEARDOWN_TIMEOUT_MS;
 
   constructor(
     client: MqttClient,
@@ -137,6 +143,10 @@ export class ConsumerBase {
     }
 
     this.outstandingRequest = true;
+    this.publishTestRequest();
+  }
+
+  private publishTestRequest() {
     this.client.publish(
       'qvac/request-test',
       JSON.stringify({
@@ -146,6 +156,42 @@ export class ConsumerBase {
       }),
       { qos: 1 }
     );
+    this.armOutstandingRequestTimer();
+  }
+
+  private armOutstandingRequestTimer() {
+    if (this.outstandingRequestTimer) {
+      clearTimeout(this.outstandingRequestTimer);
+    }
+
+    this.outstandingRequestTimer = setTimeout(() => {
+      this.outstandingRequestTimer = undefined;
+      if (!this.outstandingRequest || this.shutdownRequested) {
+        return;
+      }
+
+      if (!this.registered || !this.bootstrapped || this.isProcessingTest) {
+        this.clearOutstandingRequest();
+        return;
+      }
+
+      this.log(
+        `⚠️  No test assignment received within ${Math.round(this.requestAssignmentTimeoutMs / 1000)}s - re-sending request`
+      );
+      this.publishTestRequest();
+    }, this.requestAssignmentTimeoutMs);
+  }
+
+  private clearOutstandingRequest() {
+    this.outstandingRequest = false;
+    if (this.outstandingRequestTimer) {
+      clearTimeout(this.outstandingRequestTimer);
+      this.outstandingRequestTimer = undefined;
+    }
+  }
+
+  private rememberAssignment(uniqueTestId: string) {
+    this.seenAssignmentIds.add(uniqueTestId);
   }
 
   public setupMqttHandlers() {
@@ -315,13 +361,37 @@ export class ConsumerBase {
     this.requestNextTest();
   }
 
-  protected async handleTestAssignment(assignment: TestAssignment) {
+  protected async handleTestAssignment(rawAssignment: unknown) {
+    const parsed = testAssignmentSchema.safeParse(rawAssignment);
+    if (!parsed.success) {
+      this.log(`⚠️  Invalid test-assigned payload: ${parsed.error.message}`);
+      return;
+    }
+
+    const assignment: TestAssignment = parsed.data;
+    if (assignment.status === 'assigned' && assignment.uniqueTestId) {
+      if (this.seenAssignmentIds.has(assignment.uniqueTestId)) {
+        this.log(`⚠️  Ignoring duplicate assignment for already handled test: ${assignment.uniqueTestId}`);
+        this.clearOutstandingRequest();
+        if (!this.shutdownRequested && !this.isProcessingTest) {
+          setTimeout(() => this.requestNextTest(), 100);
+        }
+        return;
+      }
+
+      if (this.isProcessingTest) {
+        this.log(`⚠️  Ignoring assignment while already processing a test: ${assignment.uniqueTestId}`);
+        this.clearOutstandingRequest();
+        return;
+      }
+    }
+
     // Producer replied to our request-test (whether with an assignment,
     // queue-empty, or anything else). Clear the in-flight flag so the
     // next requestNextTest() can publish; otherwise the flag would stick
     // forever after queue-empty and any reconnect path would silently
     // no-op.
-    this.outstandingRequest = false;
+    this.clearOutstandingRequest();
 
     if (assignment.status === 'queue-empty') {
       this.log('📭 No more tests in queue - waiting for batch-complete');
@@ -329,6 +399,7 @@ export class ConsumerBase {
     }
 
     if (assignment.status === 'assigned' && assignment.testId && assignment.uniqueTestId) {
+      this.rememberAssignment(assignment.uniqueTestId);
       const definition = this.testDefinitions.get(assignment.testId);
       if (!definition) {
         this.log(`❌ No local test definition for: ${assignment.testId}`);
@@ -368,6 +439,7 @@ export class ConsumerBase {
     this.log(`⏱️  Duration: ${((message.duration || 0) / 1000).toFixed(2)}s`);
 
     this.shutdownRequested = true;
+    this.clearOutstandingRequest();
     this.updateStats({ isComplete: true });
 
     if (this.isProcessingTest) {
@@ -587,15 +659,7 @@ export class ConsumerBase {
         { qos: 1 }
       );
     } finally {
-      // Teardown phase: runs after test execution regardless of outcome
-      if (this.executor.teardown) {
-        try {
-          await this.executor.teardown(testId, context);
-        } catch (teardownError: unknown) {
-          const msg = teardownError instanceof Error ? teardownError.message : String(teardownError);
-          this.log(`⚠️  ${testId} teardown error: ${msg}`);
-        }
-      }
+      await this.runTeardown(testId, context);
 
       this.isProcessingTest = false;
 
@@ -603,6 +667,31 @@ export class ConsumerBase {
         setTimeout(() => this.requestNextTest(), 100);
       } else {
         await this.finalize();
+      }
+    }
+  }
+
+  private async runTeardown(testId: string, context: unknown) {
+    if (!this.executor.teardown) {
+      return;
+    }
+
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        this.executor.teardown(testId, context),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => {
+            reject(new Error(`Teardown timeout after ${Math.round(this.teardownTimeoutMs / 1000)}s`));
+          }, this.teardownTimeoutMs);
+        }),
+      ]);
+    } catch (teardownError: unknown) {
+      const msg = teardownError instanceof Error ? teardownError.message : String(teardownError);
+      this.log(`⚠️  ${testId} teardown error: ${msg}`);
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
       }
     }
   }
@@ -636,6 +725,8 @@ export class ConsumerBase {
           JSON.stringify({
             runId: this.runId,
             consumerId: this.consumerId,
+            bootstrapped: this.bootstrapped,
+            outstandingRequest: this.outstandingRequest,
             timestamp: new Date().toISOString(),
           }),
           { qos: 0 }
@@ -650,6 +741,7 @@ export class ConsumerBase {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = undefined;
     }
+    this.clearOutstandingRequest();
 
     if (this.callbacks.onShutdown) {
       try {
