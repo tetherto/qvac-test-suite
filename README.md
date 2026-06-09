@@ -1,142 +1,34 @@
-# QVAC SDK Test Suite
+# qvac-test-suite
 
-Automated E2E testing for the QVAC SDK across desktop and mobile platforms.
+This repository contains the `@tetherto/qvac-test-suite` framework and the repository assets needed to maintain and publish it.
 
-## Overview
+## What lives here
 
-- **Desktop consumer** (Bun + Bare runtime)
-- **Mobile consumer** (React Native/Expo)
-- **Producer** orchestrates tests via MQTT
-- **HTML reports** generated after each run
+- `framework/` - the publishable `@tetherto/qvac-test-suite` package
+- `.github/workflows/publish-framework.yml` - framework build and publish workflow
 
-## Quick Start
+The old SDK-specific producer/consumer harness has been removed from this repository. New test suites should live in their own consumer repositories and depend on the published framework package.
 
-### Prerequisites
+Maintainers should start with the sections below. Consumers integrating the package into another repository should start with `framework/README.md` and `.npmrc.example`.
 
-1. **Bun runtime v1.2+**: https://bun.sh
-2. **MQTT broker** running locally (Mosquitto recommended)
-3. **NPM token** set in environment:
-   ```bash
-   # Windows PowerShell
-   $env:NPM_TOKEN="npm_YOUR_TOKEN_HERE"
-   
-   # Linux/macOS
-   export NPM_TOKEN="npm_YOUR_TOKEN_HERE"
-   ```
-
-### Install Dependencies
+## Local development
 
 ```bash
-cd qvac-test-producer && bun install
-cd ../qvac-test-consumer-desktop && bun install
+cd framework
+npm install
+npm run build
 ```
 
-### Run Tests (Desktop)
+Useful package-level documentation lives in `framework/README.md`.
 
-Open **3 terminals**:
+## External usage
 
-**Terminal 1: MQTT Broker**
-```bash
-mosquitto -v
-```
-
-**Terminal 2: Producer**
-```bash
-cd qvac-test-producer
-bun run batch
-```
-
-**Terminal 3: Consumer**
-```bash
-cd qvac-test-consumer-desktop
-bun run batch
-```
-
-**HTML Reports** are saved to `qvac-test-producer/reports/` when the batch completes.
-
-### Run Tests (Mobile)
-
-**Prerequisites:**
-- Android Studio with emulator OR physical Android device
-
-**Terminal 1 & 2:** Same as desktop (MQTT broker + Producer)
-
-**Terminal 3: Build and run Android app**
-```bash
-cd qvac-test-consumer-mobile
-bun install
-bun run android
-```
-
-## Run Isolation
-
-Multiple test runs can share the same MQTT broker using `--run-id`:
-
-```bash
-# Producer
-bun run batch -- --run-id=my-run
-
-# Consumer (must match)
-bun run batch -- --run-id=my-run
-```
-
-For local development, enable wildcard consumers:
-```bash
-cd qvac-test-producer
-bun run env:set-local    # Enable
-bun run env:unset-local  # Disable
-```
-
-## Test Categories
-
-| Category | Description |
-|----------|-------------|
-| **Completion** | LLM text generation and streaming |
-| **Transcription** | Whisper audio transcription |
-| **Embeddings** | Text and code embeddings |
-| **RAG** | Document chunking and retrieval |
-| **Translation** | NMT language translation (Opus/Bergamot) |
-| **Vision** | Multimodal image understanding |
-| **OCR** | Optical character recognition |
-| **Tools** | Function calling |
-| **TTS** | Text-to-speech synthesis |
-
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `NPM_TOKEN` | npm registry auth | Required |
-| `MQTT_BROKER_URL` | MQTT broker URL | `mqtt://127.0.0.1:1883` |
-| `RUN_ID` | Test run identifier | Auto-generated |
-| `TEST_FILTER` | Filter tests by prefix | All tests |
-
-## Project Structure
-
-```
-qvac-test-suite/
-├── qvac-test-producer/         # Test orchestrator
-├── qvac-test-consumer-desktop/ # Desktop test runner
-├── qvac-test-consumer-mobile/  # Mobile test runner (Expo)
-├── shared-test-data/           # Test assets (audio, images, docs)
-├── shared-test-executor/       # Shared test execution logic
-├── shared-consumer/            # Shared consumer base class
-└── reports/                    # HTML test reports
-```
-
-## Troubleshooting
-
-**Tests not starting:**
-- Verify MQTT broker is running
-- Check producer shows "Waiting for consumers..."
-
-**Consumer not connecting:**
-- Verify `--run-id` matches between producer and consumer
-- Check MQTT broker URL
-
-**Tests timing out:**
-- Models download on first run (can take several minutes)
-- Check available disk space for model storage
+- Configure GitHub Packages access for the `@tetherto` scope before installation
+- Use Node `22.18+`
+- Install the package with `npm install @tetherto/qvac-test-suite`
+- Add a `qvac-test.config.js` file and consumer entrypoints to your repo
+- Configure CI in your consumer repository according to your own platform and artifact requirements
 
 ## License
 
-Proprietary - Tether/QVAC
+Proprietary - Tether
