@@ -8,6 +8,5 @@ alwaysApply: true
 - This repository exists to maintain and publish `@tetherto/qvac-test-suite`.
 - `framework/` is the product. Root files are mostly publishing, docs, and repository automation.
 - Protect public surfaces: CLI behavior, package exports, config/runtime contracts, mobile templates, producer/consumer/report flow, and publish workflow parity.
-- Make conservative changes: do not reintroduce removed legacy harness pieces unless the task explicitly asks for them.
 - Keep build output reproducible: avoid stale `framework/dist`, and keep docs aligned with what the published package and workflows actually do today.
 - When changing workflows or package metadata, prefer parity with current behavior unless the task explicitly asks for a behavior change.
