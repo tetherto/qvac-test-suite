@@ -87,7 +87,18 @@ export default {
 
 The desktop `entry` should point to compiled JavaScript or another module format that plain Node can import in your repository setup.
 
-### 4. Run producer and consumer
+### 4. Run locally
+
+```bash
+qvac-test run:local:desktop
+```
+
+This starts an embedded broker, runs the consumer and producer, and prints results. No external MQTT broker needed.
+
+<details>
+<summary>Advanced: separate producer and consumer</summary>
+
+If you need to run the producer and consumer in separate terminals (e.g. for debugging or remote broker setups):
 
 ```bash
 # Terminal 1
@@ -97,21 +108,20 @@ qvac-test run:consumer:desktop --runId=test-123 --config=.
 qvac-test run:producer --runId=test-123 --config=.
 ```
 
-For local one-command desktop runs, use `qvac-test run:local:desktop`.
-If no broker is running, `run:local:*` can start an embedded TCP + WebSocket broker.
+</details>
 
 ## CLI commands
 
 ```bash
-# Producer / consumer
-qvac-test run:producer
-qvac-test run:consumer:desktop --runId=<id>
-qvac-test run:bootstrap:desktop
-
-# Local orchestration
+# Local orchestration (recommended)
 qvac-test run:local:desktop
 qvac-test run:local:android
 qvac-test run:local:ios
+
+# Separate producer / consumer (advanced)
+qvac-test run:producer
+qvac-test run:consumer:desktop --runId=<id>
+qvac-test run:bootstrap:desktop
 
 # Mobile builds
 qvac-test build:consumer:android
