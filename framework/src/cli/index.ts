@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
 import { Command } from 'commander';
 import { runProducer } from './commands/run-producer.js';
 import { runConsumerDesktop } from './commands/run-consumer-desktop.js';
@@ -8,9 +9,13 @@ import { reportCompare } from './commands/report-compare.js';
 import { reportFormat } from './commands/report-format.js';
 import { runLocalDesktop, runLocalAndroid, runLocalIos } from './commands/run-local.js';
 
+const packageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf-8')) as {
+  version: string;
+};
+
 const program = new Command();
 
-program.name('qvac-test').description('QVAC Test Suite - Distributed testing framework').version('0.1.0');
+program.name('qvac-test').description('QVAC Test Suite - Distributed testing framework').version(packageJson.version);
 
 program
   .command('run:producer')
