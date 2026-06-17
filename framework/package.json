@@ -1,6 +1,6 @@
 {
   "name": "@tetherto/qvac-test-suite",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "Generic distributed testing framework for multi-platform execution",
   "type": "module",
   "main": "./dist/index.js",
@@ -29,7 +29,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc",
     "dev": "tsc --watch",
     "lint": "eslint src/",
     "lint:fix": "eslint --fix src/",
@@ -64,10 +64,12 @@
     "access": "restricted"
   },
   "dependencies": {
+    "aedes": "^0.51.3",
     "commander": "^14.0.2",
     "dotenv": "^16.4.5",
     "esbuild": "^0.27.0",
     "mqtt": "^5.14.1",
+    "websocket-stream": "^5.5.2",
     "zod": "^3.22.4"
   },
   "peerDependencies": {
