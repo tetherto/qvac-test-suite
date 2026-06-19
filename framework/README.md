@@ -1,10 +1,11 @@
 # @tetherto/qvac-test-suite
 
-Distributed MQTT-based test orchestration for desktop and mobile consumers.
+Distributed MQTT-based test orchestration for desktop, Electron, and mobile consumers.
 
 ## Features
 
 - Desktop consumers for `macos`, `windows`, and `linux`
+- Electron packaged app consumers for `macos`, `windows`, and `linux`
 - Mobile consumers for `ios` and `android`
 - Typed config and message contracts with Zod
 - Producer/consumer lifecycle, reporting, and CI-friendly result comparison
@@ -95,6 +96,44 @@ qvac-test run:local:desktop
 
 This starts an embedded broker, runs the consumer and producer, and prints results. No external MQTT broker needed.
 
+## Electron packaged app flow
+
+Electron consumers run as packaged Electron Forge apps. The framework packages the configured app, launches the
+packaged executable, and passes the test run context through `QVAC_TEST_*` environment variables.
+
+The Electron app's main process owns the actual consumer bootstrap. It should read:
+
+- `QVAC_TEST_RUN_ID` — run identifier shared with the producer
+- `QVAC_TEST_CONFIG_DIR` — directory containing `qvac-test.config.js`
+- `QVAC_TEST_CONSUMER_ENTRY` — absolute path to the configured Electron consumer entry
+- `QVAC_TEST_MQTT_BROKER` — optional broker override from local orchestration
+
+```js
+// qvac-test.config.js
+export default {
+  testDir: './dist/tests',
+  consumers: {
+    electron: {
+      platforms: ['macos'],
+      entry: './dist/tests/electron/consumer.js',
+      appDir: '.',
+      appName: 'MyElectronConsumer',
+      include: ['./dist/tests/**'],
+      dependencies: 'auto',
+      packageManager: 'npm',
+      packageScript: 'package:electron',
+    },
+  },
+};
+```
+
+```bash
+qvac-test run:local:electron --filter completion-
+```
+
+Use `--skip-build` to relaunch an existing packaged app when only producer-side filters changed. With
+`--skip-build`, the launcher requires an exact packaged output for the requested platform and architecture.
+
 <details>
 <summary>Advanced: separate producer and consumer</summary>
 
@@ -108,6 +147,16 @@ qvac-test run:consumer:desktop --runId=test-123 --config=.
 qvac-test run:producer --runId=test-123 --config=.
 ```
 
+For Electron, package and launch the Electron app as the consumer:
+
+```bash
+# Terminal 1
+qvac-test run:consumer:electron --runId=test-123 --config=.
+
+# Terminal 2
+qvac-test run:producer --runId=test-123 --config=.
+```
+
 </details>
 
 ## CLI commands
@@ -115,15 +164,19 @@ qvac-test run:producer --runId=test-123 --config=.
 ```bash
 # Local orchestration (recommended)
 qvac-test run:local:desktop
+qvac-test run:local:electron
 qvac-test run:local:android
 qvac-test run:local:ios
 
 # Separate producer / consumer (advanced)
 qvac-test run:producer
 qvac-test run:consumer:desktop --runId=<id>
+qvac-test run:consumer:electron --runId=<id>
 qvac-test run:bootstrap:desktop
+qvac-test run:bootstrap:electron
 
-# Mobile builds
+# Consumer builds
+qvac-test build:consumer:electron
 qvac-test build:consumer:android
 qvac-test build:consumer:ios
 
@@ -136,6 +189,8 @@ qvac-test report:format --input comparison.json --format markdown --output comme
 
 - `testDir` points to the directory containing `test-definitions.{js,ts}`
 - Desktop consumers run their configured `entry` in place
+- Electron consumers package and launch the configured Electron Forge app. The packaged app receives
+  `QVAC_TEST_*` environment variables and should import/start the configured `entry` from its main process.
 - Mobile consumers use the `@tetherto/qvac-test-suite/mobile` runtime and generated Expo scaffolding
 - `.env` files are loaded automatically before config resolution
 

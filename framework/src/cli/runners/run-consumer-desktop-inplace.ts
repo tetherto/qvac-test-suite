@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ConsumerBase, type TestExecutor } from '../../core/consumer-base.js';
 import type { TestDefinition } from '../../types/test-definition.js';
-import { startDesktopMemoryPoller } from '../../core/desktop-memory-poller.js';
+import { startNodeMemoryPoller } from '../../core/node-memory-poller.js';
 import { loadConfig } from '../../utils/config-loader.js';
 import { loadTests } from '../../utils/test-loader.js';
 import { buildMqttConnectionConfig, createMqttClient } from '../../utils/mqtt-connection.js';
@@ -88,7 +88,7 @@ async function main() {
   // Sample our process tree's RSS (parent + Bare worker + any other children)
   // and publish to the orchestrator over MQTT. Runs alongside ConsumerBase so
   // memory data survives a hard crash of the consumer.
-  const memoryPoller = startDesktopMemoryPoller({ client, runId, consumerId });
+  const memoryPoller = startNodeMemoryPoller({ client, runId, consumerId, platform });
   if (memoryPoller) {
     console.log('📈 Memory poller enabled (publishing rss to qvac/app-memory)');
   }
