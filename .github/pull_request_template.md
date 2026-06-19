@@ -1,23 +1,69 @@
-**Note**: be concise and prefer bullet points.
+<!--
+Style guide for this PR description:
+- Be concise; prefer bullet points.
+- Delete sections that do not apply.
+- Keep examples minimal and consumer-facing.
+-->
 
 ## 🎯 What problem does this PR solve?
 
--
--
+- 
+- 
 
 ## 📝 How does it solve it?
 
--
--
+- 
+- 
 
-## ✅ Checklist
+## 🧪 How was this PR verified?
 
-(You don't have to actually tick the boxes, it's just there as a quick reminder)
+**Delete this section if not applicable.**
 
-- [ ] **Surgical focus**: This PR solves exactly one problem
-- [ ] **No breaking changes**: User-facing API remains unchanged (or improves UX)
-- [ ] **Type safety**: No `any` on client, careful type coercion on server only
-- [ ] **Platform agnostic**: No platform-specific code in client
-- [ ] **Simplified**: Questioned if this could be done simpler
-- [ ] **Builds clean**: `bun run build` passes
-- [ ] **Examples work**: Tested with existing/new examples
+- 
+- 
+
+## 💥 Breaking Changes
+
+**Required for PRs with `[bc]` tag. Delete this section if not applicable.**
+
+**BEFORE:**
+
+```typescript
+// old usage example
+```
+
+**AFTER:**
+
+```typescript
+// new usage example
+```
+
+## 📦 Package Surface Changes
+
+**Required for PRs with `[api]` tag or any consumer-facing package surface change. Delete this section if not applicable.**
+
+- Call out changed exports, CLI commands, config fields, templates, or report formats.
+
+```typescript
+// optional consumer-facing usage example
+```
+
+## 🚀 Workflow / Publish Changes
+
+**Delete this section if not applicable.**
+
+- State whether behavior changed or parity was preserved.
+- Call out trigger, permission, registry, or publish-semantics changes when relevant.
+
+## 📚 Docs Changes
+
+**Delete this section if not applicable.**
+
+- 
+- 
+
+## 🔄 Migration Notes
+
+**Delete this section if not applicable.**
+
+- Include upgrade notes or before/after guidance when consumers need to change anything.
