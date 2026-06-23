@@ -31,6 +31,14 @@ export { defineConfig } from './types/config.js';
 export { BatchOrchestrator } from './core/batch-orchestrator.js';
 export { ConsumerBase } from './core/consumer-base.js';
 export { createExecutor } from './core/test-executor.js';
+export {
+  startNodeMemoryPoller,
+  startDesktopMemoryPoller,
+  type NodeMemoryPollerHandle,
+  type NodeMemoryPollerOptions,
+  type DesktopMemoryPollerHandle,
+  type DesktopMemoryPollerOptions,
+} from './core/node-memory-poller.js';
 
 // Executor base classes (desktop-compatible)
 export { BaseExecutor, SkipExecutor } from './core/base-executor.js';

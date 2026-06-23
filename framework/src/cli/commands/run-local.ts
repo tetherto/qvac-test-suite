@@ -26,6 +26,7 @@ import {
   detectAppleTeamId,
 } from '../utils/device-utils.js';
 import { buildConsumerMobile } from './build-consumer-mobile.js';
+import { buildConsumerElectron } from './build-consumer-electron.js';
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -49,6 +50,13 @@ interface IosOptions extends LocalOptions {
   skipBuild?: boolean;
   bundleSuffix?: string;
   device?: string;
+}
+
+interface ElectronOptions extends LocalOptions {
+  skipBuild?: boolean;
+  skipInstall?: boolean;
+  platform?: string;
+  arch?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -76,6 +84,26 @@ function buildProducerArgs(
 
 function buildConsumerArgs(cliPath: string, runId: string, configDir: string): string[] {
   return [cliPath, 'run:consumer:desktop', `--runId=${runId}`, `--config=${configDir}`];
+}
+
+function buildElectronConsumerArgs(
+  cliPath: string,
+  runId: string,
+  configDir: string,
+  brokerUrl: string,
+  opts: ElectronOptions
+): string[] {
+  const args = [
+    cliPath,
+    'run:consumer:electron',
+    `--runId=${runId}`,
+    `--config=${configDir}`,
+    `--mqtt-broker=${brokerUrl}`,
+    '--skip-build',
+  ];
+  if (opts.platform) args.push(`--platform=${opts.platform}`);
+  if (opts.arch) args.push(`--arch=${opts.arch}`);
+  return args;
 }
 
 async function setupLocal(opts: LocalOptions): Promise<{
@@ -178,6 +206,54 @@ export async function runLocalDesktop(opts: LocalOptions) {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error(`❌ run:local:desktop failed: ${msg}`);
+    process.exit(1);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// run:local:electron
+// ---------------------------------------------------------------------------
+
+export async function runLocalElectron(opts: ElectronOptions) {
+  try {
+    console.log('⚡ run:local:electron\n');
+
+    const { runId, configDir, reportDir, brokerUrl, brokerHandle } = await setupLocal(opts);
+    const cliPath = resolveCliPath();
+    const tracked: TrackedProcess[] = [];
+
+    if (!opts.skipBuild) {
+      await buildConsumerElectron({
+        config: configDir,
+        platform: opts.platform,
+        arch: opts.arch,
+        skipInstall: opts.skipInstall,
+      });
+    } else {
+      console.log('⏭️  Skipping Electron package build (--skip-build)\n');
+    }
+
+    const producer = spawnTracked('node', buildProducerArgs(cliPath, runId, configDir, reportDir, opts), {
+      reportDir,
+      name: 'producer',
+      cwd: configDir,
+    });
+    tracked.push(producer);
+
+    const consumer = spawnTracked('node', buildElectronConsumerArgs(cliPath, runId, configDir, brokerUrl, opts), {
+      reportDir,
+      name: 'consumer-electron',
+      cwd: configDir,
+    });
+    tracked.push(consumer);
+
+    const pidEntries = tracked.map((t) => ({ name: t.name, pid: t.pid, logPath: t.logPath }));
+    printPidTable(pidEntries);
+    printLogPaths(reportDir);
+    setupCleanup(tracked, reportDir, brokerHandle);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error(`❌ run:local:electron failed: ${msg}`);
     process.exit(1);
   }
 }

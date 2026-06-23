@@ -5,23 +5,24 @@ import { loadConfig } from '../../utils/config-loader.js';
 
 interface BootstrapOptions {
   config: string;
+  consumer?: 'desktop' | 'electron';
 }
 
 export async function runBootstrap(options: BootstrapOptions) {
   try {
     const configDir = path.resolve(options.config);
     loadDotenv({ path: path.join(configDir, '.env') });
+    const consumerType = options.consumer ?? 'desktop';
 
-    console.log('🚀 Running desktop bootstrap\n');
+    console.log(`🚀 Running ${consumerType} bootstrap\n`);
     console.log(`📂 Config: ${configDir}`);
 
     const config = await loadConfig(configDir);
+    const consumerConfig = config.consumers[consumerType];
 
-    if (!config.consumers.desktop) {
-      throw new Error('No desktop consumer configuration found');
+    if (!consumerConfig) {
+      throw new Error(`No ${consumerType} consumer configuration found`);
     }
-
-    const consumerConfig = config.consumers.desktop;
 
     const entryAbs = path.resolve(configDir, consumerConfig.entry);
     const entryUrl = pathToFileURL(entryAbs).href;

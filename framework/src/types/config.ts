@@ -22,6 +22,34 @@ const desktopConsumerSchema = baseConsumerSchema.extend({
 });
 
 /**
+ * Electron consumer configuration schema
+ */
+const electronConsumerSchema = baseConsumerSchema.omit({ include: true, dependencies: true }).extend({
+  platforms: z.array(z.enum(['macos', 'windows', 'linux'])).describe('Target Electron desktop platforms'),
+
+  appDir: z.string().describe('Directory containing the Electron app package.json and Forge config'),
+
+  appName: z
+    .string()
+    .optional()
+    .describe('Packaged Electron app executable/name. Defaults to package.json productName or name'),
+
+  outDir: z.string().optional().default('out').describe('Electron Forge output directory relative to appDir'),
+
+  packageManager: z
+    .enum(['npm', 'bun', 'pnpm', 'yarn'])
+    .optional()
+    .default('npm')
+    .describe('Package manager used to install and package the Electron app'),
+
+  packageScript: z
+    .string()
+    .optional()
+    .default('package')
+    .describe('package.json script that packages the Electron app'),
+});
+
+/**
  * Mobile consumer configuration schema
  */
 const mobileConsumerSchema = baseConsumerSchema.extend({
@@ -160,6 +188,10 @@ export const qvacTestConfigSchema = z.object({
         .optional()
         .describe('Mobile consumer configuration for React Native platforms (iOS, Android)'),
 
+      electron: electronConsumerSchema
+        .optional()
+        .describe('Electron consumer configuration for packaged Electron apps'),
+
       shared: z
         .object({
           include: z
@@ -171,8 +203,8 @@ export const qvacTestConfigSchema = z.object({
         .optional()
         .describe('Shared code configuration included in both desktop and mobile consumer builds'),
     })
-    .refine((data) => data.desktop || data.mobile, {
-      message: 'At least one consumer type (desktop or mobile) must be configured',
+    .refine((data) => data.desktop || data.mobile || data.electron, {
+      message: 'At least one consumer type (desktop, mobile, or electron) must be configured',
     })
     .describe('Consumer configuration per platform type'),
 
