@@ -1,0 +1,33 @@
+---
+description: Public API export structure for @tetherto/qvac-test-suite
+globs:
+  - framework/src/index.ts
+  - framework/src/types/*.ts
+  - framework/src/schemas/*.ts
+---
+
+# Public API Export Rules
+
+## Structure
+
+- `types/` — TypeScript types + Zod schemas for config/test definitions
+- `schemas/` — Zod schemas for MQTT messages and expectations
+- `core/` — Runtime classes and helpers
+- `utils/` — Utilities (config loader, validation helpers, MQTT connection)
+
+## Index Exports
+
+`src/index.ts` re-exports the public API:
+- **Types**: `QvacTestConfig`, `Expectation`, `TestDefinition`, `TestExecutor`, `TestResult`, `TestHandler`, `TestExecutorConfig`, `TestDefinitions`, `ExtractTest`, `HandlerFn`, `RegisterAck`, `MqttConnectionConfig`, `CreateMqttClientOptions`
+- **Schemas**: `expectationSchema`, `mqttConnectionSchema`, `testDefinitionSchema`, `qvacTestConfigSchema`, `consumerRegistrationSchema`, `testRequestSchema`, `testStartSchema`, `testResultSchema`, `heartbeatSchema`, `batchCompleteSchema`, `registerAckSchema`, `testAssignmentSchema`
+- **Core**: `BatchOrchestrator`, `ConsumerBase`, `BaseExecutor`, `SkipExecutor`, `defineTests`, `createExecutor`
+- **Helpers**: `defineConfig`
+- **Utils**: `ValidationHelpers`, `chainExpectation`, `findConfig`, `loadConfig`, `loadTests`, `createMqttClient`, `buildMqttOptions`, `buildMqttConnectionConfig`, `logMqttConnectionSecurity`
+
+## Adding Expectation Types
+
+1. Add schema in `src/schemas/expectations.ts`
+2. Add to `expectationSchema` union
+3. Update `ValidationHelpers` in `utils/validation-helpers.ts`
+
+Current types: `contains-all`, `contains-any`, `regex`, `numeric-range`, `type`, `throws-error`, `function`

@@ -1,0 +1,57 @@
+---
+description: Commit and PR format for qvac-test-suite framework work
+alwaysApply: true
+---
+
+# Commit And PR Format
+
+## When suggesting or creating commits
+
+Use:
+
+`type[tags]?: subject`
+
+Allowed `type` values:
+- `feat`
+- `fix`
+- `doc`
+- `test`
+- `chore`
+- `infra`
+
+Allowed tags:
+- `[api]` for public package surface changes such as CLI, exports, config, templates, or report format
+- `[bc]` for breaking changes or migration-required changes
+- `[notask]` when there is no ticket
+- `[skiplog]` for internal maintenance that should not produce release notes
+
+Examples:
+- `fix[api]: load CLI version from framework package metadata`
+- `doc[notask]: align README with framework-only repository scope`
+
+## When suggesting or creating PRs
+
+Use:
+
+`TICKET type[tags]: subject`
+
+If there is no ticket, use `type[notask]: subject`.
+
+Examples:
+- `QVAC-123 fix[api]: load CLI version from framework package metadata`
+- `doc[notask]: align README with framework-only repository scope`
+
+PR bodies should follow `.github/pull_request_template.md`.
+
+Required core sections:
+- What problem does this PR solve?
+- How does it solve it?
+- How was this PR verified?
+
+Add extra detail when relevant:
+- package surface changes for exports, CLI, config, templates, or runtime behavior
+- workflow or publish changes for triggers, permissions, registry setup, or release parity
+- docs changes for consumer-facing usage updates
+- migration notes and before/after examples whenever `[bc]` is present
+
+Keep titles specific to framework behavior, not vague repository chores.
