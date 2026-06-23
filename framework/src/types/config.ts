@@ -24,7 +24,7 @@ const desktopConsumerSchema = baseConsumerSchema.extend({
 /**
  * Electron consumer configuration schema
  */
-const electronConsumerSchema = baseConsumerSchema.extend({
+const electronConsumerSchema = baseConsumerSchema.omit({ include: true, dependencies: true }).extend({
   platforms: z.array(z.enum(['macos', 'windows', 'linux'])).describe('Target Electron desktop platforms'),
 
   appDir: z.string().describe('Directory containing the Electron app package.json and Forge config'),

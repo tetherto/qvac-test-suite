@@ -4,6 +4,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { config as loadDotenv } from 'dotenv';
 import { loadConfig } from '../../utils/config-loader.js';
 import { buildConsumerElectron } from './build-consumer-electron.js';
+import { toForgePlatform } from '../utils/electron-utils.js';
 
 interface ConsumerElectronOptions {
   runId: string;
@@ -13,15 +14,6 @@ interface ConsumerElectronOptions {
   arch?: string;
   skipBuild?: boolean;
   skipInstall?: boolean;
-}
-
-function toForgePlatform(platform: string | undefined): NodeJS.Platform {
-  if (!platform) return process.platform;
-  if (platform === 'macos') return 'darwin';
-  if (platform === 'windows') return 'win32';
-  if (platform === 'linux') return 'linux';
-  if (platform === 'darwin' || platform === 'win32') return platform;
-  throw new Error(`Unsupported Electron platform: ${platform}`);
 }
 
 function readPackageAppName(appDir: string): string {
@@ -57,7 +49,13 @@ function findFile(root: string, predicate: (filePath: string) => boolean, maxDep
   return visit(root, 0);
 }
 
-function resolvePackagedExecutable(appDir: string, outDir: string, appName: string, platform: NodeJS.Platform, arch: string) {
+function resolvePackagedExecutable(
+  appDir: string,
+  outDir: string,
+  appName: string,
+  platform: NodeJS.Platform,
+  arch: string
+) {
   const outRoot = path.resolve(appDir, outDir);
   const expectedDir = path.join(outRoot, `${appName}-${platform}-${arch}`);
 
@@ -183,8 +181,8 @@ export async function runConsumerElectron(options: ConsumerElectronOptions) {
       process.exit(1);
     });
 
-    process.on('SIGINT', () => child.kill('SIGINT' as any));
-    process.on('SIGTERM', () => child.kill('SIGTERM' as any));
+    process.on('SIGINT', () => child.kill('SIGINT'));
+    process.on('SIGTERM', () => child.kill('SIGTERM'));
 
     child.on('exit', (code) => {
       process.exit(code || 0);

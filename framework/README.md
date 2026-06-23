@@ -118,8 +118,6 @@ export default {
       entry: './dist/tests/electron/consumer.js',
       appDir: '.',
       appName: 'MyElectronConsumer',
-      include: ['./dist/tests/**'],
-      dependencies: 'auto',
       packageManager: 'npm',
       packageScript: 'package:electron',
     },

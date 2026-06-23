@@ -4,21 +4,13 @@ import * as path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { config as loadDotenv } from 'dotenv';
 import { loadConfig } from '../../utils/config-loader.js';
+import { toForgePlatform } from '../utils/electron-utils.js';
 
 interface BuildConsumerElectronOptions {
   config: string;
   platform?: string;
   arch?: string;
   skipInstall?: boolean;
-}
-
-function toForgePlatform(platform: string | undefined): NodeJS.Platform {
-  if (!platform) return process.platform;
-  if (platform === 'macos') return 'darwin';
-  if (platform === 'windows') return 'win32';
-  if (platform === 'linux') return 'linux';
-  if (platform === 'darwin' || platform === 'win32') return platform;
-  throw new Error(`Unsupported Electron platform: ${platform}`);
 }
 
 function installArgs(packageManager: string): string[] {
@@ -34,7 +26,7 @@ function runArgs(packageManager: string, script: string, platform: NodeJS.Platfo
   return ['run', script, ...forwarded];
 }
 
-function createElectronBuildEnv(appDir: string, platform: NodeJS.Platform, arch: string): NodeJS.ProcessEnv {
+function createElectronBuildEnv(platform: NodeJS.Platform, arch: string): NodeJS.ProcessEnv {
   const tempRoot = process.env.QVAC_TEST_ELECTRON_TMPDIR || process.env.RUNNER_TEMP || os.tmpdir();
   fs.mkdirSync(tempRoot, { recursive: true });
   const tempDir = fs.mkdtempSync(path.join(tempRoot, `qvac-electron-${platform}-${arch}-`));
@@ -74,7 +66,7 @@ export async function buildConsumerElectron(options: BuildConsumerElectronOption
   const packageScript = electron.packageScript ?? 'package';
   const platform = toForgePlatform(options.platform);
   const arch = options.arch || process.arch;
-  const buildEnv = createElectronBuildEnv(appDir, platform, arch);
+  const buildEnv = createElectronBuildEnv(platform, arch);
 
   console.log('⚡ Building Electron consumer...\n');
   console.log(`📂 App: ${appDir}`);
