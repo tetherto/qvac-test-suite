@@ -134,8 +134,9 @@ export function readTimeline(filePath: string): TimelineEvent[] {
     if (!trimmed) continue
     try {
       const obj = JSON.parse(trimmed) as TimelineEvent
-      if (typeof obj.ts === 'number' && (obj.phase === 'start' || obj.phase === 'end'))
+      if (typeof obj.ts === 'number' && (obj.phase === 'start' || obj.phase === 'end')) {
         out.push(obj)
+      }
     } catch {
       // skip
     }
@@ -159,8 +160,9 @@ function rollingMax(samples: MemorySample[], windowMs: number): number[] {
     // pop expired
     while (deque.length > 0 && samples[deque[0]].ts < tCur - windowMs) deque.shift()
     // pop smaller-or-equal from the back
-    while (deque.length > 0 && samples[deque[deque.length - 1]].memoryKb <= samples[i].memoryKb)
+    while (deque.length > 0 && samples[deque[deque.length - 1]].memoryKb <= samples[i].memoryKb) {
       deque.pop()
+    }
     deque.push(i)
     result[i] = samples[deque[0]].memoryKb
   }

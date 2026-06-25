@@ -137,8 +137,9 @@ export function detectIosDevices(): IosDevice[] {
         trimmed.startsWith('--') ||
         trimmed.startsWith('==') ||
         trimmed.toLowerCase().includes('name')
-      )
+      ) {
         continue
+      }
 
       // Format: "Name    UDID" (tab or multi-space separated)
       const match = trimmed.match(/^(.+?)\s{2,}(\S+)$/)

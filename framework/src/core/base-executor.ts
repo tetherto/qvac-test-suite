@@ -84,10 +84,12 @@ export abstract class BaseExecutor<TDefs extends TestDefinitions> {
  */
 export class SkipExecutor {
   constructor(
+    // lunte-disable-next-line no-unused-vars
     public pattern: RegExp,
     private reason?: string
   ) {}
 
+  // lunte-disable-next-line require-await
   async execute(testId: string): Promise<TestResult> {
     return {
       passed: true,

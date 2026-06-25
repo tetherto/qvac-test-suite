@@ -475,6 +475,7 @@ function copyTemplateFiles(
   }
 }
 
+// lunte-disable-next-line require-await
 async function bundleExecutor(
   entryPath: string,
   outputDir: string,
@@ -536,7 +537,7 @@ export { tests, default } from './${relativeDefs.replace(/\.ts$/, '')}';
  * (e.g. `@scope:registry=...`) are matched literally as-is.
  */
 function upsertNpmrcKeys(npmrcPath: string, keys: Record<string, string>): void {
-  let content = fs.existsSync(npmrcPath) ? fs.readFileSync(npmrcPath, 'utf8') : ''
+  const content = fs.existsSync(npmrcPath) ? fs.readFileSync(npmrcPath, 'utf8') : ''
   const hadTrailingNewline = content.endsWith('\n')
   const lines = content === '' ? [] : content.replace(/\n$/, '').split('\n')
 
@@ -574,6 +575,7 @@ function copyDirectoryRecursive(src: string, dest: string): void {
   }
 }
 
+// lunte-disable-next-line require-await
 async function generatePackageJson(
   configDir: string,
   outputDir: string,
@@ -693,6 +695,7 @@ function generateAppJson(
   fs.writeFileSync(path.join(outputDir, 'app.json'), JSON.stringify(appConfig, null, 2))
 }
 
+// lunte-disable-next-line require-await
 async function generateAssetDeclarations(
   configDir: string,
   outputDir: string,

@@ -1381,8 +1381,9 @@ function renderMemoryChart(summary: MemorySummary): string {
   if (points.length > 3000) {
     const stride = Math.ceil(points.length / 3000)
     series = points.filter((_, i) => i % stride === 0)
-    if (series[series.length - 1] !== points[points.length - 1])
+    if (series[series.length - 1] !== points[points.length - 1]) {
       series.push(points[points.length - 1])
+    }
   }
 
   const lineCur = series

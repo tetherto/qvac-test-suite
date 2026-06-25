@@ -356,12 +356,13 @@ export async function runLocalAndroid(opts: AndroidOptions) {
     if (appPid) {
       pidEntries.push({ name: 'consumer-android', pid: appPid, logPath: '(on device)' })
     }
-    if (deviceLog)
+    if (deviceLog) {
       pidEntries.push({
         name: 'device-log',
         pid: deviceLog.child.pid ?? 0,
         logPath: deviceLog.logPath
       })
+    }
     printPidTable(pidEntries)
     printLogPaths(reportDir)
 
@@ -509,12 +510,13 @@ export async function runLocalIos(opts: IosOptions) {
     tracked.push(producer)
 
     const pidEntries = tracked.map((t) => ({ name: t.name, pid: t.pid, logPath: t.logPath }))
-    if (deviceLog)
+    if (deviceLog) {
       pidEntries.push({
         name: 'device-log',
         pid: deviceLog.child.pid ?? 0,
         logPath: deviceLog.logPath
       })
+    }
     printPidTable(pidEntries)
     printLogPaths(reportDir)
 

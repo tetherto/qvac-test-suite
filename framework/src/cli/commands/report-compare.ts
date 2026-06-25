@@ -26,6 +26,7 @@ interface Report {
   tests: TestResult[]
 }
 
+// lunte-disable-next-line require-await
 export async function reportCompare(options: CompareOptions) {
   try {
     console.log('📊 Comparing test results...\n')

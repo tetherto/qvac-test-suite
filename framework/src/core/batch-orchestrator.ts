@@ -789,7 +789,7 @@ export class BatchOrchestrator {
       // Prefer the test's declared metadata.category over deriving from
       // testId — splitting "wrong-model-..." would otherwise bucket it
       // as "wrong" instead of "wrong-model".
-      let category =
+      const category =
         this.testCategories.get(result.testId) ??
         (result.testId.includes('-') ? result.testId.split('-')[0] : result.testId)
 

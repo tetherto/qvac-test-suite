@@ -6,6 +6,7 @@ interface FormatOptions {
   output?: string
 }
 
+// lunte-disable-next-line require-await
 export async function reportFormat(options: FormatOptions) {
   try {
     // Load comparison JSON

@@ -76,6 +76,7 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
     let memMeasureHandle: ReturnType<typeof setInterval> | undefined
     let memReportHandle: ReturnType<typeof setInterval> | undefined
 
+    // lunte-disable-next-line require-await
     ;(async () => {
       if (isInitialized) return
       isInitialized = true

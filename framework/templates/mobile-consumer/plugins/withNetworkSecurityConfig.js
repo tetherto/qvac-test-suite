@@ -21,6 +21,7 @@ module.exports = function withNetworkSecurityConfig(config, caCertContent) {
   // Create the network_security_config.xml file
   return withDangerousMod(config, [
     'android',
+    // lunte-disable-next-line require-await
     async (config) => {
       const platformProjectRoot = config.modRequest.platformProjectRoot
 
