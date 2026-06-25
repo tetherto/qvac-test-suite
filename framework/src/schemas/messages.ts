@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod'
 
 /**
  * Consumer registration message schema
@@ -7,10 +7,10 @@ export const consumerRegistrationSchema = z.object({
   runId: z.string().describe('Run identifier for this test batch'),
   consumerId: z.string().describe('Unique consumer identifier'),
   platform: z.string().describe('Platform: desktop, ios, android, etc.'),
-  timestamp: z.string().describe('ISO timestamp of registration'),
-});
+  timestamp: z.string().describe('ISO timestamp of registration')
+})
 
-export type ConsumerRegistration = z.infer<typeof consumerRegistrationSchema>;
+export type ConsumerRegistration = z.infer<typeof consumerRegistrationSchema>
 
 /**
  * Test request message schema
@@ -18,10 +18,10 @@ export type ConsumerRegistration = z.infer<typeof consumerRegistrationSchema>;
 export const testRequestSchema = z.object({
   runId: z.string(),
   consumerId: z.string(),
-  timestamp: z.string().optional(),
-});
+  timestamp: z.string().optional()
+})
 
-export type TestRequest = z.infer<typeof testRequestSchema>;
+export type TestRequest = z.infer<typeof testRequestSchema>
 
 /**
  * Test start notification schema
@@ -30,10 +30,10 @@ export const testStartSchema = z.object({
   runId: z.string(),
   consumerId: z.string(),
   uniqueTestId: z.string(),
-  timestamp: z.string(),
-});
+  timestamp: z.string()
+})
 
-export type TestStart = z.infer<typeof testStartSchema>;
+export type TestStart = z.infer<typeof testStartSchema>
 
 /**
  * Test result schema
@@ -47,10 +47,10 @@ export const testResultSchema = z.object({
   duration: z.number().describe('Test duration in milliseconds'),
   timestamp: z.string(),
   error: z.string().optional().describe('Error message if failed'),
-  output: z.string().optional().describe('Test output'),
-});
+  output: z.string().optional().describe('Test output')
+})
 
-export type TestResult = z.infer<typeof testResultSchema>;
+export type TestResult = z.infer<typeof testResultSchema>
 
 /**
  * Heartbeat message schema
@@ -60,10 +60,10 @@ export const heartbeatSchema = z.object({
   consumerId: z.string(),
   bootstrapped: z.boolean().optional(),
   outstandingRequest: z.boolean().optional(),
-  timestamp: z.string().optional(),
-});
+  timestamp: z.string().optional()
+})
 
-export type Heartbeat = z.infer<typeof heartbeatSchema>;
+export type Heartbeat = z.infer<typeof heartbeatSchema>
 
 /**
  * Batch complete message schema
@@ -75,10 +75,10 @@ export const batchCompleteSchema = z.object({
   successCount: z.number(),
   failureCount: z.number(),
   skippedCount: z.number(),
-  duration: z.number(),
-});
+  duration: z.number()
+})
 
-export type BatchComplete = z.infer<typeof batchCompleteSchema>;
+export type BatchComplete = z.infer<typeof batchCompleteSchema>
 
 /**
  * Registration acknowledgment schema
@@ -89,10 +89,10 @@ export const registerAckSchema = z.object({
   totalTests: z.number(),
   // Unique testIds left in the producer queue after --filter/--suite/--exclude-suite/skip.
   // Consumers can use this to scope bootstrap. Optional for back-compat with older producers.
-  filteredTestIds: z.array(z.string()).optional(),
-});
+  filteredTestIds: z.array(z.string()).optional()
+})
 
-export type RegisterAck = z.infer<typeof registerAckSchema>;
+export type RegisterAck = z.infer<typeof registerAckSchema>
 
 /**
  * Test assignment message schema
@@ -100,17 +100,17 @@ export type RegisterAck = z.infer<typeof registerAckSchema>;
 export const testAssignmentSchema = z.union([
   z.object({
     status: z.literal('queue-empty'),
-    runId: z.string(),
+    runId: z.string()
   }),
   z.object({
     status: z.literal('assigned'),
     runId: z.string(),
     uniqueTestId: z.string(),
-    testId: z.string(),
-  }),
-]);
+    testId: z.string()
+  })
+])
 
-export type TestAssignment = z.infer<typeof testAssignmentSchema>;
+export type TestAssignment = z.infer<typeof testAssignmentSchema>
 
 /**
  * Aggregate statistics for a single metric.
@@ -122,10 +122,10 @@ export const aggregateStatsSchema = z.object({
   avg: z.number().describe('Arithmetic mean of all samples'),
   sum: z.number().optional().describe('Sum of all sample values'),
   total: z.number().optional().describe('Sum of all sample values alias for sum'),
-  last: z.number().optional().describe('Most recent sample value'),
-});
+  last: z.number().optional().describe('Most recent sample value')
+})
 
-export type AggregateStats = z.infer<typeof aggregateStatsSchema>;
+export type AggregateStats = z.infer<typeof aggregateStatsSchema>
 
 /**
  * Profiler configuration as reported in export.
@@ -136,9 +136,9 @@ export const profilerConfigSchema = z
     mode: z.string().optional(),
     includeServerBreakdown: z.boolean().optional(),
     operationFilters: z.array(z.string()).optional(),
-    maxRecentEvents: z.number().optional(),
+    maxRecentEvents: z.number().optional()
   })
-  .passthrough();
+  .passthrough()
 
 /**
  * Profiler export data schema.
@@ -148,11 +148,11 @@ export const profilerExportSchema = z
     config: profilerConfigSchema.optional(),
     aggregates: z.record(z.string(), aggregateStatsSchema).optional(),
     recentEvents: z.array(z.record(z.string(), z.unknown())).optional(),
-    exportedAt: z.number().optional(),
+    exportedAt: z.number().optional()
   })
-  .passthrough();
+  .passthrough()
 
-export type ProfilerExport = z.infer<typeof profilerExportSchema>;
+export type ProfilerExport = z.infer<typeof profilerExportSchema>
 
 /**
  * Profiling data message schema
@@ -161,7 +161,7 @@ export const profilingDataSchema = z.object({
   runId: z.string(),
   consumerId: z.string(),
   timestamp: z.string(),
-  profilerExport: profilerExportSchema,
-});
+  profilerExport: profilerExportSchema
+})
 
-export type ProfilingData = z.infer<typeof profilingDataSchema>;
+export type ProfilingData = z.infer<typeof profilingDataSchema>

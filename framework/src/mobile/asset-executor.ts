@@ -1,6 +1,6 @@
 // @ts-ignore - expo-asset is a peer dependency
-import { Asset } from 'expo-asset';
-import { BaseExecutor, type TestDefinitions } from '../core/base-executor.js';
+import { Asset } from 'expo-asset'
+import { BaseExecutor, type TestDefinitions } from '../core/base-executor.js'
 
 /**
  * Executor for mobile tests that require Expo Assets (audio, images, documents, etc.)
@@ -15,19 +15,19 @@ export abstract class AssetExecutor<TDefs extends TestDefinitions> extends BaseE
    * @returns Local file URI usable by native APIs
    */
   protected async resolveAsset(assetModule: number): Promise<string> {
-    const asset = Asset.fromModule(assetModule);
+    const asset = Asset.fromModule(assetModule)
 
     if (!asset.localUri) {
-      await asset.downloadAsync();
+      await asset.downloadAsync()
     }
 
     if (!asset.localUri) {
-      throw new Error(`Failed to resolve asset: ${asset.name || 'unknown'}`);
+      throw new Error(`Failed to resolve asset: ${asset.name || 'unknown'}`)
     }
 
     // Strip file:// prefix for native code access
-    const uri = asset.localUri;
-    const path = uri.startsWith('file://') ? uri.substring(7) : uri;
-    return path;
+    const uri = asset.localUri
+    const path = uri.startsWith('file://') ? uri.substring(7) : uri
+    return path
   }
 }
