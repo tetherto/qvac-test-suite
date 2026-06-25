@@ -33,8 +33,9 @@
     "dev": "tsc --watch",
     "lint": "lunte && eslint src/",
     "lint:fix": "lunte --fix && eslint --fix src/",
-    "format": "prettier --write 'src/**/*.{ts,js,json}'",
-    "format:check": "prettier --check 'src/**/*.{ts,js,json}'"
+    "format": "prettier --check 'src/**/*.{ts,js,json}'",
+    "format:fix": "prettier --write 'src/**/*.{ts,js,json}'",
+    "check": "npm run lint && npm run format"
   },
   "lint-staged": {
     "*.{ts,js,json}": [
