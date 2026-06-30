@@ -3,7 +3,6 @@ import * as path from 'node:path'
 import { execSync } from 'node:child_process'
 import { config as loadDotenv } from 'dotenv'
 import { loadConfig } from '../../utils/config-loader.js'
-import { generateMobileEnvFile } from '../../utils/mobile-env-baker.js'
 import type { QvacTestConfig } from '../../types/config.js'
 
 function detectTeamIdFromKeychain(): string | undefined {

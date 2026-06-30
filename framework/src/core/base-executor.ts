@@ -1,4 +1,3 @@
-import type { Expectation } from '../schemas/expectations.js'
 import type { TestResult } from './consumer-base.js'
 import type { TestDefinition } from '../types/test-definition.js'
 
@@ -90,7 +89,7 @@ export class SkipExecutor {
   ) {}
 
   // lunte-disable-next-line require-await
-  async execute(testId: string): Promise<TestResult> {
+  async execute(_testId: string): Promise<TestResult> {
     return {
       passed: true,
       output: `SKIPPED: ${this.reason || 'Not supported on this platform'}`,

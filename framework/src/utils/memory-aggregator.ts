@@ -180,11 +180,6 @@ function findActiveTest(timeline: TimelineEvent[], ts: number): string | null {
   return active
 }
 
-interface TestWindow {
-  ev: TimelineEvent // end event
-  start: TimelineEvent // start event
-}
-
 function aggregatePerTest(samples: MemorySample[], timeline: TimelineEvent[]): PerTestMemory[] {
   // Pair start/end events into test windows. Tests with a start but no
   // matching end (consumer crashed before reporting result) are kept as

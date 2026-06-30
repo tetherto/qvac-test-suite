@@ -198,7 +198,7 @@ export function installIosApp(udid: string, appPath: string): void {
  * Launch an app on an iOS device by bundle ID.
  * macOS only. Tries xcrun devicectl first, falls back to ios-deploy.
  */
-export function launchIosApp(udid: string, bundleId: string, appPath?: string): void {
+export function launchIosApp(udid: string, bundleId: string, _appPath?: string): void {
   requireMacOS('iOS app launch')
 
   console.log(`🚀 Launching ${bundleId} on ${udid}...`)
