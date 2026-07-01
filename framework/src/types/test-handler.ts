@@ -29,6 +29,13 @@ export interface TestHandler<TParams = unknown, TContext = Record<string, unknow
    * Use for cleanup, resource eviction, or state reset.
    */
   teardown?(testId: string, context: TContext): Promise<void>;
+
+  /**
+   * Called between the first failed attempt and the retry when `retryOnFailure` is true.
+   * Implementations should fully unload model resources and re-run setup so the retry
+   * starts from a clean state. Optional: if absent, the retry still runs but without reload.
+   */
+  reload?(testId: string, context: TContext): Promise<void>;
 }
 
 /**

@@ -21,7 +21,6 @@ import * as path from 'node:path';
  *   - metric        -- in-app metric label
  *   - platform
  */
-
 export interface MemorySample {
   ts: number;
   pid: number | null;
@@ -37,7 +36,7 @@ export interface TimelineEvent {
   consumerId: string;
   testId: string;
   uniqueTestId: string;
-  phase: 'start' | 'end';
+  phase: 'start' | 'end' | 'reload';
 }
 
 export interface PerTestMemory {
@@ -68,6 +67,8 @@ export interface PerTestMemory {
    * synthesized from the last memory sample.
    */
   incomplete: boolean;
+  /** Present only for retry-split windows. */
+  attemptLabel?: '1' | '2';
 }
 
 export interface RollingPoint {
@@ -134,7 +135,12 @@ export function readTimeline(filePath: string): TimelineEvent[] {
     if (!trimmed) continue;
     try {
       const obj = JSON.parse(trimmed) as TimelineEvent;
-      if (typeof obj.ts === 'number' && (obj.phase === 'start' || obj.phase === 'end')) out.push(obj);
+      if (
+        typeof obj.ts === 'number' &&
+        (obj.phase === 'start' || obj.phase === 'end' || obj.phase === 'reload')
+      ) {
+        out.push(obj);
+      }
     } catch {
       // skip
     }
@@ -176,29 +182,72 @@ function findActiveTest(timeline: TimelineEvent[], ts: number): string | null {
   return active;
 }
 
-interface TestWindow {
-  ev: TimelineEvent; // end event
-  start: TimelineEvent; // start event
+function buildPerTestEntry(
+  samples: MemorySample[],
+  start: TimelineEvent,
+  startTs: number,
+  endTs: number,
+  incomplete: boolean,
+  attemptLabel?: '1' | '2'
+): PerTestMemory {
+  const inWindow = samples.filter((s) => s.ts >= startTs && s.ts <= endTs);
+
+  let peakKb = 0;
+  let meanKb = 0;
+  if (inWindow.length > 0) {
+    peakKb = inWindow[0].memoryKb;
+    let sum = 0;
+    for (const s of inWindow) {
+      if (s.memoryKb > peakKb) peakKb = s.memoryKb;
+      sum += s.memoryKb;
+    }
+    meanKb = Math.round(sum / inWindow.length);
+  }
+
+  // Use only in-window samples here; gap samples between tests can already
+  // include the next test's setup work and would contaminate before/after.
+  const beforeKb = inWindow.length > 0 ? inWindow[0].memoryKb : null;
+  const afterKb = inWindow.length > 0 ? inWindow[inWindow.length - 1].memoryKb : null;
+  const deltaKb = beforeKb !== null && afterKb !== null ? afterKb - beforeKb : null;
+
+  return {
+    testId: start.testId,
+    uniqueTestId: start.uniqueTestId,
+    consumerId: start.consumerId,
+    startTs,
+    endTs,
+    durationMs: endTs - startTs,
+    beforeKb,
+    peakKb,
+    meanKb,
+    afterKb,
+    deltaKb,
+    samples: inWindow.length,
+    incomplete,
+    ...(attemptLabel !== undefined && { attemptLabel }),
+  };
 }
 
 function aggregatePerTest(samples: MemorySample[], timeline: TimelineEvent[]): PerTestMemory[] {
-  // Pair start/end events into test windows. Tests with a start but no
-  // matching end (consumer crashed before reporting result) are kept as
-  // orphan starts and emitted with incomplete=true; their endTs is the
-  // last sample timestamp so they still appear in the table.
   const starts = new Map<string, TimelineEvent>();
+  const reloads = new Map<string, TimelineEvent>();
   const windows: { start: TimelineEvent; end: TimelineEvent | null }[] = [];
   for (const ev of timeline) {
     if (ev.phase === 'start') {
       starts.set(ev.uniqueTestId, ev);
       continue;
     }
+    if (ev.phase === 'reload') {
+      reloads.set(ev.uniqueTestId, ev);
+      continue;
+    }
+    // phase === 'end'
     const start = starts.get(ev.uniqueTestId);
     if (!start) continue;
     starts.delete(ev.uniqueTestId);
     windows.push({ start, end: ev });
   }
-  // Anything left in `starts` is an orphan (no end event seen).
+  // Keep orphan starts so crashed tests still appear in the table.
   for (const start of starts.values()) {
     windows.push({ start, end: null });
   }
@@ -210,49 +259,21 @@ function aggregatePerTest(samples: MemorySample[], timeline: TimelineEvent[]): P
   for (const w of windows) {
     const start = w.start;
     const incomplete = w.end === null;
-    // For incomplete (orphan-start) tests, treat the last memory sample as
-    // a synthetic end so they still get a row. Tests crash mid-test, so
-    // memory data up to the crash is what we have.
+    // For incomplete tests, use the last sample timestamp as the synthetic end.
     const endTs = w.end ? w.end.ts : lastSampleTs;
-    const inWindow = samples.filter((s) => s.ts >= start.ts && s.ts <= endTs);
 
-    let peakKb = 0;
-    let meanKb = 0;
-    if (inWindow.length > 0) {
-      peakKb = inWindow[0].memoryKb;
-      let sum = 0;
-      for (const s of inWindow) {
-        if (s.memoryKb > peakKb) peakKb = s.memoryKb;
-        sum += s.memoryKb;
+    const reloadEv = reloads.get(start.uniqueTestId);
+    if (reloadEv) {
+      const splitTs = Math.max(start.ts, Math.min(reloadEv.ts, endTs));
+      if (splitTs > start.ts && splitTs < endTs) {
+        out.push(buildPerTestEntry(samples, start, start.ts, splitTs - 1, false, '1'));
+        out.push(buildPerTestEntry(samples, start, splitTs, endTs, incomplete, '2'));
+      } else {
+        out.push(buildPerTestEntry(samples, start, start.ts, endTs, incomplete));
       }
-      meanKb = Math.round(sum / inWindow.length);
+    } else {
+      out.push(buildPerTestEntry(samples, start, start.ts, endTs, incomplete));
     }
-
-    // Before / After are taken from samples observed while the test was
-    // running (in-window). An earlier iteration used the inter-test gap,
-    // which gave "after settling, before next test" -- but at sub-second
-    // test durations and ~500 ms sample cadence, the gap sample frequently
-    // catches the next test's setup work. In-window samples are
-    // uncontaminated; the chart still surfaces post-cleanup state.
-    const beforeKb = inWindow.length > 0 ? inWindow[0].memoryKb : null;
-    const afterKb = inWindow.length > 0 ? inWindow[inWindow.length - 1].memoryKb : null;
-    const deltaKb = beforeKb !== null && afterKb !== null ? afterKb - beforeKb : null;
-
-    out.push({
-      testId: start.testId,
-      uniqueTestId: start.uniqueTestId,
-      consumerId: start.consumerId,
-      startTs: start.ts,
-      endTs,
-      durationMs: endTs - start.ts,
-      beforeKb,
-      peakKb,
-      meanKb,
-      afterKb,
-      deltaKb,
-      samples: inWindow.length,
-      incomplete,
-    });
   }
 
   return out;

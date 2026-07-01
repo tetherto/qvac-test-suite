@@ -7,6 +7,7 @@ import {
   testRequestSchema,
   testStartSchema,
   testResultSchema,
+  testReloadSchema,
   heartbeatSchema,
   profilingDataSchema,
   type TestResult as MqttTestResult,
@@ -35,6 +36,8 @@ interface TestAssignment {
   assignedAt: number;
   startedAt?: number;
   timeoutMs: number;
+  originalTimeoutMs: number;
+  reloadRecorded?: boolean;
 }
 
 interface ConsumerInfo {
@@ -53,6 +56,8 @@ type TestResult = MqttTestResult;
 
 // Safety timeout for crashed consumers (normal path: all consumers publish on batch-complete)
 const PROFILING_SAFETY_TIMEOUT_MS = 10000;
+const TIMEOUT_CHECK_INTERVAL_MS = 10000;
+const TIMEOUT_GRACE_MS = TIMEOUT_CHECK_INTERVAL_MS + 5000;
 
 export class BatchOrchestrator {
   private client: MqttClient;
@@ -134,7 +139,7 @@ export class BatchOrchestrator {
     consumerId: string;
     testId: string;
     uniqueTestId: string;
-    phase: 'start' | 'end';
+    phase: 'start' | 'end' | 'reload';
   }): void {
     if (!this.timelinePath) return;
     try {
@@ -156,6 +161,7 @@ export class BatchOrchestrator {
           'qvac/register',
           'qvac/request-test',
           'qvac/test-start',
+          'qvac/test-reload',
           'qvac/results',
           'qvac/heartbeat',
           'qvac/profiling',
@@ -192,6 +198,9 @@ export class BatchOrchestrator {
             break;
           case 'qvac/test-start':
             this.handleTestStart(message);
+            break;
+          case 'qvac/test-reload':
+            this.handleTestReload(message);
             break;
           case 'qvac/results':
             this.handleTestResult(message);
@@ -339,6 +348,7 @@ export class BatchOrchestrator {
       assignedAt: Date.now(),
       // 3x estimate min 180s: accounts for setup phase (model loading) + test + buffer
       timeoutMs: Math.max(nextTest.estimatedDurationMs * 3, 180000),
+      originalTimeoutMs: Math.max(nextTest.estimatedDurationMs * 3, 180000),
     };
 
     this.assignedTests.set(nextTest.id, assignment);
@@ -390,6 +400,37 @@ export class BatchOrchestrator {
     console.log(`▶️  Test ${assignment.testCase.testId} started by ${consumerId}`);
   }
 
+  private handleTestReload(rawMessage: unknown) {
+    const message = testReloadSchema.parse(rawMessage);
+    const { consumerId, uniqueTestId, testId, ts } = message;
+
+    const assignment = this.assignedTests.get(uniqueTestId);
+
+    if (!assignment) {
+      console.warn(`⚠️  Reload boundary for unknown/timed-out test: ${uniqueTestId}`);
+      return;
+    }
+
+    if (!assignment.reloadRecorded) {
+      assignment.reloadRecorded = true;
+      const elapsed = Date.now() - assignment.assignedAt;
+      assignment.timeoutMs = elapsed + 2 * assignment.originalTimeoutMs;
+
+      const producerTs = Date.now();
+      this.appendTimeline({
+        ts: producerTs,
+        consumerId,
+        testId,
+        uniqueTestId,
+        phase: 'reload',
+      });
+      const skewMs = producerTs - ts;
+      console.log(`🔄 Test ${testId} reload boundary (${uniqueTestId}) from ${consumerId} (consumer skew: ${skewMs}ms)`);
+    } else {
+      console.log(`⚠️  Ignoring duplicate reload boundary for ${uniqueTestId} (QoS-1 redelivery)`);
+    }
+  }
+
   private handleTestResult(rawMessage: unknown) {
     const message = testResultSchema.parse(rawMessage);
     const { consumerId, uniqueTestId, outcome, duration } = message;
@@ -406,6 +447,22 @@ export class BatchOrchestrator {
       consumer.testsCompleted++;
       consumer.testsRunning--;
       consumer.lastSeen = Date.now();
+    }
+
+    if (message.retried && !assignment.reloadRecorded) {
+      assignment.reloadRecorded = true;
+      const baseTs = assignment.startedAt ?? assignment.assignedAt;
+      const attempt1DurationMs =
+        typeof message.attempt1DurationMs === 'number' ? Math.max(0, Math.floor(message.attempt1DurationMs)) : 0;
+      const syntheticReloadTs = baseTs + attempt1DurationMs;
+      this.appendTimeline({
+        ts: syntheticReloadTs,
+        consumerId,
+        testId: assignment.testCase.testId,
+        uniqueTestId,
+        phase: 'reload',
+      });
+      console.log(`⚠️  Synthetic reload boundary for ${assignment.testCase.testId} (results arrived before reload event)`);
     }
 
     // Store result
@@ -484,7 +541,7 @@ export class BatchOrchestrator {
 
     for (const [uniqueTestId, assignment] of this.assignedTests) {
       const elapsed = now - assignment.assignedAt;
-      if (elapsed > assignment.timeoutMs) {
+      if (elapsed > assignment.timeoutMs + TIMEOUT_GRACE_MS) {
         timeouts.push(uniqueTestId);
       }
     }
@@ -931,7 +988,7 @@ export class BatchOrchestrator {
     }, this.consumerTimeoutSec * 1000);
 
     // Start timeout checker (every 10 seconds)
-    setInterval(() => this.checkTimeouts(), 10000);
+    setInterval(() => this.checkTimeouts(), TIMEOUT_CHECK_INTERVAL_MS);
 
     // Display status every 30 seconds
     setInterval(() => {

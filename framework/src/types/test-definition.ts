@@ -40,6 +40,16 @@ export const testDefinitionSchema = z.object({
     .describe('Suite tags for grouping and filtering (e.g., ["smoke", "regression", "slow"])'),
 
   skip: skipInfoSchema.optional().describe('If present, test is skipped with reason logged'),
+
+  retryOnFailure: z
+    .boolean()
+    .optional()
+    .describe(
+      'Controls diagnostic reload retry. Default is true (retry on failure). ' +
+        'Set to false to opt this test out of the retry cycle. ' +
+        'When retried, the executor reload() is called and the test runs once more; ' +
+        'the test is always reported as failed regardless of retry outcome — diagnostic only.',
+    ),
 });
 
 export type TestDefinition = z.infer<typeof testDefinitionSchema>;
