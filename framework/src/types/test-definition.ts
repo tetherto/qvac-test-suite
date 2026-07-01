@@ -45,10 +45,10 @@ export const testDefinitionSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      'Controls diagnostic reload retry. Default is true (retry on failure). ' +
-        'Set to false to opt this test out of the retry cycle. ' +
-        'When retried, the executor reload() is called and the test runs once more; ' +
-        'the test is always reported as failed regardless of retry outcome — diagnostic only.',
+      'Opt-in diagnostic reload retry. Disabled by default; when omitted or false the test ' +
+        'behaves exactly as before (no retry). Set to true to enable: on failure the executor ' +
+        'reload() is called and the test runs once more. The test is always reported as failed ' +
+        'regardless of retry outcome — diagnostic only.',
     ),
 });
 

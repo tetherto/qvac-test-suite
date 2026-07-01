@@ -628,7 +628,7 @@ export class ConsumerBase {
       let retryOutput: string | undefined;
       let attempt1DurationMs: number | undefined;
 
-      if (!result.passed && !result.skipped && definition.retryOnFailure !== false) {
+      if (!result.passed && !result.skipped && definition.retryOnFailure === true) {
         retried = true;
         this.log(`   ❌ attempt 1:`);
         if (result.output) {
@@ -755,9 +755,6 @@ export class ConsumerBase {
     } catch (error: unknown) {
       const duration = Date.now() - startTime;
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      if (error instanceof TimeoutError) {
-        stopConsumerAfterTimeout(`⚠️  ${testId}: consumer will stop after timeout`);
-      }
 
       this.log(`❌ ${testId} failed: ${errorMsg}`);
 
