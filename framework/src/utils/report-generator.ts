@@ -53,6 +53,7 @@ export interface ReportData {
   reportDir?: string;
 }
 
+// Collect system information for the report
 const systemInfo = {
   hostname: os.hostname(),
   platform: os.platform(),
@@ -160,6 +161,7 @@ export function generateHtmlReport(data: ReportData): string {
   const nonSkipped = data.completedTests.length - skippedCount;
   const successRate = nonSkipped > 0 ? ((successCount / nonSkipped) * 100).toFixed(1) : '0.0';
 
+  // Group tests by consumer
   const testsByConsumer = new Map<string, ReportTestResult[]>();
   for (const test of data.completedTests) {
     if (!testsByConsumer.has(test.consumerId)) {
@@ -168,6 +170,9 @@ export function generateHtmlReport(data: ReportData): string {
     testsByConsumer.get(test.consumerId)!.push(test);
   }
 
+  // Group tests by category. Prefer the test's declared metadata.category
+  // (passed through ReportTestResult.category by the orchestrator) over
+  // the fallback testId-prefix split.
   const testsByCategory = new Map<string, ReportTestResult[]>();
   for (const test of data.completedTests) {
     const category = test.category ?? (test.testId.includes('-') ? test.testId.split('-')[0] : test.testId);
@@ -1058,76 +1063,10 @@ export function generateJsonReport(data: ReportData): string {
   try {
     const absolutePath = path.resolve(filename);
     fs.writeFileSync(filename, JSON.stringify(jsonReport, null, 2));
-    writeGithubStepSummary(data, jsonReport.summary);
     return absolutePath;
   } catch (error) {
     console.error(`\n❌ Failed to generate JSON report:`, error);
     throw error;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// GitHub Actions step summary
-// ---------------------------------------------------------------------------
-
-function writeGithubStepSummary(
-  data: ReportData,
-  summary: { total: number; passed: number; failed: number; skipped: number; successRate: string; duration: number },
-): void {
-  const summaryPath = process.env.GITHUB_STEP_SUMMARY;
-  if (!summaryPath) return;
-
-  const retriedTests = data.completedTests.filter((t) => t.retried);
-  const retriedPass = retriedTests.filter((t) => t.retryPassed);
-  const retriedFail = retriedTests.filter((t) => !t.retryPassed);
-
-  const lines: string[] = [];
-  lines.push(`## 🧪 QVAC E2E Test Results`);
-  lines.push('');
-  lines.push(`| | Count |`);
-  lines.push(`|---|---|`);
-  lines.push(`| ✅ Passed | **${summary.passed}** |`);
-  lines.push(`| ❌ Failed | **${summary.failed}** |`);
-  lines.push(`| ⏭️ Skipped | **${summary.skipped}** |`);
-  lines.push(`| 📊 Pass rate | **${summary.successRate}%** |`);
-  lines.push(`| ⏱️ Duration | **${summary.duration.toFixed(1)}s** |`);
-  if (retriedTests.length > 0) {
-    lines.push(`| 🔄 Retried (passed) | **${retriedPass.length}** |`);
-    lines.push(`| 🔄 Retried (failed) | **${retriedFail.length}** |`);
-  }
-  lines.push('');
-
-  if (retriedTests.length > 0) {
-    lines.push(`### 🔄 Retried Tests`);
-    lines.push('');
-    lines.push(`| Test | Consumer | Retry Result |`);
-    lines.push(`|---|---|---|`);
-    for (const t of retriedTests) {
-      const icon = t.retryPassed ? '✅ PASSED after reload' : '❌ FAILED after reload';
-      const consumer = t.consumerId.split('-').slice(1, 3).join('-');
-      lines.push(`| \`${t.testId}\` | ${consumer} | ${icon} |`);
-    }
-    lines.push('');
-  }
-
-  if (summary.failed > 0) {
-    const failures = data.completedTests.filter((t) => t.outcome === 'failure');
-    lines.push(`### ❌ Failed Tests`);
-    lines.push('');
-    lines.push(`| Test | Consumer | Retry |`);
-    lines.push(`|---|---|---|`);
-    for (const t of failures) {
-      const consumer = t.consumerId.split('-').slice(1, 3).join('-');
-      const retryCol = t.retried ? (t.retryPassed ? '🔄 RETRY:✓' : '🔄 RETRY:✗') : '—';
-      lines.push(`| \`${t.testId}\` | ${consumer} | ${retryCol} |`);
-    }
-    lines.push('');
-  }
-
-  try {
-    fs.appendFileSync(summaryPath, lines.join('\n') + '\n');
-  } catch {
-    // Non-fatal: GitHub summary write failure should not break the test run
   }
 }
 
@@ -1164,6 +1103,10 @@ function renderMemoryTab(summary: MemorySummary, completedTests: ReportTestResul
       ? `${((summary.peakSuite.memoryKb / summary.limitKb) * 100).toFixed(1)}%`
       : null;
 
+  // Index test results by uniqueTestId so each per-test memory row can be
+  // tagged with the test's outcome (success / failure / skipped). Falls back
+  // to keying by testId+consumerId for backwards compat with older runs that
+  // didn't include uniqueTestId in the test-result payload.
   const outcomeByUid = new Map<string, ReportTestResult['outcome']>();
   const outcomeByTestKey = new Map<string, ReportTestResult['outcome']>();
   const retryOutcomeByUid = new Map<string, ReportTestResult['outcome']>();
@@ -1177,6 +1120,8 @@ function renderMemoryTab(summary: MemorySummary, completedTests: ReportTestResul
   const outcomeFor = (uniqueTestId: string, testId: string, consumerId: string) =>
     outcomeByUid.get(uniqueTestId) ?? outcomeByTestKey.get(`${testId}|${consumerId}`) ?? 'success';
 
+  // Render rows; sorted by peak desc by default. Client-side JS in the
+  // page resorts on header click without re-rendering the data.
   let perTestSkippedCount = 0;
   let perTestFailedCount = 0;
   let perTestPassedCount = 0;
@@ -1185,6 +1130,10 @@ function renderMemoryTab(summary: MemorySummary, completedTests: ReportTestResul
     .map((t) => {
       const consumerShort = t.consumerId.split('-').slice(1, 3).join('-');
       const startedSec = ((t.startTs - summary.startTs) / 1000).toFixed(1);
+      // Incomplete = orphan start (no result MQTT received -- consumer
+      // crashed mid-test, e.g. OOM kill). Show as a distinct outcome so
+      // the table doesn't silently drop the test the user most cares
+      // about (often the one responsible for the suite peak).
       const baseOutcome = outcomeFor(t.uniqueTestId, t.testId, t.consumerId);
       const rowOutcome =
         t.attemptLabel === '1'
@@ -1223,6 +1172,8 @@ function renderMemoryTab(summary: MemorySummary, completedTests: ReportTestResul
           ? `<code>${escapeHtml(t.testId)}</code><br><span style="font-size:11px;color:#92400e;font-weight:600;">attempt 2 (after reload)</span>`
           : `<code>${escapeHtml(t.testId)}</code>`;
 
+      // data-* attributes carry sortable raw numbers so client-side sort
+      // can avoid re-parsing the formatted values.
       return `
 					<tr${rowStyle}>
 						<td data-sort="${escapeHtml(t.testId)}">${attemptCell}</td>
