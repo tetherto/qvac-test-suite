@@ -617,11 +617,22 @@ export class ConsumerBase {
       const metadata = definition.metadata || {};
       const estimatedMs = typeof metadata.estimatedDurationMs === 'number' ? metadata.estimatedDurationMs : 0;
       const timeoutMs = Math.max(estimatedMs * 2, 120000);
-      const result = await this.runWithTimeout(
-        this.executor.executeTest(testId, context, params, expectation),
-        timeoutMs,
-        `Test timeout after ${timeoutMs / 1000}s`
-      );
+      // A first-attempt timeout on a retry test becomes a failed result so it
+      // hits the reload+retry path. Other throws keep the original fail-fast.
+      let result: TestResult;
+      try {
+        result = await this.runWithTimeout(
+          this.executor.executeTest(testId, context, params, expectation),
+          timeoutMs,
+          `Test timeout after ${timeoutMs / 1000}s`
+        );
+      } catch (attemptError: unknown) {
+        if (attemptError instanceof TimeoutError && definition.retryOnFailure === true) {
+          result = { passed: false, output: attemptError.message };
+        } else {
+          throw attemptError;
+        }
+      }
 
       let retried = false;
       let retryPassed: boolean | undefined;
