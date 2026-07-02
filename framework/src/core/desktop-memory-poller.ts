@@ -1,5 +1,5 @@
 export {
   startDesktopMemoryPoller,
   type DesktopMemoryPollerHandle,
-  type DesktopMemoryPollerOptions,
-} from './node-memory-poller.js';
+  type DesktopMemoryPollerOptions
+} from './node-memory-poller.js'

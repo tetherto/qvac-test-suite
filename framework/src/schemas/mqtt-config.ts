@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod'
 
 export const mqttConnectionSchema = z.object({
   brokerUrl: z.string().default('mqtt://localhost:1883'),
@@ -10,7 +10,7 @@ export const mqttConnectionSchema = z.object({
   rejectUnauthorized: z.boolean().default(true),
   keepalive: z.number().optional(),
   reconnectPeriod: z.number().optional(),
-  connectTimeout: z.number().optional(),
-});
+  connectTimeout: z.number().optional()
+})
 
-export type MqttConnectionConfig = z.infer<typeof mqttConnectionSchema>;
+export type MqttConnectionConfig = z.infer<typeof mqttConnectionSchema>

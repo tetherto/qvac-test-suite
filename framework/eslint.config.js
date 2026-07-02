@@ -1,5 +1,5 @@
-import tseslint from '@typescript-eslint/eslint-plugin';
-import parser from '@typescript-eslint/parser';
+import tseslint from '@typescript-eslint/eslint-plugin'
+import parser from '@typescript-eslint/parser'
 
 export default [
   {
@@ -9,18 +9,18 @@ export default [
       parserOptions: {
         ecmaVersion: 2022,
         sourceType: 'module',
-        project: './tsconfig.json',
-      },
+        project: './tsconfig.json'
+      }
     },
     plugins: {
-      '@typescript-eslint': tseslint,
+      '@typescript-eslint': tseslint
     },
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-    },
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }]
+    }
   },
   {
-    ignores: ['dist/', 'node_modules/'],
-  },
-];
+    ignores: ['dist/', 'node_modules/']
+  }
+]

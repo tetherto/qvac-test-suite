@@ -1,21 +1,21 @@
-import { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform } from 'react-native';
-import Constants from 'expo-constants';
-import { ConsumerWrapper } from './consumer-wrapper';
+import { useEffect, useState, useRef } from 'react'
+import { View, Text, StyleSheet, ScrollView, Platform } from 'react-native'
+import Constants from 'expo-constants'
+import { ConsumerWrapper } from './consumer-wrapper'
 
 interface BatchStats {
-  testsCompleted: number;
-  testsPassed: number;
-  testsFailed: number;
-  testsSkipped: number;
-  totalTests: number;
-  currentTest: string;
-  isComplete: boolean;
+  testsCompleted: number
+  testsPassed: number
+  testsFailed: number
+  testsSkipped: number
+  totalTests: number
+  currentTest: string
+  isComplete: boolean
 }
 
 export default function BatchConsumer() {
-  const scrollViewRef = useRef<ScrollView>(null);
-  const [logs, setLogs] = useState<string[]>([]);
+  const scrollViewRef = useRef<ScrollView>(null)
+  const [logs, setLogs] = useState<string[]>([])
   const [stats, setStats] = useState<BatchStats>({
     testsCompleted: 0,
     testsPassed: 0,
@@ -23,34 +23,34 @@ export default function BatchConsumer() {
     testsSkipped: 0,
     totalTests: 0,
     currentTest: '',
-    isComplete: false,
-  });
+    isComplete: false
+  })
 
   const addLog = (message: string) => {
-    console.log(message);
-    setLogs((prev) => [...prev.slice(-50), message]);
-  };
+    console.log(message)
+    setLogs((prev) => [...prev.slice(-50), message])
+  }
 
   const updateStats = (update: Partial<BatchStats>) => {
-    setStats((prev) => ({ ...prev, ...update }));
-  };
+    setStats((prev) => ({ ...prev, ...update }))
+  }
 
   useEffect(() => {
-    scrollViewRef.current?.scrollToEnd({ animated: false });
-  }, [logs]);
+    scrollViewRef.current?.scrollToEnd({ animated: false })
+  }, [logs])
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>QVAC Test Consumer (Mobile)</Text>
-        <Text style={styles.device}>
-          {Constants.deviceName || Platform.OS}
-        </Text>
+        <Text style={styles.device}>{Constants.deviceName || Platform.OS}</Text>
       </View>
 
       <View style={styles.statsRow}>
         <View style={styles.statBoxWide}>
-          <Text style={styles.statValue}>{stats.testsCompleted} / {stats.totalTests}</Text>
+          <Text style={styles.statValue}>
+            {stats.testsCompleted} / {stats.totalTests}
+          </Text>
           <Text style={styles.statLabel}>Progress</Text>
         </View>
       </View>
@@ -99,7 +99,7 @@ export default function BatchConsumer() {
 
       <ConsumerWrapper log={addLog} updateStats={updateStats} />
     </View>
-  );
+  )
 }
 
 const styles = StyleSheet.create({
@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: '#333'
   },
   title: { fontSize: 20, fontWeight: 'bold', color: '#fff', marginBottom: 4 },
   device: { fontSize: 12, color: '#888' },
@@ -116,40 +116,40 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     marginBottom: 8,
-    gap: 8,
+    gap: 8
   },
   statBox: {
     flex: 1,
     backgroundColor: '#1a1a1a',
     padding: 12,
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: 'center'
   },
   statBoxWide: {
     flex: 2,
     backgroundColor: '#1a1a1a',
     padding: 12,
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: 'center'
   },
   statValue: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#60a5fa',
-    marginBottom: 4,
+    marginBottom: 4
   },
   statLabel: { fontSize: 10, color: '#888', textTransform: 'uppercase' },
   currentTestContainer: {
     backgroundColor: '#1a1a1a',
     padding: 12,
     borderRadius: 8,
-    marginBottom: 16,
+    marginBottom: 16
   },
   currentTestLabel: {
     fontSize: 10,
     color: '#888',
     textTransform: 'uppercase',
-    marginBottom: 4,
+    marginBottom: 4
   },
   currentTest: { fontSize: 14, color: '#60a5fa', fontFamily: 'monospace' },
   completeContainer: {
@@ -157,14 +157,14 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 8,
     marginBottom: 16,
-    alignItems: 'center',
+    alignItems: 'center'
   },
   completeText: { fontSize: 18, color: '#4ade80', fontWeight: 'bold' },
   logsContainer: {
     flex: 1,
     backgroundColor: '#1a1a1a',
     borderRadius: 8,
-    overflow: 'hidden',
+    overflow: 'hidden'
   },
   logsTitle: {
     fontSize: 12,
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: '#333'
   },
   logsScroll: { flex: 1 },
   logsContent: { padding: 12 },
@@ -180,6 +180,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#ddd',
     fontFamily: 'monospace',
-    marginBottom: 4,
-  },
-});
+    marginBottom: 4
+  }
+})

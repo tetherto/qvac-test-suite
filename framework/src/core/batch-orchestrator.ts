@@ -1,7 +1,7 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import type { MqttClient } from 'mqtt';
-import type { TestDefinition } from '../types/test-definition.js';
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+import type { MqttClient } from 'mqtt'
+import type { TestDefinition } from '../types/test-definition.js'
 import {
   consumerRegistrationSchema,
   testRequestSchema,
@@ -10,76 +10,76 @@ import {
   heartbeatSchema,
   profilingDataSchema,
   type TestResult as MqttTestResult,
-  type ProfilerExport,
-} from '../schemas/messages.js';
+  type ProfilerExport
+} from '../schemas/messages.js'
 import {
   generateHtmlReport,
   generateJsonReport,
   type ReportData,
-  type ReportProfilingData,
-} from '../utils/report-generator.js';
-import { getMetricCount } from '../utils/profiler-adapter.js';
-import { aggregateMemory } from '../utils/memory-aggregator.js';
+  type ReportProfilingData
+} from '../utils/report-generator.js'
+import { getMetricCount } from '../utils/profiler-adapter.js'
+import { aggregateMemory } from '../utils/memory-aggregator.js'
 
 interface TestCase {
-  id: string; // Unique test ID
-  testId: string; // Test type
-  metadata: Record<string, unknown>; // Test metadata (producer-side reporting only)
-  suites?: string[];
-  estimatedDurationMs: number;
+  id: string // Unique test ID
+  testId: string // Test type
+  metadata: Record<string, unknown> // Test metadata (producer-side reporting only)
+  suites?: string[]
+  estimatedDurationMs: number
 }
 
 interface TestAssignment {
-  testCase: TestCase;
-  consumerId: string;
-  assignedAt: number;
-  startedAt?: number;
-  timeoutMs: number;
+  testCase: TestCase
+  consumerId: string
+  assignedAt: number
+  startedAt?: number
+  timeoutMs: number
 }
 
 interface ConsumerInfo {
-  consumerId: string;
-  platform: string;
-  registeredAt: number;
-  lastSeen: number;
-  testsCompleted: number;
-  testsRunning: number;
-  bootstrapped?: boolean;
-  outstandingRequest?: boolean;
+  consumerId: string
+  platform: string
+  registeredAt: number
+  lastSeen: number
+  testsCompleted: number
+  testsRunning: number
+  bootstrapped?: boolean
+  outstandingRequest?: boolean
 }
 
 // Test result type imported from schemas
-type TestResult = MqttTestResult;
+type TestResult = MqttTestResult
 
 // Safety timeout for crashed consumers (normal path: all consumers publish on batch-complete)
-const PROFILING_SAFETY_TIMEOUT_MS = 10000;
+const PROFILING_SAFETY_TIMEOUT_MS = 10000
 
 export class BatchOrchestrator {
-  private client: MqttClient;
-  private runId: string;
-  private allowWildcardConsumers: boolean;
-  private consumerTimeoutSec: number;
-  private consumerInactivityTimeoutMs: number;
-  private reportDir?: string;
-  private timelinePath?: string;
-  private appMemPath?: string;
-  private testQueue: TestCase[] = [];
-  private assignedTests = new Map<string, TestAssignment>(); // uniqueTestId -> assignment
-  private completedTests = new Map<string, TestResult>(); // uniqueTestId -> result
-  private consumers = new Map<string, ConsumerInfo>(); // consumerId -> info
-  private profilingData = new Map<string, ProfilerExport>(); // consumerId -> profiler export
-  private testSuites = new Map<string, string[]>(); // testId -> suites
-  private testCategories = new Map<string, string>(); // testId -> metadata.category
+  private client: MqttClient
+  private runId: string
+  private allowWildcardConsumers: boolean
+  private consumerTimeoutSec: number
+  private consumerInactivityTimeoutMs: number
+  private reportDir?: string
+  private timelinePath?: string
+  private appMemPath?: string
+  private testQueue: TestCase[] = []
+  private assignedTests = new Map<string, TestAssignment>() // uniqueTestId -> assignment
+  private completedTests = new Map<string, TestResult>() // uniqueTestId -> result
+  private consumers = new Map<string, ConsumerInfo>() // consumerId -> info
+  private profilingData = new Map<string, ProfilerExport>() // consumerId -> profiler export
+  private testSuites = new Map<string, string[]>() // testId -> suites
+  private testCategories = new Map<string, string>() // testId -> metadata.category
   // Unique post-filter testIds, snapshotted in buildTestQueue and replayed
   // in every register-ack so late-joining/reconnecting consumers see a
   // stable set even after testQueue starts shrinking.
-  private filteredTestIds: string[] = [];
-  private initialTotalTests = 0;
-  private startTime = 0;
-  private batchStarted = false;
-  private allConsumersDead = false;
-  private shutdownTimer?: NodeJS.Timeout;
-  private consumerTimeoutTimer?: NodeJS.Timeout;
+  private filteredTestIds: string[] = []
+  private initialTotalTests = 0
+  private startTime = 0
+  private batchStarted = false
+  private allConsumersDead = false
+  private shutdownTimer?: NodeJS.Timeout
+  private consumerTimeoutTimer?: NodeJS.Timeout
 
   constructor(
     client: MqttClient,
@@ -89,29 +89,29 @@ export class BatchOrchestrator {
     consumerInactivityTimeoutSec: number = 120,
     reportDir?: string
   ) {
-    this.client = client;
-    this.runId = runId;
-    this.allowWildcardConsumers = allowWildcardConsumers;
-    this.consumerTimeoutSec = consumerTimeoutSec;
-    this.consumerInactivityTimeoutMs = consumerInactivityTimeoutSec * 1000;
-    this.reportDir = reportDir;
+    this.client = client
+    this.runId = runId
+    this.allowWildcardConsumers = allowWildcardConsumers
+    this.consumerTimeoutSec = consumerTimeoutSec
+    this.consumerInactivityTimeoutMs = consumerInactivityTimeoutSec * 1000
+    this.reportDir = reportDir
     if (reportDir) {
       try {
-        fs.mkdirSync(reportDir, { recursive: true });
+        fs.mkdirSync(reportDir, { recursive: true })
       } catch {}
-      this.timelinePath = path.join(reportDir, 'test-timeline.ndjson');
-      this.appMemPath = path.join(reportDir, 'app-mem.ndjson');
+      this.timelinePath = path.join(reportDir, 'test-timeline.ndjson')
+      this.appMemPath = path.join(reportDir, 'app-mem.ndjson')
     }
-    this.setupMqttHandlers();
+    this.setupMqttHandlers()
   }
 
   private handleAppMemorySample(rawMessage: unknown): void {
-    if (!this.appMemPath) return;
-    if (!rawMessage || typeof rawMessage !== 'object') return;
-    const m = rawMessage as Record<string, unknown>;
+    if (!this.appMemPath) return
+    if (!rawMessage || typeof rawMessage !== 'object') return
+    const m = rawMessage as Record<string, unknown>
     // Validate the minimum shape; ignore obviously broken entries.
-    if (typeof m.ts !== 'number' || typeof m.memoryKb !== 'number') return;
-    if (typeof m.platform !== 'string') return;
+    if (typeof m.ts !== 'number' || typeof m.memoryKb !== 'number') return
+    if (typeof m.platform !== 'string') return
     const record = {
       ts: m.ts,
       pid: typeof m.pid === 'number' ? m.pid : null,
@@ -120,25 +120,25 @@ export class BatchOrchestrator {
       limitKb: null,
       metric: typeof m.metric === 'string' ? m.metric : 'in-app',
       platform: m.platform,
-      consumerId: typeof m.consumerId === 'string' ? m.consumerId : undefined,
-    };
+      consumerId: typeof m.consumerId === 'string' ? m.consumerId : undefined
+    }
     try {
-      fs.appendFileSync(this.appMemPath, JSON.stringify(record) + '\n');
+      fs.appendFileSync(this.appMemPath, JSON.stringify(record) + '\n')
     } catch {
       // Non-fatal: app memory ndjson is auxiliary.
     }
   }
 
   private appendTimeline(event: {
-    ts: number;
-    consumerId: string;
-    testId: string;
-    uniqueTestId: string;
-    phase: 'start' | 'end';
+    ts: number
+    consumerId: string
+    testId: string
+    uniqueTestId: string
+    phase: 'start' | 'end'
   }): void {
-    if (!this.timelinePath) return;
+    if (!this.timelinePath) return
     try {
-      fs.appendFileSync(this.timelinePath, JSON.stringify(event) + '\n');
+      fs.appendFileSync(this.timelinePath, JSON.stringify(event) + '\n')
     } catch {
       // non-fatal: timeline is auxiliary
     }
@@ -146,9 +146,9 @@ export class BatchOrchestrator {
 
   private setupMqttHandlers() {
     this.client.on('connect', () => {
-      console.log('✅ Producer connected to MQTT broker');
-      console.log(`🔑 Run ID: ${this.runId}`);
-      console.log(`🌐 Wildcard consumers: ${this.allowWildcardConsumers ? 'allowed' : 'disabled'}`);
+      console.log('✅ Producer connected to MQTT broker')
+      console.log(`🔑 Run ID: ${this.runId}`)
+      console.log(`🌐 Wildcard consumers: ${this.allowWildcardConsumers ? 'allowed' : 'disabled'}`)
 
       // Subscribe to all coordination topics
       this.client.subscribe(
@@ -159,83 +159,83 @@ export class BatchOrchestrator {
           'qvac/results',
           'qvac/heartbeat',
           'qvac/profiling',
-          'qvac/app-memory',
+          'qvac/app-memory'
         ],
         { qos: 1 },
         (err) => {
           if (err) {
-            console.error('❌ Failed to subscribe:', err);
-            process.exit(1);
+            console.error('❌ Failed to subscribe:', err)
+            process.exit(1)
           }
-          console.log('📡 Subscribed to coordination topics');
+          console.log('📡 Subscribed to coordination topics')
         }
-      );
-    });
+      )
+    })
 
     this.client.on('message', (topic, payload) => {
       try {
-        const message = JSON.parse(payload.toString());
+        const message = JSON.parse(payload.toString())
 
-        const isWildcardConsumer = message.runId === '*';
-        const isMatchingRunId = message.runId === this.runId;
+        const isWildcardConsumer = message.runId === '*'
+        const isMatchingRunId = message.runId === this.runId
 
         if (!isMatchingRunId && !(isWildcardConsumer && this.allowWildcardConsumers)) {
-          return;
+          return
         }
 
         switch (topic) {
           case 'qvac/register':
-            this.handleConsumerRegistration(message);
-            break;
+            this.handleConsumerRegistration(message)
+            break
           case 'qvac/request-test':
-            this.handleTestRequest(message);
-            break;
+            this.handleTestRequest(message)
+            break
           case 'qvac/test-start':
-            this.handleTestStart(message);
-            break;
+            this.handleTestStart(message)
+            break
           case 'qvac/results':
-            this.handleTestResult(message);
-            break;
+            this.handleTestResult(message)
+            break
           case 'qvac/heartbeat':
-            this.handleHeartbeat(message);
-            break;
+            this.handleHeartbeat(message)
+            break
           case 'qvac/profiling':
-            this.handleProfilingData(message);
-            break;
+            this.handleProfilingData(message)
+            break
           case 'qvac/app-memory':
-            this.handleAppMemorySample(message);
-            break;
+            this.handleAppMemorySample(message)
+            break
         }
       } catch (error) {
-        console.error(`❌ Error handling ${topic}:`, error);
+        console.error(`❌ Error handling ${topic}:`, error)
       }
-    });
+    })
 
     this.client.on('reconnect', () => {
-      console.log('🔄 Producer reconnecting to MQTT broker...');
-    });
+      console.log('🔄 Producer reconnecting to MQTT broker...')
+    })
 
     this.client.on('offline', () => {
-      console.log('📴 Producer offline');
-    });
+      console.log('📴 Producer offline')
+    })
 
     this.client.on('close', () => {
-      console.log('🔌 Producer MQTT connection closed');
-    });
+      console.log('🔌 Producer MQTT connection closed')
+    })
 
     this.client.on('error', (err) => {
-      console.error('❌ MQTT error:', err);
-    });
+      console.error('❌ MQTT error:', err)
+    })
   }
 
   private handleConsumerRegistration(rawMessage: unknown) {
-    const message = consumerRegistrationSchema.parse(rawMessage);
-    const { consumerId, platform } = message;
-    const now = Date.now();
+    const message = consumerRegistrationSchema.parse(rawMessage)
+    const { consumerId, platform } = message
+    const now = Date.now()
 
-    const existing = this.consumers.get(consumerId);
+    const existing = this.consumers.get(consumerId)
     if (existing) {
-      existing.lastSeen = now;
+      existing.lastSeen = now
       // Always re-send ack (consumer may not have received it yet)
       this.client.publish(
         `qvac/register-ack/${consumerId}`,
@@ -243,17 +243,17 @@ export class BatchOrchestrator {
           runId: this.runId,
           status: 'registered',
           totalTests: this.initialTotalTests,
-          filteredTestIds: this.filteredTestIds,
+          filteredTestIds: this.filteredTestIds
         }),
         { qos: 1 }
-      );
-      return;
+      )
+      return
     }
 
     // Cancel consumer timeout on first registration
     if (this.consumers.size === 0 && this.consumerTimeoutTimer) {
-      clearTimeout(this.consumerTimeoutTimer);
-      this.consumerTimeoutTimer = undefined;
+      clearTimeout(this.consumerTimeoutTimer)
+      this.consumerTimeoutTimer = undefined
     }
 
     this.consumers.set(consumerId, {
@@ -262,11 +262,11 @@ export class BatchOrchestrator {
       registeredAt: now,
       lastSeen: now,
       testsCompleted: 0,
-      testsRunning: 0,
-    });
+      testsRunning: 0
+    })
 
-    console.log(`\n🔌 Consumer registered: ${consumerId} (${platform})`);
-    this.displayStatus();
+    console.log(`\n🔌 Consumer registered: ${consumerId} (${platform})`)
+    this.displayStatus()
 
     // Send acknowledgment with initial total (not current queue length, which shrinks as tests are assigned)
     // filteredTestIds lets the consumer scope its bootstrap to only the deps these tests will hit.
@@ -276,23 +276,23 @@ export class BatchOrchestrator {
         runId: this.runId,
         status: 'registered',
         totalTests: this.initialTotalTests,
-        filteredTestIds: this.filteredTestIds,
+        filteredTestIds: this.filteredTestIds
       }),
       { qos: 1 }
-    );
+    )
   }
 
   private handleTestRequest(rawMessage: unknown) {
-    const message = testRequestSchema.parse(rawMessage);
-    const { consumerId } = message;
-    const consumer = this.consumers.get(consumerId);
+    const message = testRequestSchema.parse(rawMessage)
+    const { consumerId } = message
+    const consumer = this.consumers.get(consumerId)
 
     if (!consumer) {
-      console.warn(`⚠️  Test request from unregistered consumer: ${consumerId}`);
-      return;
+      console.warn(`⚠️  Test request from unregistered consumer: ${consumerId}`)
+      return
     }
 
-    consumer.lastSeen = Date.now();
+    consumer.lastSeen = Date.now()
 
     // Idempotent request handling: duplicate request-test publishes
     // (consumer-side retry, broker QoS-1 duplicate, future regression)
@@ -303,23 +303,23 @@ export class BatchOrchestrator {
       if (existing.consumerId === consumerId) {
         console.warn(
           `⚠️  Re-sending assignment to ${consumerId}: already has ${existing.testCase.testId} (${existing.testCase.id}) assigned`
-        );
+        )
         this.client.publish(
           `qvac/test-assigned/${consumerId}`,
           JSON.stringify({
             runId: this.runId,
             status: 'assigned',
             uniqueTestId: existing.testCase.id,
-            testId: existing.testCase.testId,
+            testId: existing.testCase.testId
           }),
           { qos: 1 }
-        );
-        return;
+        )
+        return
       }
     }
 
     // Find next available test in queue
-    const nextTest = this.getNextTestForConsumer(consumerId);
+    const nextTest = this.getNextTestForConsumer(consumerId)
 
     if (!nextTest) {
       // No more tests - signal queue empty
@@ -327,9 +327,9 @@ export class BatchOrchestrator {
         `qvac/test-assigned/${consumerId}`,
         JSON.stringify({ runId: this.runId, status: 'queue-empty' }),
         { qos: 1 }
-      );
-      console.log(`📭 No more tests for ${consumerId} (completed: ${consumer.testsCompleted})`);
-      return;
+      )
+      console.log(`📭 No more tests for ${consumerId} (completed: ${consumer.testsCompleted})`)
+      return
     }
 
     // Assign test
@@ -338,14 +338,14 @@ export class BatchOrchestrator {
       consumerId,
       assignedAt: Date.now(),
       // 3x estimate min 180s: accounts for setup phase (model loading) + test + buffer
-      timeoutMs: Math.max(nextTest.estimatedDurationMs * 3, 180000),
-    };
+      timeoutMs: Math.max(nextTest.estimatedDurationMs * 3, 180000)
+    }
 
-    this.assignedTests.set(nextTest.id, assignment);
-    consumer.testsRunning++;
+    this.assignedTests.set(nextTest.id, assignment)
+    consumer.testsRunning++
 
     // Remove from queue
-    this.testQueue = this.testQueue.filter((t) => t.id !== nextTest.id);
+    this.testQueue = this.testQueue.filter((t) => t.id !== nextTest.id)
 
     // Send test assignment — consumer resolves full definition locally
     this.client.publish(
@@ -354,10 +354,10 @@ export class BatchOrchestrator {
         runId: this.runId,
         status: 'assigned',
         uniqueTestId: nextTest.id,
-        testId: nextTest.testId,
+        testId: nextTest.testId
       }),
       { qos: 1 }
-    );
+    )
 
     // Memory timeline `start` fires at assignment time, not when the
     // consumer sends test-start. The window between assignment and
@@ -369,132 +369,138 @@ export class BatchOrchestrator {
       consumerId,
       testId: nextTest.testId,
       uniqueTestId: nextTest.id,
-      phase: 'start',
-    });
+      phase: 'start'
+    })
 
-    console.log(`📤 Assigned ${nextTest.testId} (${nextTest.id}) to ${consumerId}`);
-    this.displayStatus();
+    console.log(`📤 Assigned ${nextTest.testId} (${nextTest.id}) to ${consumerId}`)
+    this.displayStatus()
   }
 
   private handleTestStart(rawMessage: unknown) {
-    const message = testStartSchema.parse(rawMessage);
-    const { consumerId, uniqueTestId } = message;
-    const assignment = this.assignedTests.get(uniqueTestId);
+    const message = testStartSchema.parse(rawMessage)
+    const { consumerId, uniqueTestId } = message
+    const assignment = this.assignedTests.get(uniqueTestId)
 
     if (!assignment) {
-      console.warn(`⚠️  Test start for unknown test: ${uniqueTestId}`);
-      return;
+      console.warn(`⚠️  Test start for unknown test: ${uniqueTestId}`)
+      return
     }
 
-    assignment.startedAt = Date.now();
-    console.log(`▶️  Test ${assignment.testCase.testId} started by ${consumerId}`);
+    assignment.startedAt = Date.now()
+    console.log(`▶️  Test ${assignment.testCase.testId} started by ${consumerId}`)
   }
 
   private handleTestResult(rawMessage: unknown) {
-    const message = testResultSchema.parse(rawMessage);
-    const { consumerId, uniqueTestId, outcome, duration } = message;
-    const assignment = this.assignedTests.get(uniqueTestId);
+    const message = testResultSchema.parse(rawMessage)
+    const { consumerId, uniqueTestId, outcome, duration } = message
+    const assignment = this.assignedTests.get(uniqueTestId)
 
     if (!assignment) {
-      console.warn(`⚠️  Result for unknown test: ${uniqueTestId}`);
-      return;
+      console.warn(`⚠️  Result for unknown test: ${uniqueTestId}`)
+      return
     }
 
     // Update consumer stats
-    const consumer = this.consumers.get(consumerId);
+    const consumer = this.consumers.get(consumerId)
     if (consumer) {
-      consumer.testsCompleted++;
-      consumer.testsRunning--;
-      consumer.lastSeen = Date.now();
+      consumer.testsCompleted++
+      consumer.testsRunning--
+      consumer.lastSeen = Date.now()
     }
 
     // Store result
-    this.completedTests.set(uniqueTestId, message);
-    this.assignedTests.delete(uniqueTestId);
+    this.completedTests.set(uniqueTestId, message)
+    this.assignedTests.delete(uniqueTestId)
 
     this.appendTimeline({
       ts: Date.now(),
       consumerId,
       testId: assignment.testCase.testId,
       uniqueTestId,
-      phase: 'end',
-    });
+      phase: 'end'
+    })
 
-    const statusIcon = outcome === 'skipped' ? '⏭️' : outcome === 'success' ? '✅' : '❌';
-    console.log(`${statusIcon} Test ${assignment.testCase.testId} ${outcome} (${duration}ms) - ${consumerId}`);
+    const statusIcon = outcome === 'skipped' ? '⏭️' : outcome === 'success' ? '✅' : '❌'
+    console.log(
+      `${statusIcon} Test ${assignment.testCase.testId} ${outcome} (${duration}ms) - ${consumerId}`
+    )
 
     if (message.error) {
       // Show full error, but split long errors into multiple lines
-      const errorLines = message.error.split('\n');
+      const errorLines = message.error.split('\n')
       if (errorLines.length > 5) {
-        console.log(`   Error: ${errorLines.slice(0, 5).join('\n   ')}`);
-        console.log(`   ... (${errorLines.length - 5} more lines)`);
+        console.log(`   Error: ${errorLines.slice(0, 5).join('\n   ')}`)
+        console.log(`   ... (${errorLines.length - 5} more lines)`)
       } else {
-        console.log(`   Error: ${message.error}`);
+        console.log(`   Error: ${message.error}`)
       }
     }
 
-    this.displayStatus();
-    this.checkBatchComplete();
+    this.displayStatus()
+    this.checkBatchComplete()
   }
 
   private handleHeartbeat(rawMessage: unknown) {
-    const message = heartbeatSchema.parse(rawMessage);
-    const { consumerId } = message;
-    const consumer = this.consumers.get(consumerId);
+    const message = heartbeatSchema.parse(rawMessage)
+    const { consumerId } = message
+    const consumer = this.consumers.get(consumerId)
     if (consumer) {
-      consumer.lastSeen = Date.now();
-      consumer.bootstrapped = message.bootstrapped;
-      consumer.outstandingRequest = message.outstandingRequest;
+      consumer.lastSeen = Date.now()
+      consumer.bootstrapped = message.bootstrapped
+      consumer.outstandingRequest = message.outstandingRequest
     }
   }
 
   private handleProfilingData(rawMessage: unknown) {
-    const message = profilingDataSchema.parse(rawMessage);
-    const { consumerId, profilerExport } = message;
+    const message = profilingDataSchema.parse(rawMessage)
+    const { consumerId, profilerExport } = message
 
     if (!this.consumers.has(consumerId)) {
-      console.log(`⚠️  Ignoring profiling from unknown consumer: ${consumerId.split('-').slice(1, 3).join('-')}`);
-      return;
+      console.log(
+        `⚠️  Ignoring profiling from unknown consumer: ${consumerId.split('-').slice(1, 3).join('-')}`
+      )
+      return
     }
 
-    this.profilingData.set(consumerId, profilerExport);
-    const metricCount = getMetricCount(profilerExport);
-    const metricLabel = metricCount !== undefined ? `${metricCount} metrics` : 'N/A';
-    console.log(`📈 Received profiling data from ${consumerId.split('-').slice(1, 3).join('-')} (${metricLabel})`);
+    this.profilingData.set(consumerId, profilerExport)
+    const metricCount = getMetricCount(profilerExport)
+    const metricLabel = metricCount !== undefined ? `${metricCount} metrics` : 'N/A'
+    console.log(
+      `📈 Received profiling data from ${consumerId.split('-').slice(1, 3).join('-')} (${metricLabel})`
+    )
   }
 
   private getNextTestForConsumer(_consumerId: string): TestCase | null {
     // Simple FIFO for now - could be enhanced with dependency-aware scheduling
-    return this.testQueue.length > 0 ? this.testQueue[0] : null;
+    return this.testQueue.length > 0 ? this.testQueue[0] : null
   }
 
   private checkBatchComplete() {
-    const queueEmpty = this.testQueue.length === 0;
-    const noAssignedTests = this.assignedTests.size === 0;
+    const queueEmpty = this.testQueue.length === 0
+    const noAssignedTests = this.assignedTests.size === 0
 
     if (queueEmpty && noAssignedTests) {
-      this.completeBatch();
+      this.completeBatch()
     }
   }
 
   private checkTimeouts() {
-    const now = Date.now();
-    const timeouts: string[] = [];
+    const now = Date.now()
+    const timeouts: string[] = []
 
     for (const [uniqueTestId, assignment] of this.assignedTests) {
-      const elapsed = now - assignment.assignedAt;
+      const elapsed = now - assignment.assignedAt
       if (elapsed > assignment.timeoutMs) {
-        timeouts.push(uniqueTestId);
+        timeouts.push(uniqueTestId)
       }
     }
 
     if (timeouts.length > 0) {
-      console.log(`\n⏱️  ${timeouts.length} test(s) timed out:`);
+      console.log(`\n⏱️  ${timeouts.length} test(s) timed out:`)
       for (const uniqueTestId of timeouts) {
-        const assignment = this.assignedTests.get(uniqueTestId);
+        const assignment = this.assignedTests.get(uniqueTestId)
         if (assignment) {
-          console.log(`   - ${assignment.testCase.testId} (${assignment.consumerId})`);
+          console.log(`   - ${assignment.testCase.testId} (${assignment.consumerId})`)
 
           // Create timeout result
           const timeoutResult: TestResult = {
@@ -505,37 +511,37 @@ export class BatchOrchestrator {
             outcome: 'failure',
             duration: Date.now() - assignment.assignedAt,
             timestamp: new Date().toISOString(),
-            error: `Test timed out after ${assignment.timeoutMs}ms`,
-          };
+            error: `Test timed out after ${assignment.timeoutMs}ms`
+          }
 
-          this.completedTests.set(uniqueTestId, timeoutResult);
-          this.assignedTests.delete(uniqueTestId);
+          this.completedTests.set(uniqueTestId, timeoutResult)
+          this.assignedTests.delete(uniqueTestId)
 
           // Update consumer stats
-          const consumer = this.consumers.get(assignment.consumerId);
+          const consumer = this.consumers.get(assignment.consumerId)
           if (consumer) {
-            consumer.testsRunning--;
+            consumer.testsRunning--
           }
         }
       }
 
-      this.checkBatchComplete();
+      this.checkBatchComplete()
     }
 
     // Check consumer liveness (heartbeat-based)
-    const deadConsumers: string[] = [];
+    const deadConsumers: string[] = []
     for (const [consumerId, consumer] of this.consumers) {
-      const silent = now - consumer.lastSeen;
+      const silent = now - consumer.lastSeen
       if (silent > this.consumerInactivityTimeoutMs) {
-        deadConsumers.push(consumerId);
+        deadConsumers.push(consumerId)
       }
     }
 
     for (const consumerId of deadConsumers) {
-      const silent = now - (this.consumers.get(consumerId)?.lastSeen ?? 0);
+      const silent = now - (this.consumers.get(consumerId)?.lastSeen ?? 0)
       console.error(
         `\n💀 Consumer ${consumerId.split('-').slice(1, 3).join('-')} unresponsive for ${Math.round(silent / 1000)}s — marking as dead`
-      );
+      )
 
       for (const [uniqueTestId, assignment] of this.assignedTests) {
         if (assignment.consumerId === consumerId) {
@@ -547,25 +553,25 @@ export class BatchOrchestrator {
             outcome: 'failure',
             duration: Date.now() - assignment.assignedAt,
             timestamp: new Date().toISOString(),
-            error: `Consumer became unresponsive (no heartbeat for ${Math.round(silent / 1000)}s)`,
-          };
-          this.completedTests.set(uniqueTestId, failResult);
-          this.assignedTests.delete(uniqueTestId);
+            error: `Consumer became unresponsive (no heartbeat for ${Math.round(silent / 1000)}s)`
+          }
+          this.completedTests.set(uniqueTestId, failResult)
+          this.assignedTests.delete(uniqueTestId)
         }
       }
 
-      this.consumers.delete(consumerId);
+      this.consumers.delete(consumerId)
     }
 
     if (deadConsumers.length > 0) {
       if (this.consumers.size === 0 && (this.testQueue.length > 0 || this.assignedTests.size > 0)) {
-        console.error('\n❌ All consumers are dead. Terminating batch.');
-        this.allConsumersDead = true;
+        console.error('\n❌ All consumers are dead. Terminating batch.')
+        this.allConsumersDead = true
 
         // Fail all remaining queued tests
         while (this.testQueue.length > 0) {
-          const testCase = this.testQueue.shift()!;
-          const uniqueTestId = `${testCase.testId}-orphaned`;
+          const testCase = this.testQueue.shift()!
+          const uniqueTestId = `${testCase.testId}-orphaned`
           const failResult: TestResult = {
             runId: this.runId,
             consumerId: 'none',
@@ -574,39 +580,40 @@ export class BatchOrchestrator {
             outcome: 'failure',
             duration: 0,
             timestamp: new Date().toISOString(),
-            error: 'Consumer died before test could be executed',
-          };
-          this.completedTests.set(uniqueTestId, failResult);
+            error: 'Consumer died before test could be executed'
+          }
+          this.completedTests.set(uniqueTestId, failResult)
         }
 
-        this.completeBatch();
+        this.completeBatch()
       } else {
-        this.checkBatchComplete();
+        this.checkBatchComplete()
       }
     }
   }
 
   private displayStatus() {
-    const total = this.testQueue.length + this.assignedTests.size + this.completedTests.size;
-    const completed = this.completedTests.size;
-    const running = this.assignedTests.size;
-    const queued = this.testQueue.length;
-    const consumers = this.consumers.size;
-    const elapsed = this.startTime > 0 ? `${Math.round((Date.now() - this.startTime) / 1000)}s` : '0s';
+    const total = this.testQueue.length + this.assignedTests.size + this.completedTests.size
+    const completed = this.completedTests.size
+    const running = this.assignedTests.size
+    const queued = this.testQueue.length
+    const consumers = this.consumers.size
+    const elapsed =
+      this.startTime > 0 ? `${Math.round((Date.now() - this.startTime) / 1000)}s` : '0s'
 
     console.log(
       `\n📊 Status [${elapsed}]: ${completed}/${total} completed | ${running} running | ${queued} queued | ${consumers} consumers`
-    );
+    )
 
     if (running > 0) {
-      const now = Date.now();
+      const now = Date.now()
       for (const assignment of this.assignedTests.values()) {
-        const waitSec = Math.round((now - (assignment.startedAt ?? assignment.assignedAt)) / 1000);
-        const timeoutSec = Math.round(assignment.timeoutMs / 1000);
-        const phase = assignment.startedAt ? 'running' : 'setup';
+        const waitSec = Math.round((now - (assignment.startedAt ?? assignment.assignedAt)) / 1000)
+        const timeoutSec = Math.round(assignment.timeoutMs / 1000)
+        const phase = assignment.startedAt ? 'running' : 'setup'
         console.log(
           `   ⏳ ${assignment.testCase.testId} → ${assignment.consumerId} (${phase}, ${waitSec}s / ${timeoutSec}s)`
-        );
+        )
       }
     }
     if (this.consumers.size > 0) {
@@ -615,42 +622,46 @@ export class BatchOrchestrator {
           (c) =>
             `${c.consumerId} <bootstrapped=${c.bootstrapped ?? false}, outstandingRequest=${c.outstandingRequest ?? false}>`
         )
-        .join(', ');
-      console.log(`   🫀 ${consumerStates}`);
+        .join(', ')
+      console.log(`   🫀 ${consumerStates}`)
     }
-    console.log();
+    console.log()
   }
 
   private completeBatch() {
-    if (this.shutdownTimer) return; // Already shutting down
+    if (this.shutdownTimer) return // Already shutting down
 
-    const duration = this.startTime > 0 ? Date.now() - this.startTime : 0;
-    const totalTests = this.completedTests.size;
-    const results = Array.from(this.completedTests.values());
-    const successCount = results.filter((r) => r.outcome === 'success').length;
-    const skippedCount = results.filter((r) => r.outcome === 'skipped').length;
-    const failureCount = results.filter((r) => r.outcome === 'failure').length;
+    const duration = this.startTime > 0 ? Date.now() - this.startTime : 0
+    const totalTests = this.completedTests.size
+    const results = Array.from(this.completedTests.values())
+    const successCount = results.filter((r) => r.outcome === 'success').length
+    const skippedCount = results.filter((r) => r.outcome === 'skipped').length
+    const failureCount = results.filter((r) => r.outcome === 'failure').length
 
-    console.log(`\n${'='.repeat(80)}`);
-    console.log('🎉 BATCH COMPLETE');
-    console.log('='.repeat(80));
-    console.log(`⏱️  Total Duration: ${(duration / 1000).toFixed(2)}s`);
-    console.log(`📝 Total Tests: ${totalTests}`);
-    console.log(`✅ Passed: ${successCount}`);
-    console.log(`⏭️  Skipped: ${skippedCount}`);
-    console.log(`❌ Failed: ${failureCount}`);
-    console.log(`📈 Success Rate: ${((successCount / Math.max(totalTests - skippedCount, 1)) * 100).toFixed(1)}%`);
-    console.log('\n👥 Consumer Stats:');
+    console.log(`\n${'='.repeat(80)}`)
+    console.log('🎉 BATCH COMPLETE')
+    console.log('='.repeat(80))
+    console.log(`⏱️  Total Duration: ${(duration / 1000).toFixed(2)}s`)
+    console.log(`📝 Total Tests: ${totalTests}`)
+    console.log(`✅ Passed: ${successCount}`)
+    console.log(`⏭️  Skipped: ${skippedCount}`)
+    console.log(`❌ Failed: ${failureCount}`)
+    console.log(
+      `📈 Success Rate: ${((successCount / Math.max(totalTests - skippedCount, 1)) * 100).toFixed(1)}%`
+    )
+    console.log('\n👥 Consumer Stats:')
 
     for (const consumer of this.consumers.values()) {
-      console.log(`   - ${consumer.consumerId} (${consumer.platform}): ${consumer.testsCompleted} tests`);
+      console.log(
+        `   - ${consumer.consumerId} (${consumer.platform}): ${consumer.testsCompleted} tests`
+      )
     }
 
-    console.log('\n📋 Test Results by Category:\n');
-    this.displayResultsByCategory();
-    this.displayResultsBySuite();
+    console.log('\n📋 Test Results by Category:\n')
+    this.displayResultsByCategory()
+    this.displayResultsBySuite()
 
-    console.log(`\n📨 Signaling ${this.consumers.size} consumer(s) to complete...`);
+    console.log(`\n📨 Signaling ${this.consumers.size} consumer(s) to complete...`)
     this.client.publish(
       'qvac/batch-complete',
       JSON.stringify({
@@ -660,68 +671,68 @@ export class BatchOrchestrator {
         successCount,
         failureCount,
         skippedCount,
-        duration,
+        duration
       }),
       { qos: 1 }
-    );
+    )
 
-    const expectedIds = new Set(this.consumers.keys());
-    this.waitForProfilingData(expectedIds);
+    const expectedIds = new Set(this.consumers.keys())
+    this.waitForProfilingData(expectedIds)
   }
 
   private waitForProfilingData(expectedIds: Set<string>) {
     if (expectedIds.size === 0) {
-      return this.finishAfterProfiling(false, []);
+      return this.finishAfterProfiling(false, [])
     }
 
-    const startTime = Date.now();
+    const startTime = Date.now()
     const timer = setInterval(() => {
-      const pending = [...expectedIds].filter((id) => !this.profilingData.has(id));
-      const timedOut = Date.now() - startTime >= PROFILING_SAFETY_TIMEOUT_MS;
+      const pending = [...expectedIds].filter((id) => !this.profilingData.has(id))
+      const timedOut = Date.now() - startTime >= PROFILING_SAFETY_TIMEOUT_MS
 
       if (pending.length === 0 || timedOut) {
-        clearInterval(timer);
-        this.finishAfterProfiling(timedOut, pending);
+        clearInterval(timer)
+        this.finishAfterProfiling(timedOut, pending)
       }
-    }, 100);
+    }, 100)
   }
 
   private finishAfterProfiling(timedOut: boolean, pendingIds: string[]) {
     if (timedOut && pendingIds.length > 0) {
-      const pendingShort = pendingIds.map((id) => id.split('-').slice(1, 3).join('-'));
+      const pendingShort = pendingIds.map((id) => id.split('-').slice(1, 3).join('-'))
       console.log(
         `⚠️  Safety timeout: missing profiling from ${pendingIds.length} consumer(s): ${pendingShort.join(', ')}`
-      );
+      )
     } else {
-      const receivedCount = this.profilingData.size;
+      const receivedCount = this.profilingData.size
       if (receivedCount > 0) {
-        console.log(`✅ Received profiling data from all ${receivedCount} consumer(s)`);
+        console.log(`✅ Received profiling data from all ${receivedCount} consumer(s)`)
       }
     }
-    this.generateReports();
-    this.scheduleShutdown();
+    this.generateReports()
+    this.scheduleShutdown()
   }
 
   private generateReports() {
     try {
-      const profilingDataArray: ReportProfilingData[] = Array.from(this.profilingData.entries()).map(
-        ([consumerId, profilerExport]) => ({ consumerId, profilerExport })
-      );
+      const profilingDataArray: ReportProfilingData[] = Array.from(
+        this.profilingData.entries()
+      ).map(([consumerId, profilerExport]) => ({ consumerId, profilerExport }))
 
       const completedTests = Array.from(this.completedTests.values()).map((result) => ({
         ...result,
         suites: this.testSuites.get(result.testId),
-        category: this.testCategories.get(result.testId),
-      }));
+        category: this.testCategories.get(result.testId)
+      }))
 
-      let memorySummary;
-      let memNdjsonPath: string | undefined;
+      let memorySummary
+      let memNdjsonPath: string | undefined
       if (this.reportDir) {
-        memNdjsonPath = this.appMemPath;
+        memNdjsonPath = this.appMemPath
         try {
-          memorySummary = aggregateMemory(this.reportDir) ?? undefined;
+          memorySummary = aggregateMemory(this.reportDir) ?? undefined
         } catch (e) {
-          console.warn(`⚠️  Failed to aggregate memory data: ${(e as Error).message}`);
+          console.warn(`⚠️  Failed to aggregate memory data: ${(e as Error).message}`)
         }
       }
 
@@ -732,128 +743,128 @@ export class BatchOrchestrator {
         startTime: this.startTime,
         profilingData: profilingDataArray.length > 0 ? profilingDataArray : undefined,
         memorySummary,
-        reportDir: this.reportDir,
-      };
+        reportDir: this.reportDir
+      }
 
-      const htmlPath = generateHtmlReport(reportData);
-      const jsonPath = generateJsonReport(reportData);
+      const htmlPath = generateHtmlReport(reportData)
+      const jsonPath = generateJsonReport(reportData)
 
-      console.log(`\n📄 Reports generated:`);
-      console.log(`   HTML: ${htmlPath}`);
-      console.log(`   JSON: ${jsonPath}`);
+      console.log(`\n📄 Reports generated:`)
+      console.log(`   HTML: ${htmlPath}`)
+      console.log(`   JSON: ${jsonPath}`)
       if (profilingDataArray.length > 0) {
-        console.log(`📈 Profiling data included from ${profilingDataArray.length} consumer(s)`);
+        console.log(`📈 Profiling data included from ${profilingDataArray.length} consumer(s)`)
       }
       if (memorySummary) {
-        const peakMb = (memorySummary.peakSuite.memoryKb / 1024).toFixed(1);
+        const peakMb = (memorySummary.peakSuite.memoryKb / 1024).toFixed(1)
         console.log(
           `📉 Memory: peak ${peakMb} MB (${memorySummary.metric}, ${memorySummary.chart.length} samples) — ${memNdjsonPath}`
-        );
+        )
       } else if (memNdjsonPath) {
         // Diagnostic: explain why the memory tab is missing.
-        let reason = 'no samples captured';
+        let reason = 'no samples captured'
         try {
-          if (!fs.existsSync(memNdjsonPath)) reason = `${memNdjsonPath} not found`;
-          else if (fs.statSync(memNdjsonPath).size === 0) reason = `${memNdjsonPath} is empty`;
+          if (!fs.existsSync(memNdjsonPath)) reason = `${memNdjsonPath} not found`
+          else if (fs.statSync(memNdjsonPath).size === 0) reason = `${memNdjsonPath} is empty`
         } catch {}
-        console.log(`📉 Memory: skipped (${reason})`);
+        console.log(`📉 Memory: skipped (${reason})`)
       }
     } catch (error) {
-      console.error('\n⚠️  Failed to generate reports:', error);
+      console.error('\n⚠️  Failed to generate reports:', error)
     }
   }
 
   private scheduleShutdown() {
-    const exitCode = this.allConsumersDead ? 1 : 0;
+    const exitCode = this.allConsumersDead ? 1 : 0
     this.shutdownTimer = setTimeout(() => {
-      console.log('\n👋 Shutting down producer...\n');
-      this.client.end(false, {}, () => process.exit(exitCode));
-    }, 2000);
+      console.log('\n👋 Shutting down producer...\n')
+      this.client.end(false, {}, () => process.exit(exitCode))
+    }, 2000)
   }
 
   private displayResultsByCategory() {
-    const categories = new Map<string, { passed: number; failed: number; skipped: number }>();
+    const categories = new Map<string, { passed: number; failed: number; skipped: number }>()
 
     for (const result of this.completedTests.values()) {
       // Prefer the test's declared metadata.category over deriving from
       // testId — splitting "wrong-model-..." would otherwise bucket it
       // as "wrong" instead of "wrong-model".
-      let category =
+      const category =
         this.testCategories.get(result.testId) ??
-        (result.testId.includes('-') ? result.testId.split('-')[0] : result.testId);
+        (result.testId.includes('-') ? result.testId.split('-')[0] : result.testId)
 
       if (!categories.has(category)) {
-        categories.set(category, { passed: 0, failed: 0, skipped: 0 });
+        categories.set(category, { passed: 0, failed: 0, skipped: 0 })
       }
 
-      const stats = categories.get(category)!;
+      const stats = categories.get(category)!
       if (result.outcome === 'success') {
-        stats.passed++;
+        stats.passed++
       } else if (result.outcome === 'skipped') {
-        stats.skipped++;
+        stats.skipped++
       } else {
-        stats.failed++;
+        stats.failed++
       }
     }
 
     for (const [category, stats] of categories) {
-      const total = stats.passed + stats.failed + stats.skipped;
-      const rate = ((stats.passed / Math.max(total - stats.skipped, 1)) * 100).toFixed(0);
-      const skipStr = stats.skipped > 0 ? `, ${stats.skipped} skipped` : '';
-      console.log(`   ${category.padEnd(20)} ${stats.passed}/${total} (${rate}%${skipStr})`);
+      const total = stats.passed + stats.failed + stats.skipped
+      const rate = ((stats.passed / Math.max(total - stats.skipped, 1)) * 100).toFixed(0)
+      const skipStr = stats.skipped > 0 ? `, ${stats.skipped} skipped` : ''
+      console.log(`   ${category.padEnd(20)} ${stats.passed}/${total} (${rate}%${skipStr})`)
     }
   }
 
   private displayResultsBySuite() {
-    if (this.testSuites.size === 0) return;
+    if (this.testSuites.size === 0) return
 
-    const suites = new Map<string, { passed: number; failed: number; skipped: number }>();
+    const suites = new Map<string, { passed: number; failed: number; skipped: number }>()
 
     for (const [, result] of this.completedTests) {
-      const testSuiteList = this.testSuites.get(result.testId);
-      if (!testSuiteList) continue;
+      const testSuiteList = this.testSuites.get(result.testId)
+      if (!testSuiteList) continue
 
       for (const suite of testSuiteList) {
         if (!suites.has(suite)) {
-          suites.set(suite, { passed: 0, failed: 0, skipped: 0 });
+          suites.set(suite, { passed: 0, failed: 0, skipped: 0 })
         }
-        const stats = suites.get(suite)!;
+        const stats = suites.get(suite)!
         if (result.outcome === 'success') {
-          stats.passed++;
+          stats.passed++
         } else if (result.outcome === 'skipped') {
-          stats.skipped++;
+          stats.skipped++
         } else {
-          stats.failed++;
+          stats.failed++
         }
       }
     }
 
-    if (suites.size === 0) return;
+    if (suites.size === 0) return
 
-    console.log('\n📋 Test Results by Suite:\n');
+    console.log('\n📋 Test Results by Suite:\n')
     for (const [suite, stats] of suites) {
-      const total = stats.passed + stats.failed + stats.skipped;
-      const rate = ((stats.passed / Math.max(total - stats.skipped, 1)) * 100).toFixed(0);
-      const skipStr = stats.skipped > 0 ? `, ${stats.skipped} skipped` : '';
-      console.log(`   ${suite.padEnd(20)} ${stats.passed}/${total} (${rate}%${skipStr})`);
+      const total = stats.passed + stats.failed + stats.skipped
+      const rate = ((stats.passed / Math.max(total - stats.skipped, 1)) * 100).toFixed(0)
+      const skipStr = stats.skipped > 0 ? `, ${stats.skipped} skipped` : ''
+      console.log(`   ${suite.padEnd(20)} ${stats.passed}/${total} (${rate}%${skipStr})`)
     }
   }
 
   public buildTestQueue(tests: TestDefinition[]) {
-    console.log('🔨 Building test queue...\n');
+    console.log('🔨 Building test queue...\n')
 
-    let counter = 0;
-    let skippedCount = 0;
+    let counter = 0
+    let skippedCount = 0
 
     for (const test of tests) {
       if (test.skip && !test.skip.platforms) {
-        skippedCount++;
+        skippedCount++
         console.log(
           `⏭️  Skipping ${test.testId}: ${test.skip.reason}${test.skip.issue ? ` (${test.skip.issue})` : ''}`
-        );
+        )
 
         // Record as skipped result so it appears in reports
-        const skipId = `skip-${Date.now()}-${counter++}`;
+        const skipId = `skip-${Date.now()}-${counter++}`
         this.completedTests.set(skipId, {
           runId: this.runId,
           consumerId: 'producer',
@@ -862,12 +873,12 @@ export class BatchOrchestrator {
           outcome: 'skipped',
           duration: 0,
           timestamp: new Date().toISOString(),
-          error: `${test.skip.reason}${test.skip.issue ? ` (${test.skip.issue})` : ''}`,
-        });
+          error: `${test.skip.reason}${test.skip.issue ? ` (${test.skip.issue})` : ''}`
+        })
         if (typeof test.metadata?.category === 'string' && test.metadata.category.length > 0) {
-          this.testCategories.set(test.testId, test.metadata.category);
+          this.testCategories.set(test.testId, test.metadata.category)
         }
-        continue;
+        continue
       }
 
       const testCase: TestCase = {
@@ -875,75 +886,77 @@ export class BatchOrchestrator {
         testId: test.testId,
         metadata: test.metadata || {},
         suites: test.suites,
-        estimatedDurationMs: test.metadata?.estimatedDurationMs || 10000,
-      };
+        estimatedDurationMs: test.metadata?.estimatedDurationMs || 10000
+      }
       if (test.suites) {
-        this.testSuites.set(test.testId, test.suites);
+        this.testSuites.set(test.testId, test.suites)
       }
       if (typeof test.metadata?.category === 'string' && test.metadata.category.length > 0) {
-        this.testCategories.set(test.testId, test.metadata.category);
+        this.testCategories.set(test.testId, test.metadata.category)
       }
-      this.testQueue.push(testCase);
+      this.testQueue.push(testCase)
     }
 
     if (skippedCount > 0) {
-      console.log(`\n⏭️  Skipped ${skippedCount} tests\n`);
+      console.log(`\n⏭️  Skipped ${skippedCount} tests\n`)
     }
 
     // Group by category from metadata for reporting
-    const byCategory = new Map<string, number>();
+    const byCategory = new Map<string, number>()
     for (const test of this.testQueue) {
-      const category = (typeof test.metadata?.category === 'string' ? test.metadata.category : null) || 'uncategorized';
-      byCategory.set(category, (byCategory.get(category) || 0) + 1);
+      const category =
+        (typeof test.metadata?.category === 'string' ? test.metadata.category : null) ||
+        'uncategorized'
+      byCategory.set(category, (byCategory.get(category) || 0) + 1)
     }
 
-    this.initialTotalTests = this.testQueue.length + this.completedTests.size;
+    this.initialTotalTests = this.testQueue.length + this.completedTests.size
     // Dedupe N-iteration tests; consumers only need each testId once.
-    this.filteredTestIds = Array.from(new Set(this.testQueue.map((t) => t.testId)));
+    this.filteredTestIds = Array.from(new Set(this.testQueue.map((t) => t.testId)))
 
-    console.log(`📦 Built ${this.testQueue.length} tests:`);
+    console.log(`📦 Built ${this.testQueue.length} tests:`)
     for (const [category, count] of byCategory) {
-      console.log(`   - ${category}: ${count} tests`);
+      console.log(`   - ${category}: ${count} tests`)
     }
-    console.log();
+    console.log()
   }
 
   public start() {
     if (this.batchStarted) {
-      console.warn('⚠️  Batch already started');
-      return;
+      console.warn('⚠️  Batch already started')
+      return
     }
 
-    this.batchStarted = true;
-    this.startTime = Date.now();
+    this.batchStarted = true
+    this.startTime = Date.now()
 
-    console.log('🚀 Batch orchestration started');
-    console.log(`📋 Total tests: ${this.testQueue.length}`);
-    console.log(`⏳ Waiting for consumers to register (timeout: ${this.consumerTimeoutSec}s)...\n`);
+    console.log('🚀 Batch orchestration started')
+    console.log(`📋 Total tests: ${this.testQueue.length}`)
+    console.log(`⏳ Waiting for consumers to register (timeout: ${this.consumerTimeoutSec}s)...\n`)
 
     // Start consumer connection timeout
     this.consumerTimeoutTimer = setTimeout(() => {
       if (this.consumers.size === 0) {
-        console.error(`\n❌ No consumers connected within ${this.consumerTimeoutSec}s timeout`);
-        console.error('   Make sure the consumer is running with the same --runId');
-        this.client.end(false, {}, () => process.exit(1));
+        console.error(`\n❌ No consumers connected within ${this.consumerTimeoutSec}s timeout`)
+        console.error('   Make sure the consumer is running with the same --runId')
+        this.client.end(false, {}, () => process.exit(1))
       }
-    }, this.consumerTimeoutSec * 1000);
+    }, this.consumerTimeoutSec * 1000)
 
     // Start timeout checker (every 10 seconds)
-    setInterval(() => this.checkTimeouts(), 10000);
+    setInterval(() => this.checkTimeouts(), 10000)
 
     // Display status every 30 seconds
     setInterval(() => {
       if (this.assignedTests.size > 0 || this.testQueue.length > 0) {
-        this.displayStatus();
+        this.displayStatus()
       }
-    }, 30000);
+    }, 30000)
   }
 
   public shutdown() {
-    console.log('\n⚠️  Shutting down...');
-    this.client.end(false, {}, () => process.exit(0));
+    console.log('\n⚠️  Shutting down...')
+    this.client.end(false, {}, () => process.exit(0))
   }
 }
 

@@ -1,50 +1,50 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import * as os from 'node:os';
-import type { ProfilerExport } from '../schemas/messages.js';
-import { parseProfilerExport, renderRawProfilerFallback, escapeHtml } from './profiler-adapter.js';
-import type { MemorySummary } from './memory-aggregator.js';
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+import * as os from 'node:os'
+import type { ProfilerExport } from '../schemas/messages.js'
+import { parseProfilerExport, renderRawProfilerFallback, escapeHtml } from './profiler-adapter.js'
+import type { MemorySummary } from './memory-aggregator.js'
 
 export interface ReportTestResult {
-  testId: string;
+  testId: string
   /** Unique test-instance ID (matches per-test memory window). */
-  uniqueTestId?: string;
-  consumerId: string;
-  outcome: 'success' | 'failure' | 'skipped';
-  duration: number;
-  error?: string;
-  output?: string;
-  expected?: string;
-  actual?: string;
-  suites?: string[];
+  uniqueTestId?: string
+  consumerId: string
+  outcome: 'success' | 'failure' | 'skipped'
+  duration: number
+  error?: string
+  output?: string
+  expected?: string
+  actual?: string
+  suites?: string[]
   /**
    * Test's declared metadata.category. Preferred over deriving from testId
    * via prefix-split, which mangles multi-word categories like "wrong-model"
    * into "wrong".
    */
-  category?: string;
+  category?: string
 }
 
 export interface ReportConsumerInfo {
-  consumerId: string;
-  platform: string;
+  consumerId: string
+  platform: string
 }
 
 export interface ReportProfilingData {
-  consumerId: string;
-  profilerExport: ProfilerExport;
+  consumerId: string
+  profilerExport: ProfilerExport
 }
 
 export interface ReportData {
-  runId: string;
-  completedTests: ReportTestResult[];
-  consumers: Map<string, ReportConsumerInfo>;
-  startTime: number;
-  profilingData?: ReportProfilingData[];
+  runId: string
+  completedTests: ReportTestResult[]
+  consumers: Map<string, ReportConsumerInfo>
+  startTime: number
+  profilingData?: ReportProfilingData[]
   /** Optional aggregated in-app memory data; report omits the Memory tab when absent. */
-  memorySummary?: MemorySummary;
+  memorySummary?: MemorySummary
   /** Override the default `reports/` output directory (used by run:local). */
-  reportDir?: string;
+  reportDir?: string
 }
 
 // Collect system information for the report
@@ -57,61 +57,62 @@ const systemInfo = {
   cpuCores: os.cpus().length,
   totalMemoryGB: (os.totalmem() / 1024 ** 3).toFixed(2),
   freeMemoryGB: (os.freemem() / 1024 ** 3).toFixed(2),
-  nodeVersion: process.version,
-};
+  nodeVersion: process.version
+}
 
 export function generateHtmlReport(data: ReportData): string {
-  const outDir = data.reportDir || 'reports';
+  const outDir = data.reportDir || 'reports'
   if (!fs.existsSync(outDir)) {
-    fs.mkdirSync(outDir, { recursive: true });
+    fs.mkdirSync(outDir, { recursive: true })
   }
 
   // Try filename with run ID first
-  let filename = path.join(outDir, `batch-report-${data.runId}.html`);
+  let filename = path.join(outDir, `batch-report-${data.runId}.html`)
 
   // If file exists, add timestamp to make it unique
   if (fs.existsSync(filename)) {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    filename = path.join(outDir, `batch-report-${data.runId}-${timestamp}.html`);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    filename = path.join(outDir, `batch-report-${data.runId}-${timestamp}.html`)
   }
 
-  const elapsed = data.startTime > 0 ? (Date.now() - data.startTime) / 1000 : 0;
-  const successCount = data.completedTests.filter((t) => t.outcome === 'success').length;
-  const failureCount = data.completedTests.filter((t) => t.outcome === 'failure').length;
-  const skippedCount = data.completedTests.filter((t) => t.outcome === 'skipped').length;
-  const nonSkipped = data.completedTests.length - skippedCount;
-  const successRate = nonSkipped > 0 ? ((successCount / nonSkipped) * 100).toFixed(1) : '0.0';
+  const elapsed = data.startTime > 0 ? (Date.now() - data.startTime) / 1000 : 0
+  const successCount = data.completedTests.filter((t) => t.outcome === 'success').length
+  const failureCount = data.completedTests.filter((t) => t.outcome === 'failure').length
+  const skippedCount = data.completedTests.filter((t) => t.outcome === 'skipped').length
+  const nonSkipped = data.completedTests.length - skippedCount
+  const successRate = nonSkipped > 0 ? ((successCount / nonSkipped) * 100).toFixed(1) : '0.0'
 
   // Group tests by consumer
-  const testsByConsumer = new Map<string, ReportTestResult[]>();
+  const testsByConsumer = new Map<string, ReportTestResult[]>()
   for (const test of data.completedTests) {
     if (!testsByConsumer.has(test.consumerId)) {
-      testsByConsumer.set(test.consumerId, []);
+      testsByConsumer.set(test.consumerId, [])
     }
-    testsByConsumer.get(test.consumerId)!.push(test);
+    testsByConsumer.get(test.consumerId)!.push(test)
   }
 
   // Group tests by category. Prefer the test's declared metadata.category
   // (passed through ReportTestResult.category by the orchestrator) over
   // the fallback testId-prefix split.
-  const testsByCategory = new Map<string, ReportTestResult[]>();
+  const testsByCategory = new Map<string, ReportTestResult[]>()
   for (const test of data.completedTests) {
-    const category = test.category ?? (test.testId.includes('-') ? test.testId.split('-')[0] : test.testId);
+    const category =
+      test.category ?? (test.testId.includes('-') ? test.testId.split('-')[0] : test.testId)
     if (!testsByCategory.has(category)) {
-      testsByCategory.set(category, []);
+      testsByCategory.set(category, [])
     }
-    testsByCategory.get(category)!.push(test);
+    testsByCategory.get(category)!.push(test)
   }
 
   // Group tests by suite
-  const testsBySuite = new Map<string, ReportTestResult[]>();
+  const testsBySuite = new Map<string, ReportTestResult[]>()
   for (const test of data.completedTests) {
-    if (!test.suites) continue;
+    if (!test.suites) continue
     for (const suite of test.suites) {
       if (!testsBySuite.has(suite)) {
-        testsBySuite.set(suite, []);
+        testsBySuite.set(suite, [])
       }
-      testsBySuite.get(suite)!.push(test);
+      testsBySuite.get(suite)!.push(test)
     }
   }
 
@@ -417,8 +418,8 @@ export function generateHtmlReport(data: ReportData): string {
 				<button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
 				${Array.from(testsByConsumer.keys())
           .map((consumerId, idx) => {
-            const shortId = consumerId.split('-').slice(1, 3).join('-');
-            return `<button class="tab" onclick="switchTab('consumer-${idx}')" title="${consumerId}">${shortId}</button>`;
+            const shortId = consumerId.split('-').slice(1, 3).join('-')
+            return `<button class="tab" onclick="switchTab('consumer-${idx}')" title="${consumerId}">${shortId}</button>`
           })
           .join('')}
 				<button class="tab" onclick="switchTab('all-tests')">📋 All Tests</button>
@@ -443,11 +444,12 @@ export function generateHtmlReport(data: ReportData): string {
 					<tbody>
 						${Array.from(testsByCategory.entries())
               .map(([category, tests]) => {
-                const passed = tests.filter((t) => t.outcome === 'success').length;
-                const failed = tests.filter((t) => t.outcome === 'failure').length;
-                const skipped = tests.filter((t) => t.outcome === 'skipped').length;
-                const nonSkippedTotal = tests.length - skipped;
-                const rate = nonSkippedTotal > 0 ? ((passed / nonSkippedTotal) * 100).toFixed(0) : 'N/A';
+                const passed = tests.filter((t) => t.outcome === 'success').length
+                const failed = tests.filter((t) => t.outcome === 'failure').length
+                const skipped = tests.filter((t) => t.outcome === 'skipped').length
+                const nonSkippedTotal = tests.length - skipped
+                const rate =
+                  nonSkippedTotal > 0 ? ((passed / nonSkippedTotal) * 100).toFixed(0) : 'N/A'
                 return `
 							<tr>
 								<td><strong>${category}</strong></td>
@@ -456,7 +458,7 @@ export function generateHtmlReport(data: ReportData): string {
 								<td>${skipped}</td>
 								<td>${failed}</td>
 								<td>${rate}${rate !== 'N/A' ? '%' : ''}</td>
-							</tr>`;
+							</tr>`
               })
               .join('')}
 					</tbody>
@@ -480,11 +482,12 @@ export function generateHtmlReport(data: ReportData): string {
 					<tbody>
 						${Array.from(testsBySuite.entries())
               .map(([suite, tests]) => {
-                const passed = tests.filter((t) => t.outcome === 'success').length;
-                const failed = tests.filter((t) => t.outcome === 'failure').length;
-                const skipped = tests.filter((t) => t.outcome === 'skipped').length;
-                const nonSkippedTotal = tests.length - skipped;
-                const rate = nonSkippedTotal > 0 ? ((passed / nonSkippedTotal) * 100).toFixed(0) : 'N/A';
+                const passed = tests.filter((t) => t.outcome === 'success').length
+                const failed = tests.filter((t) => t.outcome === 'failure').length
+                const skipped = tests.filter((t) => t.outcome === 'skipped').length
+                const nonSkippedTotal = tests.length - skipped
+                const rate =
+                  nonSkippedTotal > 0 ? ((passed / nonSkippedTotal) * 100).toFixed(0) : 'N/A'
                 return `
 							<tr>
 								<td><strong>${suite}</strong></td>
@@ -493,7 +496,7 @@ export function generateHtmlReport(data: ReportData): string {
 								<td>${skipped}</td>
 								<td>${failed}</td>
 								<td>${rate}${rate !== 'N/A' ? '%' : ''}</td>
-							</tr>`;
+							</tr>`
               })
               .join('')}
 					</tbody>
@@ -519,56 +522,57 @@ export function generateHtmlReport(data: ReportData): string {
 						${data.completedTests
               .filter((t) => t.outcome === 'failure')
               .map((test, idx) => {
-                const errorMsg = test.error || 'No error message';
-                const outputMsg = test.output || 'No output';
-                const detailsId = 'details-' + idx;
-                const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const errorMsg = test.error || 'No error message'
+                const outputMsg = test.output || 'No output'
+                const detailsId = 'details-' + idx
+                const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
                 // Build comprehensive error details with Expected vs Actual comparison
-                let errorDetailsHtml = '<div class="error-details">';
-                errorDetailsHtml += '<div class="error-label">❌ Failure Analysis</div>';
+                let errorDetailsHtml = '<div class="error-details">'
+                errorDetailsHtml += '<div class="error-label">❌ Failure Analysis</div>'
 
                 // Show Expected vs Actual if available
                 if (test.expected && test.actual) {
-                  const escapedExpected = test.expected.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                  const escapedActual = test.actual.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                  errorDetailsHtml += '<div class="comparison-container">';
-                  errorDetailsHtml += '<div class="expected-box">';
-                  errorDetailsHtml += '<div class="box-label">✅ Expected</div>';
-                  errorDetailsHtml += '<div class="box-content">' + escapedExpected + '</div>';
-                  errorDetailsHtml += '</div>';
-                  errorDetailsHtml += '<div class="actual-box">';
-                  errorDetailsHtml += '<div class="box-label">❌ Actual</div>';
-                  errorDetailsHtml += '<div class="box-content">' + escapedActual + '</div>';
-                  errorDetailsHtml += '</div>';
-                  errorDetailsHtml += '</div>';
+                  const escapedExpected = test.expected.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                  const escapedActual = test.actual.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                  errorDetailsHtml += '<div class="comparison-container">'
+                  errorDetailsHtml += '<div class="expected-box">'
+                  errorDetailsHtml += '<div class="box-label">✅ Expected</div>'
+                  errorDetailsHtml += '<div class="box-content">' + escapedExpected + '</div>'
+                  errorDetailsHtml += '</div>'
+                  errorDetailsHtml += '<div class="actual-box">'
+                  errorDetailsHtml += '<div class="box-label">❌ Actual</div>'
+                  errorDetailsHtml += '<div class="box-content">' + escapedActual + '</div>'
+                  errorDetailsHtml += '</div>'
+                  errorDetailsHtml += '</div>'
                 }
 
                 // Show error message
-                errorDetailsHtml += '<div class="log-section">';
-                errorDetailsHtml += '<div class="log-header">📋 Error Message</div>';
-                errorDetailsHtml += '<div class="output-text">' + escapedError + '</div>';
-                errorDetailsHtml += '</div>';
+                errorDetailsHtml += '<div class="log-section">'
+                errorDetailsHtml += '<div class="log-header">📋 Error Message</div>'
+                errorDetailsHtml += '<div class="output-text">' + escapedError + '</div>'
+                errorDetailsHtml += '</div>'
 
                 // Show output if different from error
                 if (outputMsg !== errorMsg && outputMsg !== 'No output') {
-                  errorDetailsHtml += '<div class="log-section">';
-                  errorDetailsHtml += '<div class="log-header">📄 Test Output / Log</div>';
-                  errorDetailsHtml += '<div class="output-text">' + escapedOutput + '</div>';
-                  errorDetailsHtml += '</div>';
+                  errorDetailsHtml += '<div class="log-section">'
+                  errorDetailsHtml += '<div class="log-header">📄 Test Output / Log</div>'
+                  errorDetailsHtml += '<div class="output-text">' + escapedOutput + '</div>'
+                  errorDetailsHtml += '</div>'
                 }
 
                 // Show test information
-                errorDetailsHtml += '<div class="log-section">';
-                errorDetailsHtml += '<div class="log-header">ℹ️  Test Information</div>';
-                errorDetailsHtml += '<div class="output-text">';
-                errorDetailsHtml += '<strong>Test ID:</strong> ' + test.testId + '<br>';
-                errorDetailsHtml += '<strong>Consumer:</strong> ' + test.consumerId + '<br>';
-                errorDetailsHtml += '<strong>Duration:</strong> ' + (test.duration / 1000).toFixed(2) + 's<br>';
-                errorDetailsHtml += '<strong>Timestamp:</strong> ' + new Date().toISOString();
-                errorDetailsHtml += '</div></div>';
-                errorDetailsHtml += '</div>';
+                errorDetailsHtml += '<div class="log-section">'
+                errorDetailsHtml += '<div class="log-header">ℹ️  Test Information</div>'
+                errorDetailsHtml += '<div class="output-text">'
+                errorDetailsHtml += '<strong>Test ID:</strong> ' + test.testId + '<br>'
+                errorDetailsHtml += '<strong>Consumer:</strong> ' + test.consumerId + '<br>'
+                errorDetailsHtml +=
+                  '<strong>Duration:</strong> ' + (test.duration / 1000).toFixed(2) + 's<br>'
+                errorDetailsHtml += '<strong>Timestamp:</strong> ' + new Date().toISOString()
+                errorDetailsHtml += '</div></div>'
+                errorDetailsHtml += '</div>'
 
                 return `
 						<tr class="failure-highlight">
@@ -582,7 +586,7 @@ export function generateHtmlReport(data: ReportData): string {
 								</div>
 							</td>
 						</tr>
-						`;
+						`
               })
               .join('')}
 					</tbody>
@@ -595,11 +599,11 @@ export function generateHtmlReport(data: ReportData): string {
 			<!-- Consumer Tabs -->
 			${Array.from(testsByConsumer.entries())
         .map(([consumerId, tests], idx) => {
-          const consumer = data.consumers.get(consumerId);
-          const passed = tests.filter((t) => t.outcome === 'success').length;
-          const failed = tests.filter((t) => t.outcome === 'failure').length;
-          const avgDuration = tests.reduce((sum, t) => sum + t.duration, 0) / tests.length;
-          const shortId = consumerId.split('-').slice(1, 3).join('-');
+          const consumer = data.consumers.get(consumerId)
+          const passed = tests.filter((t) => t.outcome === 'success').length
+          const failed = tests.filter((t) => t.outcome === 'failure').length
+          const avgDuration = tests.reduce((sum, t) => sum + t.duration, 0) / tests.length
+          const shortId = consumerId.split('-').slice(1, 3).join('-')
 
           return `
 				<div id="consumer-${idx}" class="tab-content">
@@ -627,48 +631,53 @@ export function generateHtmlReport(data: ReportData): string {
 						<tbody>
 							${tests
                 .map((test, testIdx) => {
-                  const detailsId = 'consumer-' + idx + '-test-' + testIdx;
-                  const errorMsg = test.error || 'No error message';
-                  const outputMsg = test.output || 'No output';
-                  const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                  const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                  const detailsId = 'consumer-' + idx + '-test-' + testIdx
+                  const errorMsg = test.error || 'No error message'
+                  const outputMsg = test.output || 'No output'
+                  const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                  const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
                   // Build comprehensive error details with Expected vs Actual
-                  let errorDetailsHtml = '<div class="error-details">';
-                  errorDetailsHtml += '<div class="error-label">❌ Failure Analysis</div>';
+                  let errorDetailsHtml = '<div class="error-details">'
+                  errorDetailsHtml += '<div class="error-label">❌ Failure Analysis</div>'
 
                   // Show Expected vs Actual if available
                   if (test.expected && test.actual) {
-                    const escapedExpected = test.expected.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                    const escapedActual = test.actual.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                    errorDetailsHtml += '<div class="comparison-container">';
-                    errorDetailsHtml += '<div class="expected-box">';
-                    errorDetailsHtml += '<div class="box-label">✅ Expected</div>';
-                    errorDetailsHtml += '<div class="box-content">' + escapedExpected + '</div>';
-                    errorDetailsHtml += '</div>';
-                    errorDetailsHtml += '<div class="actual-box">';
-                    errorDetailsHtml += '<div class="box-label">❌ Actual</div>';
-                    errorDetailsHtml += '<div class="box-content">' + escapedActual + '</div>';
-                    errorDetailsHtml += '</div>';
-                    errorDetailsHtml += '</div>';
+                    const escapedExpected = test.expected
+                      .replace(/</g, '&lt;')
+                      .replace(/>/g, '&gt;')
+                    const escapedActual = test.actual.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    errorDetailsHtml += '<div class="comparison-container">'
+                    errorDetailsHtml += '<div class="expected-box">'
+                    errorDetailsHtml += '<div class="box-label">✅ Expected</div>'
+                    errorDetailsHtml += '<div class="box-content">' + escapedExpected + '</div>'
+                    errorDetailsHtml += '</div>'
+                    errorDetailsHtml += '<div class="actual-box">'
+                    errorDetailsHtml += '<div class="box-label">❌ Actual</div>'
+                    errorDetailsHtml += '<div class="box-content">' + escapedActual + '</div>'
+                    errorDetailsHtml += '</div>'
+                    errorDetailsHtml += '</div>'
                   }
 
                   // Show error message
-                  errorDetailsHtml += '<div class="log-section"><div class="log-header">📋 Error Message</div>';
-                  errorDetailsHtml += '<div class="output-text">' + escapedError + '</div></div>';
+                  errorDetailsHtml +=
+                    '<div class="log-section"><div class="log-header">📋 Error Message</div>'
+                  errorDetailsHtml += '<div class="output-text">' + escapedError + '</div></div>'
 
                   // Show output if different
                   if (outputMsg !== errorMsg && outputMsg !== 'No output') {
-                    errorDetailsHtml += '<div class="log-section"><div class="log-header">📄 Test Output / Log</div>';
-                    errorDetailsHtml += '<div class="output-text">' + escapedOutput + '</div></div>';
+                    errorDetailsHtml +=
+                      '<div class="log-section"><div class="log-header">📄 Test Output / Log</div>'
+                    errorDetailsHtml += '<div class="output-text">' + escapedOutput + '</div></div>'
                   }
 
-                  errorDetailsHtml += '<div class="log-section"><div class="log-header">ℹ️  Test Information</div>';
+                  errorDetailsHtml +=
+                    '<div class="log-section"><div class="log-header">ℹ️  Test Information</div>'
                   errorDetailsHtml +=
                     '<div class="output-text"><strong>Duration:</strong> ' +
                     (test.duration / 1000).toFixed(2) +
-                    's</div></div>';
-                  errorDetailsHtml += '</div>';
+                    's</div></div>'
+                  errorDetailsHtml += '</div>'
 
                   const detailsCell =
                     test.outcome === 'failure'
@@ -680,7 +689,7 @@ export function generateHtmlReport(data: ReportData): string {
                         '" class="details-content">' +
                         errorDetailsHtml +
                         '</div>'
-                      : '✅';
+                      : '✅'
                   return `
 							<tr class="${test.outcome === 'failure' ? 'failure-highlight' : ''}">
 								<td>${test.testId}</td>
@@ -688,13 +697,13 @@ export function generateHtmlReport(data: ReportData): string {
 								<td>${(test.duration / 1000).toFixed(2)}s</td>
 								<td>${detailsCell}</td>
 							</tr>
-							`;
+							`
                 })
                 .join('')}
 						</tbody>
 					</table>
 				</div>
-				`;
+				`
         })
         .join('')}
 
@@ -714,46 +723,53 @@ export function generateHtmlReport(data: ReportData): string {
 					<tbody>
 						${data.completedTests
               .map((test, allIdx) => {
-                const detailsId = 'all-test-' + allIdx;
-                const errorMsg = test.error || 'No error message';
-                const outputMsg = test.output || 'No output';
-                const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const detailsId = 'all-test-' + allIdx
+                const errorMsg = test.error || 'No error message'
+                const outputMsg = test.output || 'No output'
+                const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
                 // Build comprehensive error details with Expected vs Actual
-                let errorDetailsHtml = '<div class="error-details">';
-                errorDetailsHtml += '<div class="error-label">❌ Failure Analysis</div>';
+                let errorDetailsHtml = '<div class="error-details">'
+                errorDetailsHtml += '<div class="error-label">❌ Failure Analysis</div>'
 
                 // Show Expected vs Actual if available
                 if (test.expected && test.actual) {
-                  const escapedExpected = test.expected.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                  const escapedActual = test.actual.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                  errorDetailsHtml += '<div class="comparison-container">';
-                  errorDetailsHtml += '<div class="expected-box">';
-                  errorDetailsHtml += '<div class="box-label">✅ Expected</div>';
-                  errorDetailsHtml += '<div class="box-content">' + escapedExpected + '</div>';
-                  errorDetailsHtml += '</div>';
-                  errorDetailsHtml += '<div class="actual-box">';
-                  errorDetailsHtml += '<div class="box-label">❌ Actual</div>';
-                  errorDetailsHtml += '<div class="box-content">' + escapedActual + '</div>';
-                  errorDetailsHtml += '</div>';
-                  errorDetailsHtml += '</div>';
+                  const escapedExpected = test.expected.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                  const escapedActual = test.actual.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                  errorDetailsHtml += '<div class="comparison-container">'
+                  errorDetailsHtml += '<div class="expected-box">'
+                  errorDetailsHtml += '<div class="box-label">✅ Expected</div>'
+                  errorDetailsHtml += '<div class="box-content">' + escapedExpected + '</div>'
+                  errorDetailsHtml += '</div>'
+                  errorDetailsHtml += '<div class="actual-box">'
+                  errorDetailsHtml += '<div class="box-label">❌ Actual</div>'
+                  errorDetailsHtml += '<div class="box-content">' + escapedActual + '</div>'
+                  errorDetailsHtml += '</div>'
+                  errorDetailsHtml += '</div>'
                 }
 
                 // Show error message
-                errorDetailsHtml += '<div class="log-section"><div class="log-header">📋 Error Message</div>';
-                errorDetailsHtml += '<div class="output-text">' + escapedError + '</div></div>';
+                errorDetailsHtml +=
+                  '<div class="log-section"><div class="log-header">📋 Error Message</div>'
+                errorDetailsHtml += '<div class="output-text">' + escapedError + '</div></div>'
 
                 // Show output if different
                 if (outputMsg !== errorMsg && outputMsg !== 'No output') {
-                  errorDetailsHtml += '<div class="log-section"><div class="log-header">📄 Test Output / Log</div>';
-                  errorDetailsHtml += '<div class="output-text">' + escapedOutput + '</div></div>';
+                  errorDetailsHtml +=
+                    '<div class="log-section"><div class="log-header">📄 Test Output / Log</div>'
+                  errorDetailsHtml += '<div class="output-text">' + escapedOutput + '</div></div>'
                 }
 
-                errorDetailsHtml += '<div class="log-section"><div class="log-header">ℹ️  Test Information</div>';
-                errorDetailsHtml += '<div class="output-text"><strong>Consumer:</strong> ' + test.consumerId + '<br>';
-                errorDetailsHtml += '<strong>Duration:</strong> ' + (test.duration / 1000).toFixed(2) + 's</div></div>';
-                errorDetailsHtml += '</div>';
+                errorDetailsHtml +=
+                  '<div class="log-section"><div class="log-header">ℹ️  Test Information</div>'
+                errorDetailsHtml +=
+                  '<div class="output-text"><strong>Consumer:</strong> ' + test.consumerId + '<br>'
+                errorDetailsHtml +=
+                  '<strong>Duration:</strong> ' +
+                  (test.duration / 1000).toFixed(2) +
+                  's</div></div>'
+                errorDetailsHtml += '</div>'
 
                 const detailsCell =
                   test.outcome === 'failure'
@@ -765,7 +781,7 @@ export function generateHtmlReport(data: ReportData): string {
                       '" class="details-content">' +
                       errorDetailsHtml +
                       '</div>'
-                    : '✅';
+                    : '✅'
                 return `
 						<tr class="${test.outcome === 'failure' ? 'failure-highlight' : ''}">
 							<td>${test.testId}</td>
@@ -774,7 +790,7 @@ export function generateHtmlReport(data: ReportData): string {
 							<td>${(test.duration / 1000).toFixed(2)}s</td>
 							<td>${detailsCell}</td>
 						</tr>
-						`;
+						`
               })
               .join('')}
 					</tbody>
@@ -794,24 +810,28 @@ export function generateHtmlReport(data: ReportData): string {
 				
 				${data.profilingData
           .map((pd) => {
-            const parsed = parseProfilerExport(pd.profilerExport);
-            if (!parsed) return renderRawProfilerFallback(pd.consumerId, pd.profilerExport);
+            const parsed = parseProfilerExport(pd.profilerExport)
+            if (!parsed) return renderRawProfilerFallback(pd.consumerId, pd.profilerExport)
 
-            const shortId = pd.consumerId.split('-').slice(1, 3).join('-');
-            const { config, aggregates, recentEvents } = parsed;
-            const metrics = Object.entries(aggregates).sort((a, b) => a[0].localeCompare(b[0]));
+            const shortId = pd.consumerId.split('-').slice(1, 3).join('-')
+            const { config, aggregates, recentEvents } = parsed
+            const metrics = Object.entries(aggregates).sort((a, b) => a[0].localeCompare(b[0]))
 
             const formatValue = (val: number, metricName: string) => {
-              const lowerName = metricName.toLowerCase();
+              const lowerName = metricName.toLowerCase()
               if (lowerName.includes('bps') || lowerName.includes('speed')) {
-                if (val < 1024) return val.toFixed(0) + ' B/s';
-                if (val < 1024 * 1024) return (val / 1024).toFixed(1) + ' KB/s';
-                return (val / (1024 * 1024)).toFixed(2) + ' MB/s';
+                if (val < 1024) return val.toFixed(0) + ' B/s'
+                if (val < 1024 * 1024) return (val / 1024).toFixed(1) + ' KB/s'
+                return (val / (1024 * 1024)).toFixed(2) + ' MB/s'
               }
-              if (lowerName.includes('bytes') || lowerName.includes('downloaded') || lowerName.includes('size')) {
-                if (val < 1024) return val.toFixed(0) + ' B';
-                if (val < 1024 * 1024) return (val / 1024).toFixed(1) + ' KB';
-                return (val / (1024 * 1024)).toFixed(2) + ' MB';
+              if (
+                lowerName.includes('bytes') ||
+                lowerName.includes('downloaded') ||
+                lowerName.includes('size')
+              ) {
+                if (val < 1024) return val.toFixed(0) + ' B'
+                if (val < 1024 * 1024) return (val / 1024).toFixed(1) + ' KB'
+                return (val / (1024 * 1024)).toFixed(2) + ' MB'
               }
               if (
                 lowerName.includes('tokens') ||
@@ -820,18 +840,18 @@ export function generateHtmlReport(data: ReportData): string {
                 lowerName.includes('segments') ||
                 lowerName.includes('samples')
               ) {
-                if (Number.isInteger(val)) return val.toLocaleString();
-                if (Math.abs(val) < 0.01) return val.toExponential(2);
-                if (Math.abs(val) < 1) return val.toFixed(3);
-                if (Math.abs(val) < 100) return val.toFixed(2);
-                return val.toFixed(1);
+                if (Number.isInteger(val)) return val.toLocaleString()
+                if (Math.abs(val) < 0.01) return val.toExponential(2)
+                if (Math.abs(val) < 1) return val.toFixed(3)
+                if (Math.abs(val) < 100) return val.toFixed(2)
+                return val.toFixed(1)
               }
               // Default: duration
-              if (val < 1) return (val * 1000).toFixed(0) + 'μs';
-              if (val < 1000) return val.toFixed(1) + 'ms';
-              if (val < 60000) return (val / 1000).toFixed(2) + 's';
-              return (val / 60000).toFixed(2) + 'm';
-            };
+              if (val < 1) return (val * 1000).toFixed(0) + 'μs'
+              if (val < 1000) return val.toFixed(1) + 'ms'
+              if (val < 60000) return (val / 1000).toFixed(2) + 's'
+              return (val / 60000).toFixed(2) + 'm'
+            }
 
             return `
 				<div class="consumer-section">
@@ -848,20 +868,20 @@ export function generateHtmlReport(data: ReportData): string {
 					${
             metrics.length > 0
               ? (() => {
-                  type MetricEntry = (typeof metrics)[number];
-                  const groups: Record<string, MetricEntry[]> = {};
+                  type MetricEntry = (typeof metrics)[number]
+                  const groups: Record<string, MetricEntry[]> = {}
                   for (const entry of metrics) {
-                    const prefix = entry[0].split('.')[0];
-                    if (!groups[prefix]) groups[prefix] = [];
-                    groups[prefix].push(entry);
+                    const prefix = entry[0].split('.')[0]
+                    if (!groups[prefix]) groups[prefix] = []
+                    groups[prefix].push(entry)
                   }
-                  const groupNames = Object.keys(groups).sort();
+                  const groupNames = Object.keys(groups).sort()
 
                   return `
 					<h4 style="margin: 15px 0 10px 0; color: #374151;">📊 Aggregate Metrics (${metrics.length})</h4>
 					${groupNames
             .map((groupName) => {
-              const groupMetrics = groups[groupName];
+              const groupMetrics = groups[groupName]
               return `
 					<details style="margin-bottom: 10px; border: 1px solid #e5e7eb; border-radius: 6px;">
 						<summary style="padding: 10px 15px; cursor: pointer; background: #f9fafb; border-radius: 6px; font-weight: 600; color: #374151;">
@@ -894,9 +914,9 @@ export function generateHtmlReport(data: ReportData): string {
                   .join('')}
 							</tbody>
 						</table>
-					</details>`;
+					</details>`
             })
-            .join('')}`;
+            .join('')}`
                 })()
               : '<p style="color: #6b7280;">No aggregate metrics recorded.</p>'
           }
@@ -927,13 +947,13 @@ export function generateHtmlReport(data: ReportData): string {
                     ? Object.entries(event.tags)
                         .map(([k, v]) => escapeHtml(k) + '=' + escapeHtml(String(v)))
                         .join(', ')
-                    : '-';
+                    : '-'
                   const gauges = event.gauges
                     ? Object.entries(event.gauges)
                         .map(([k, v]) => escapeHtml(k) + '=' + formatValue(v, k))
                         .join(', ')
-                    : '-';
-                  const duration = event.ms !== undefined ? formatValue(event.ms, 'duration') : '-';
+                    : '-'
+                  const duration = event.ms !== undefined ? formatValue(event.ms, 'duration') : '-'
                   return `
 							<tr>
 								<td><code>${escapeHtml(event.op ?? '')}</code></td>
@@ -942,7 +962,7 @@ export function generateHtmlReport(data: ReportData): string {
 								<td>${duration}</td>
 								<td style="font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(tags)}">${tags}</td>
 								<td style="font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(gauges)}">${gauges}</td>
-							</tr>`;
+							</tr>`
                 })
                 .join('')}
 						</tbody>
@@ -952,7 +972,7 @@ export function generateHtmlReport(data: ReportData): string {
 					`
               : ''
           }
-				</div>`;
+				</div>`
           })
           .join('')}
 			</div>
@@ -994,15 +1014,15 @@ export function generateHtmlReport(data: ReportData): string {
 		}
 	</script>
 </body>
-</html>`;
+</html>`
 
   try {
-    const absolutePath = path.resolve(filename);
-    fs.writeFileSync(filename, html);
-    return absolutePath;
+    const absolutePath = path.resolve(filename)
+    fs.writeFileSync(filename, html)
+    return absolutePath
   } catch (error) {
-    console.error(`\n❌ Failed to generate HTML report:`, error);
-    throw error;
+    console.error(`\n❌ Failed to generate HTML report:`, error)
+    throw error
   }
 }
 
@@ -1010,56 +1030,63 @@ export function generateHtmlReport(data: ReportData): string {
  * Generate JSON report
  */
 export function generateJsonReport(data: ReportData): string {
-  const outDir = data.reportDir || 'reports';
+  const outDir = data.reportDir || 'reports'
   if (!fs.existsSync(outDir)) {
-    fs.mkdirSync(outDir, { recursive: true });
+    fs.mkdirSync(outDir, { recursive: true })
   }
 
   // Generate filename
-  let filename = path.join(outDir, `results-${data.runId}.json`);
+  let filename = path.join(outDir, `results-${data.runId}.json`)
   if (fs.existsSync(filename)) {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    filename = path.join(outDir, `results-${data.runId}-${timestamp}.json`);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    filename = path.join(outDir, `results-${data.runId}-${timestamp}.json`)
   }
 
-  const elapsed = data.startTime > 0 ? (Date.now() - data.startTime) / 1000 : 0;
-  const successCount = data.completedTests.filter((t) => t.outcome === 'success').length;
-  const failureCount = data.completedTests.filter((t) => t.outcome === 'failure').length;
-  const skippedCount = data.completedTests.filter((t) => t.outcome === 'skipped').length;
+  const elapsed = data.startTime > 0 ? (Date.now() - data.startTime) / 1000 : 0
+  const successCount = data.completedTests.filter((t) => t.outcome === 'success').length
+  const failureCount = data.completedTests.filter((t) => t.outcome === 'failure').length
+  const skippedCount = data.completedTests.filter((t) => t.outcome === 'skipped').length
 
   // Group by category — same metadata.category-first rule as the HTML side.
-  const byCategory: Record<string, { passed: number; failed: number; skipped: number; total: number }> = {};
+  const byCategory: Record<
+    string,
+    { passed: number; failed: number; skipped: number; total: number }
+  > = {}
   for (const test of data.completedTests) {
-    const category = test.category ?? (test.testId.includes('-') ? test.testId.split('-')[0] : test.testId);
+    const category =
+      test.category ?? (test.testId.includes('-') ? test.testId.split('-')[0] : test.testId)
     if (!byCategory[category]) {
-      byCategory[category] = { passed: 0, failed: 0, skipped: 0, total: 0 };
+      byCategory[category] = { passed: 0, failed: 0, skipped: 0, total: 0 }
     }
-    byCategory[category].total++;
+    byCategory[category].total++
     if (test.outcome === 'success') {
-      byCategory[category].passed++;
+      byCategory[category].passed++
     } else if (test.outcome === 'skipped') {
-      byCategory[category].skipped++;
+      byCategory[category].skipped++
     } else {
-      byCategory[category].failed++;
+      byCategory[category].failed++
     }
   }
 
   // Group by suite for JSON
-  const bySuite: Record<string, { passed: number; failed: number; skipped: number; total: number }> = {};
+  const bySuite: Record<
+    string,
+    { passed: number; failed: number; skipped: number; total: number }
+  > = {}
   for (const test of data.completedTests) {
-    if (!test.suites) continue;
+    if (!test.suites) continue
     for (const suite of test.suites) {
       if (!bySuite[suite]) {
-        bySuite[suite] = { passed: 0, failed: 0, skipped: 0, total: 0 };
+        bySuite[suite] = { passed: 0, failed: 0, skipped: 0, total: 0 }
       }
-      bySuite[suite].total++;
-      if (test.outcome === 'success') bySuite[suite].passed++;
-      else if (test.outcome === 'skipped') bySuite[suite].skipped++;
-      else bySuite[suite].failed++;
+      bySuite[suite].total++
+      if (test.outcome === 'success') bySuite[suite].passed++
+      else if (test.outcome === 'skipped') bySuite[suite].skipped++
+      else bySuite[suite].failed++
     }
   }
 
-  const nonSkipped = data.completedTests.length - skippedCount;
+  const nonSkipped = data.completedTests.length - skippedCount
   const jsonReport = {
     runId: data.runId,
     timestamp: new Date().toISOString(),
@@ -1069,7 +1096,7 @@ export function generateJsonReport(data: ReportData): string {
       failed: failureCount,
       skipped: skippedCount,
       successRate: nonSkipped > 0 ? ((successCount / nonSkipped) * 100).toFixed(1) : '0.0',
-      duration: elapsed,
+      duration: elapsed
     },
     categories: byCategory,
     suites: Object.keys(bySuite).length > 0 ? bySuite : undefined,
@@ -1080,24 +1107,24 @@ export function generateJsonReport(data: ReportData): string {
       duration: test.duration,
       error: test.error,
       output: test.output,
-      suites: test.suites,
+      suites: test.suites
     })),
     consumers: Array.from(data.consumers.values()),
     system: systemInfo,
     profiling: data.profilingData?.map((pd) => ({
       consumerId: pd.consumerId,
-      ...pd.profilerExport,
+      ...pd.profilerExport
     })),
-    memory: data.memorySummary,
-  };
+    memory: data.memorySummary
+  }
 
   try {
-    const absolutePath = path.resolve(filename);
-    fs.writeFileSync(filename, JSON.stringify(jsonReport, null, 2));
-    return absolutePath;
+    const absolutePath = path.resolve(filename)
+    fs.writeFileSync(filename, JSON.stringify(jsonReport, null, 2))
+    return absolutePath
   } catch (error) {
-    console.error(`\n❌ Failed to generate JSON report:`, error);
-    throw error;
+    console.error(`\n❌ Failed to generate JSON report:`, error)
+    throw error
   }
 }
 
@@ -1106,76 +1133,84 @@ export function generateJsonReport(data: ReportData): string {
 // ---------------------------------------------------------------------------
 
 function formatKb(kb: number): string {
-  if (kb < 1024) return `${kb} KB`;
-  const mb = kb / 1024;
-  if (mb < 1024) return `${mb.toFixed(1)} MB`;
-  return `${(mb / 1024).toFixed(2)} GB`;
+  if (kb < 1024) return `${kb} KB`
+  const mb = kb / 1024
+  if (mb < 1024) return `${mb.toFixed(1)} MB`
+  return `${(mb / 1024).toFixed(2)} GB`
 }
 
 function metricLabel(metric: string): string {
   switch (metric) {
     case 'VmRSS':
-      return 'RSS (VmRSS)';
+      return 'RSS (VmRSS)'
     case 'physFootprint':
-      return 'Phys footprint';
+      return 'Phys footprint'
     case 'rss':
-      return 'RSS';
+      return 'RSS'
     default:
-      return metric;
+      return metric
   }
 }
 
 function renderMemoryTab(summary: MemorySummary, completedTests: ReportTestResult[]): string {
-  const peakMb = formatKb(summary.peakSuite.memoryKb);
-  const growthMb = formatKb(Math.abs(summary.growthKb));
-  const growthSign = summary.growthKb >= 0 ? '+' : '-';
+  const peakMb = formatKb(summary.peakSuite.memoryKb)
+  const growthMb = formatKb(Math.abs(summary.growthKb))
+  const growthSign = summary.growthKb >= 0 ? '+' : '-'
   const limitFrac =
     summary.limitKb && summary.limitKb > 0
       ? `${((summary.peakSuite.memoryKb / summary.limitKb) * 100).toFixed(1)}%`
-      : null;
+      : null
 
   // Index test results by uniqueTestId so each per-test memory row can be
   // tagged with the test's outcome (success / failure / skipped). Falls back
   // to keying by testId+consumerId for backwards compat with older runs that
   // didn't include uniqueTestId in the test-result payload.
-  const outcomeByUid = new Map<string, ReportTestResult['outcome']>();
-  const outcomeByTestKey = new Map<string, ReportTestResult['outcome']>();
+  const outcomeByUid = new Map<string, ReportTestResult['outcome']>()
+  const outcomeByTestKey = new Map<string, ReportTestResult['outcome']>()
   for (const t of completedTests) {
-    if (t.uniqueTestId) outcomeByUid.set(t.uniqueTestId, t.outcome);
-    outcomeByTestKey.set(`${t.testId}|${t.consumerId}`, t.outcome);
+    if (t.uniqueTestId) outcomeByUid.set(t.uniqueTestId, t.outcome)
+    outcomeByTestKey.set(`${t.testId}|${t.consumerId}`, t.outcome)
   }
   const outcomeFor = (uniqueTestId: string, testId: string, consumerId: string) =>
-    outcomeByUid.get(uniqueTestId) ?? outcomeByTestKey.get(`${testId}|${consumerId}`) ?? 'success';
+    outcomeByUid.get(uniqueTestId) ?? outcomeByTestKey.get(`${testId}|${consumerId}`) ?? 'success'
 
   // Render rows; sorted by peak desc by default. Client-side JS in the
   // page resorts on header click without re-rendering the data.
-  let perTestSkippedCount = 0;
-  let perTestFailedCount = 0;
-  let perTestPassedCount = 0;
-  let perTestIncompleteCount = 0;
+  let perTestSkippedCount = 0
+  let perTestFailedCount = 0
+  let perTestPassedCount = 0
+  let perTestIncompleteCount = 0
   const rows = summary.perTest
     .map((t) => {
-      const consumerShort = t.consumerId.split('-').slice(1, 3).join('-');
-      const startedSec = ((t.startTs - summary.startTs) / 1000).toFixed(1);
+      const consumerShort = t.consumerId.split('-').slice(1, 3).join('-')
+      const startedSec = ((t.startTs - summary.startTs) / 1000).toFixed(1)
       // Incomplete = orphan start (no result MQTT received -- consumer
       // crashed mid-test, e.g. OOM kill). Show as a distinct outcome so
       // the table doesn't silently drop the test the user most cares
       // about (often the one responsible for the suite peak).
-      const baseOutcome = outcomeFor(t.uniqueTestId, t.testId, t.consumerId);
-      const outcome: 'success' | 'failure' | 'skipped' | 'crashed' = t.incomplete ? 'crashed' : baseOutcome;
-      if (outcome === 'skipped') perTestSkippedCount++;
-      else if (outcome === 'failure') perTestFailedCount++;
-      else if (outcome === 'crashed') perTestIncompleteCount++;
-      else perTestPassedCount++;
+      const baseOutcome = outcomeFor(t.uniqueTestId, t.testId, t.consumerId)
+      const outcome: 'success' | 'failure' | 'skipped' | 'crashed' = t.incomplete
+        ? 'crashed'
+        : baseOutcome
+      if (outcome === 'skipped') perTestSkippedCount++
+      else if (outcome === 'failure') perTestFailedCount++
+      else if (outcome === 'crashed') perTestIncompleteCount++
+      else perTestPassedCount++
 
-      const fmtBefore = t.beforeKb !== null ? formatKb(t.beforeKb) : '—';
-      const fmtAfter = t.afterKb !== null ? formatKb(t.afterKb) : '—';
-      const fmtPeak = t.peakKb > 0 ? formatKb(t.peakKb) : '—';
-      const fmtMean = t.meanKb > 0 ? formatKb(t.meanKb) : '—';
-      const fmtDelta = t.deltaKb === null ? '—' : `${t.deltaKb >= 0 ? '+' : '-'}${formatKb(Math.abs(t.deltaKb))}`;
-      const deltaColor = t.deltaKb === null ? '' : `color:${t.deltaKb >= 0 ? '#ef4444' : '#10b981'};`;
+      const fmtBefore = t.beforeKb !== null ? formatKb(t.beforeKb) : '—'
+      const fmtAfter = t.afterKb !== null ? formatKb(t.afterKb) : '—'
+      const fmtPeak = t.peakKb > 0 ? formatKb(t.peakKb) : '—'
+      const fmtMean = t.meanKb > 0 ? formatKb(t.meanKb) : '—'
+      const fmtDelta =
+        t.deltaKb === null ? '—' : `${t.deltaKb >= 0 ? '+' : '-'}${formatKb(Math.abs(t.deltaKb))}`
+      const deltaColor =
+        t.deltaKb === null ? '' : `color:${t.deltaKb >= 0 ? '#ef4444' : '#10b981'};`
       const rowStyle =
-        outcome === 'skipped' ? ' style="opacity:0.55;"' : outcome === 'crashed' ? ' style="background:#fef2f2;"' : '';
+        outcome === 'skipped'
+          ? ' style="opacity:0.55;"'
+          : outcome === 'crashed'
+            ? ' style="background:#fef2f2;"'
+            : ''
       // data-* attributes carry sortable raw numbers so client-side sort
       // can avoid re-parsing the formatted values.
       return `
@@ -1191,9 +1226,9 @@ function renderMemoryTab(summary: MemorySummary, completedTests: ReportTestResul
 						<td data-sort="${t.meanKb}">${fmtMean}</td>
 						<td data-sort="${t.durationMs}">${(t.durationMs / 1000).toFixed(1)}s</td>
 						<td data-sort="${t.samples}">${t.samples}</td>
-					</tr>`;
+					</tr>`
     })
-    .join('');
+    .join('')
 
   return `
 		<div id="memory" class="tab-content">
@@ -1306,90 +1341,92 @@ function renderMemoryTab(summary: MemorySummary, completedTests: ReportTestResul
 					rows.forEach(function (r) { tbody.appendChild(r); });
 				}
 			</script>
-		</div>`;
+		</div>`
 }
 
 function renderMemoryChart(summary: MemorySummary): string {
-  const points = summary.chart;
+  const points = summary.chart
   if (points.length < 2) {
-    return '<p style="color:#6b7280;">Not enough samples to draw chart.</p>';
+    return '<p style="color:#6b7280;">Not enough samples to draw chart.</p>'
   }
 
-  const W = 1000;
-  const H = 320;
-  const padL = 60;
-  const padR = 20;
-  const padT = 20;
-  const padB = 40;
-  const innerW = W - padL - padR;
-  const innerH = H - padT - padB;
+  const W = 1000
+  const H = 320
+  const padL = 60
+  const padR = 20
+  const padT = 20
+  const padB = 40
+  const innerW = W - padL - padR
+  const innerH = H - padT - padB
 
-  const t0 = points[0].ts;
-  const t1 = points[points.length - 1].ts;
-  const tSpan = Math.max(1, t1 - t0);
+  const t0 = points[0].ts
+  const t1 = points[points.length - 1].ts
+  const tSpan = Math.max(1, t1 - t0)
 
-  let yMax = 0;
+  let yMax = 0
   for (const p of points) {
-    if (p.memoryKb > yMax) yMax = p.memoryKb;
-    if (p.max60sKb > yMax) yMax = p.max60sKb;
+    if (p.memoryKb > yMax) yMax = p.memoryKb
+    if (p.max60sKb > yMax) yMax = p.max60sKb
   }
-  if (summary.limitKb && summary.limitKb > yMax) yMax = summary.limitKb;
-  if (yMax === 0) yMax = 1;
+  if (summary.limitKb && summary.limitKb > yMax) yMax = summary.limitKb
+  if (yMax === 0) yMax = 1
   // Round up to the next nice value (next 50 MB).
-  const yMaxRounded = Math.ceil(yMax / (50 * 1024)) * (50 * 1024);
+  const yMaxRounded = Math.ceil(yMax / (50 * 1024)) * (50 * 1024)
 
-  const x = (ts: number) => padL + ((ts - t0) / tSpan) * innerW;
-  const y = (kb: number) => padT + innerH - (kb / yMaxRounded) * innerH;
+  const x = (ts: number) => padL + ((ts - t0) / tSpan) * innerW
+  const y = (kb: number) => padT + innerH - (kb / yMaxRounded) * innerH
 
   // Downsample to keep SVG manageable for very long runs (>3000 points).
-  let series = points;
+  let series = points
   if (points.length > 3000) {
-    const stride = Math.ceil(points.length / 3000);
-    series = points.filter((_, i) => i % stride === 0);
-    if (series[series.length - 1] !== points[points.length - 1]) series.push(points[points.length - 1]);
+    const stride = Math.ceil(points.length / 3000)
+    series = points.filter((_, i) => i % stride === 0)
+    if (series[series.length - 1] !== points[points.length - 1]) {
+      series.push(points[points.length - 1])
+    }
   }
 
   const lineCur = series
     .map((p, i) => `${i === 0 ? 'M' : 'L'}${x(p.ts).toFixed(1)},${y(p.memoryKb).toFixed(1)}`)
-    .join(' ');
+    .join(' ')
   const line60s = series
     .map((p, i) => `${i === 0 ? 'M' : 'L'}${x(p.ts).toFixed(1)},${y(p.max60sKb).toFixed(1)}`)
-    .join(' ');
+    .join(' ')
 
   // Y-axis grid lines + labels at 0, 25, 50, 75, 100%.
   const gridLines = [0, 0.25, 0.5, 0.75, 1.0]
     .map((frac) => {
-      const yPos = padT + innerH - frac * innerH;
-      const label = formatKb(yMaxRounded * frac);
+      const yPos = padT + innerH - frac * innerH
+      const label = formatKb(yMaxRounded * frac)
       return (
         `<line x1="${padL}" x2="${W - padR}" y1="${yPos}" y2="${yPos}" stroke="#e5e7eb" stroke-width="1"/>` +
         `<text x="${padL - 6}" y="${yPos + 4}" text-anchor="end" font-size="11" fill="#6b7280">${label}</text>`
-      );
+      )
     })
-    .join('');
+    .join('')
 
   // X-axis labels (start, mid, end) as elapsed seconds from t0.
   const xLabels = [0, 0.5, 1.0]
     .map((frac) => {
-      const xPos = padL + frac * innerW;
-      const elapsedSec = ((tSpan * frac) / 1000).toFixed(0);
-      return `<text x="${xPos}" y="${H - 12}" text-anchor="middle" font-size="11" fill="#6b7280">${elapsedSec}s</text>`;
+      const xPos = padL + frac * innerW
+      const elapsedSec = ((tSpan * frac) / 1000).toFixed(0)
+      return `<text x="${xPos}" y="${H - 12}" text-anchor="middle" font-size="11" fill="#6b7280">${elapsedSec}s</text>`
     })
-    .join('');
+    .join('')
 
   // Memory limit line if present.
   const limitLine = summary.limitKb
     ? `<line x1="${padL}" x2="${W - padR}" y1="${y(summary.limitKb)}" y2="${y(summary.limitKb)}" stroke="#ef4444" stroke-dasharray="4 3" stroke-width="1"/>` +
       `<text x="${W - padR - 4}" y="${y(summary.limitKb) - 4}" text-anchor="end" font-size="11" fill="#ef4444">limit: ${formatKb(summary.limitKb)}</text>`
-    : '';
+    : ''
 
   // Peak marker.
-  const peak = summary.peakSuite;
-  const peakX = x(peak.ts);
-  const peakY = y(peak.memoryKb);
+  const peak = summary.peakSuite
+  const peakX = x(peak.ts)
+  const peakY = y(peak.memoryKb)
   const peakMarker =
     `<circle cx="${peakX}" cy="${peakY}" r="4" fill="#ef4444"/>` +
-    `<text x="${peakX}" y="${peakY - 8}" text-anchor="middle" font-size="11" fill="#ef4444">peak: ${formatKb(peak.memoryKb)}</text>`;
+    `<text x="${peakX}" y="${peakY - 8}" text-anchor="middle" font-size="11" fill="#ef4444">peak: ${formatKb(peak.memoryKb)}</text>`
 
   return `
 		<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;background:#fafafa;border-radius:6px;">
@@ -1403,5 +1440,5 @@ function renderMemoryChart(summary: MemorySummary): string {
 				<tspan fill="#3b82f6">— ${escapeHtml(metricLabel(summary.metric))}</tspan>
 				<tspan dx="10" fill="#a78bfa">— max(60s)</tspan>
 			</text>
-		</svg>`;
+		</svg>`
 }
