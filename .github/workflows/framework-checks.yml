@@ -1,0 +1,49 @@
+name: Framework Checks
+
+on:
+  push:
+    branches: ['main']
+    paths:
+      - 'framework/**'
+      - '.github/workflows/framework-checks.yml'
+  pull_request:
+    branches: ['main']
+    paths:
+      - 'framework/**'
+      - '.github/workflows/framework-checks.yml'
+
+# Least privilege: a read-only token. Plain `pull_request` (NOT
+# pull_request_target) so fork PRs run with no secrets and a read-only token —
+# the PR's code can't exfiltrate anything or push.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: framework
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # 6.3.0
+        with:
+          node-version: '22'
+
+      # --ignore-scripts: lint/format never run dependency lifecycle scripts, so
+      # disable them — otherwise a malicious PR could run arbitrary code in CI via
+      # a dependency's install hook.
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-fund --no-audit
+
+      - name: Run checks
+        run: npm run check

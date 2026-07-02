@@ -1,5 +1,5 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+import * as fs from 'node:fs'
+import * as path from 'node:path'
 
 /**
  * Aggregates in-app memory samples + producer-side test timeline into a
@@ -22,93 +22,93 @@ import * as path from 'node:path';
  *   - platform
  */
 export interface MemorySample {
-  ts: number;
-  pid: number | null;
-  memoryKb: number;
-  peakKb: number | null;
-  limitKb: number | null;
-  metric: string;
-  platform: 'android' | 'ios' | 'desktop';
+  ts: number
+  pid: number | null
+  memoryKb: number
+  peakKb: number | null
+  limitKb: number | null
+  metric: string
+  platform: 'android' | 'ios' | 'desktop'
 }
 
 export interface TimelineEvent {
-  ts: number;
-  consumerId: string;
-  testId: string;
-  uniqueTestId: string;
-  phase: 'start' | 'end' | 'reload';
+  ts: number
+  consumerId: string
+  testId: string
+  uniqueTestId: string
+  phase: 'start' | 'end' | 'reload'
 }
 
 export interface PerTestMemory {
-  testId: string;
-  uniqueTestId: string;
-  consumerId: string;
-  startTs: number;
+  testId: string
+  uniqueTestId: string
+  consumerId: string
+  startTs: number
   /**
    * For completed tests, when the consumer reported the result. For
    * incomplete tests (consumer crashed before sending result), the last
    * memory sample timestamp -- so the test still appears in the table
    * with whatever memory data we captured up to the crash.
    */
-  endTs: number;
-  durationMs: number;
+  endTs: number
+  durationMs: number
   /** First sample observed after the test was assigned. */
-  beforeKb: number | null;
-  peakKb: number;
-  meanKb: number;
+  beforeKb: number | null
+  peakKb: number
+  meanKb: number
   /** Last sample observed before test end (or before crash for incomplete). */
-  afterKb: number | null;
+  afterKb: number | null
   /** afterKb - beforeKb when both are present; null otherwise. */
-  deltaKb: number | null;
-  samples: number;
+  deltaKb: number | null
+  samples: number
   /**
    * True when the consumer never reported a result for this test --
    * typically because it crashed mid-test (e.g. OOM kill). The endTs is
    * synthesized from the last memory sample.
    */
-  incomplete: boolean;
+  incomplete: boolean
   /** Present only for retry-split windows. */
-  attemptLabel?: '1' | '2';
+  attemptLabel?: '1' | '2'
 }
 
 export interface RollingPoint {
-  ts: number;
-  memoryKb: number;
-  max5sKb: number;
-  max60sKb: number;
+  ts: number
+  memoryKb: number
+  max5sKb: number
+  max60sKb: number
 }
 
 export interface MemorySummary {
-  metric: string;
-  platform: 'android' | 'ios' | 'desktop';
-  limitKb: number | null;
-  startTs: number;
-  endTs: number;
-  durationMs: number;
+  metric: string
+  platform: 'android' | 'ios' | 'desktop'
+  limitKb: number | null
+  startTs: number
+  endTs: number
+  durationMs: number
   peakSuite: {
-    memoryKb: number;
-    ts: number;
-    activeTestId: string | null;
-  };
-  growthKb: number;
-  perTest: PerTestMemory[];
-  chart: RollingPoint[];
+    memoryKb: number
+    ts: number
+    activeTestId: string | null
+  }
+  growthKb: number
+  perTest: PerTestMemory[]
+  chart: RollingPoint[]
 }
 
-const ROLL_5S_MS = 5_000;
-const ROLL_60S_MS = 60_000;
+const ROLL_5S_MS = 5_000
+const ROLL_60S_MS = 60_000
 
 export function readMemorySamples(filePath: string): MemorySample[] {
-  if (!fs.existsSync(filePath)) return [];
-  const raw = fs.readFileSync(filePath, 'utf8');
-  const out: MemorySample[] = [];
+  if (!fs.existsSync(filePath)) return []
+  const raw = fs.readFileSync(filePath, 'utf8')
+  const out: MemorySample[] = []
   for (const line of raw.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
+    const trimmed = line.trim()
+    if (!trimmed) continue
     try {
-      const obj = JSON.parse(trimmed) as Partial<MemorySample>;
-      if (typeof obj.ts !== 'number' || typeof obj.memoryKb !== 'number') continue;
-      if (!obj.platform) continue;
+      const obj = JSON.parse(trimmed) as Partial<MemorySample>
+      if (typeof obj.ts !== 'number' || typeof obj.memoryKb !== 'number') continue
+      if (!obj.platform) continue
       out.push({
         ts: obj.ts,
         pid: obj.pid ?? null,
@@ -116,37 +116,37 @@ export function readMemorySamples(filePath: string): MemorySample[] {
         peakKb: obj.peakKb ?? null,
         limitKb: obj.limitKb ?? null,
         metric: obj.metric ?? 'unknown',
-        platform: obj.platform,
-      });
+        platform: obj.platform
+      })
     } catch {
       // skip malformed lines (e.g. truncated final line on crash)
     }
   }
-  out.sort((a, b) => a.ts - b.ts);
-  return out;
+  out.sort((a, b) => a.ts - b.ts)
+  return out
 }
 
 export function readTimeline(filePath: string): TimelineEvent[] {
-  if (!fs.existsSync(filePath)) return [];
-  const raw = fs.readFileSync(filePath, 'utf8');
-  const out: TimelineEvent[] = [];
+  if (!fs.existsSync(filePath)) return []
+  const raw = fs.readFileSync(filePath, 'utf8')
+  const out: TimelineEvent[] = []
   for (const line of raw.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
+    const trimmed = line.trim()
+    if (!trimmed) continue
     try {
-      const obj = JSON.parse(trimmed) as TimelineEvent;
+      const obj = JSON.parse(trimmed) as TimelineEvent
       if (
         typeof obj.ts === 'number' &&
         (obj.phase === 'start' || obj.phase === 'end' || obj.phase === 'reload')
       ) {
-        out.push(obj);
+        out.push(obj)
       }
     } catch {
       // skip
     }
   }
-  out.sort((a, b) => a.ts - b.ts);
-  return out;
+  out.sort((a, b) => a.ts - b.ts)
+  return out
 }
 
 /**
@@ -156,30 +156,32 @@ export function readTimeline(filePath: string): TimelineEvent[] {
  * sample's timestamp.
  */
 function rollingMax(samples: MemorySample[], windowMs: number): number[] {
-  const result: number[] = new Array(samples.length);
+  const result: number[] = new Array(samples.length)
   // deque holds indices into samples, memoryKb descending
-  const deque: number[] = [];
+  const deque: number[] = []
   for (let i = 0; i < samples.length; i++) {
-    const tCur = samples[i].ts;
+    const tCur = samples[i].ts
     // pop expired
-    while (deque.length > 0 && samples[deque[0]].ts < tCur - windowMs) deque.shift();
+    while (deque.length > 0 && samples[deque[0]].ts < tCur - windowMs) deque.shift()
     // pop smaller-or-equal from the back
-    while (deque.length > 0 && samples[deque[deque.length - 1]].memoryKb <= samples[i].memoryKb) deque.pop();
-    deque.push(i);
-    result[i] = samples[deque[0]].memoryKb;
+    while (deque.length > 0 && samples[deque[deque.length - 1]].memoryKb <= samples[i].memoryKb) {
+      deque.pop()
+    }
+    deque.push(i)
+    result[i] = samples[deque[0]].memoryKb
   }
-  return result;
+  return result
 }
 
 function findActiveTest(timeline: TimelineEvent[], ts: number): string | null {
   // Linear is fine: timeline is small (~2*tests).
-  let active: string | null = null;
+  let active: string | null = null
   for (const ev of timeline) {
-    if (ev.ts > ts) break;
-    if (ev.phase === 'start') active = ev.testId;
-    else if (ev.phase === 'end' && active === ev.testId) active = null;
+    if (ev.ts > ts) break
+    if (ev.phase === 'start') active = ev.testId
+    else if (ev.phase === 'end' && active === ev.testId) active = null
   }
-  return active;
+  return active
 }
 
 function buildPerTestEntry(
@@ -190,25 +192,25 @@ function buildPerTestEntry(
   incomplete: boolean,
   attemptLabel?: '1' | '2'
 ): PerTestMemory {
-  const inWindow = samples.filter((s) => s.ts >= startTs && s.ts <= endTs);
+  const inWindow = samples.filter((s) => s.ts >= startTs && s.ts <= endTs)
 
-  let peakKb = 0;
-  let meanKb = 0;
+  let peakKb = 0
+  let meanKb = 0
   if (inWindow.length > 0) {
-    peakKb = inWindow[0].memoryKb;
-    let sum = 0;
+    peakKb = inWindow[0].memoryKb
+    let sum = 0
     for (const s of inWindow) {
-      if (s.memoryKb > peakKb) peakKb = s.memoryKb;
-      sum += s.memoryKb;
+      if (s.memoryKb > peakKb) peakKb = s.memoryKb
+      sum += s.memoryKb
     }
-    meanKb = Math.round(sum / inWindow.length);
+    meanKb = Math.round(sum / inWindow.length)
   }
 
   // Use only in-window samples here; gap samples between tests can already
   // include the next test's setup work and would contaminate before/after.
-  const beforeKb = inWindow.length > 0 ? inWindow[0].memoryKb : null;
-  const afterKb = inWindow.length > 0 ? inWindow[inWindow.length - 1].memoryKb : null;
-  const deltaKb = beforeKb !== null && afterKb !== null ? afterKb - beforeKb : null;
+  const beforeKb = inWindow.length > 0 ? inWindow[0].memoryKb : null
+  const afterKb = inWindow.length > 0 ? inWindow[inWindow.length - 1].memoryKb : null
+  const deltaKb = beforeKb !== null && afterKb !== null ? afterKb - beforeKb : null
 
   return {
     testId: start.testId,
@@ -224,94 +226,94 @@ function buildPerTestEntry(
     deltaKb,
     samples: inWindow.length,
     incomplete,
-    ...(attemptLabel !== undefined && { attemptLabel }),
-  };
+    ...(attemptLabel !== undefined && { attemptLabel })
+  }
 }
 
 function aggregatePerTest(samples: MemorySample[], timeline: TimelineEvent[]): PerTestMemory[] {
-  const starts = new Map<string, TimelineEvent>();
-  const reloads = new Map<string, TimelineEvent>();
-  const windows: { start: TimelineEvent; end: TimelineEvent | null }[] = [];
+  const starts = new Map<string, TimelineEvent>()
+  const reloads = new Map<string, TimelineEvent>()
+  const windows: { start: TimelineEvent; end: TimelineEvent | null }[] = []
   for (const ev of timeline) {
     if (ev.phase === 'start') {
-      starts.set(ev.uniqueTestId, ev);
-      continue;
+      starts.set(ev.uniqueTestId, ev)
+      continue
     }
     if (ev.phase === 'reload') {
-      reloads.set(ev.uniqueTestId, ev);
-      continue;
+      reloads.set(ev.uniqueTestId, ev)
+      continue
     }
     // phase === 'end'
-    const start = starts.get(ev.uniqueTestId);
-    if (!start) continue;
-    starts.delete(ev.uniqueTestId);
-    windows.push({ start, end: ev });
+    const start = starts.get(ev.uniqueTestId)
+    if (!start) continue
+    starts.delete(ev.uniqueTestId)
+    windows.push({ start, end: ev })
   }
   // Keep orphan starts so crashed tests still appear in the table.
   for (const start of starts.values()) {
-    windows.push({ start, end: null });
+    windows.push({ start, end: null })
   }
-  windows.sort((a, b) => a.start.ts - b.start.ts);
+  windows.sort((a, b) => a.start.ts - b.start.ts)
 
-  const lastSampleTs = samples.length > 0 ? samples[samples.length - 1].ts : 0;
-  const out: PerTestMemory[] = [];
+  const lastSampleTs = samples.length > 0 ? samples[samples.length - 1].ts : 0
+  const out: PerTestMemory[] = []
 
   for (const w of windows) {
-    const start = w.start;
-    const incomplete = w.end === null;
+    const start = w.start
+    const incomplete = w.end === null
     // For incomplete tests, use the last sample timestamp as the synthetic end.
-    const endTs = w.end ? w.end.ts : lastSampleTs;
+    const endTs = w.end ? w.end.ts : lastSampleTs
 
-    const reloadEv = reloads.get(start.uniqueTestId);
+    const reloadEv = reloads.get(start.uniqueTestId)
     if (reloadEv) {
-      const splitTs = Math.max(start.ts, Math.min(reloadEv.ts, endTs));
+      const splitTs = Math.max(start.ts, Math.min(reloadEv.ts, endTs))
       if (splitTs > start.ts && splitTs < endTs) {
-        out.push(buildPerTestEntry(samples, start, start.ts, splitTs - 1, false, '1'));
-        out.push(buildPerTestEntry(samples, start, splitTs, endTs, incomplete, '2'));
+        out.push(buildPerTestEntry(samples, start, start.ts, splitTs - 1, false, '1'))
+        out.push(buildPerTestEntry(samples, start, splitTs, endTs, incomplete, '2'))
       } else {
-        out.push(buildPerTestEntry(samples, start, start.ts, endTs, incomplete));
+        out.push(buildPerTestEntry(samples, start, start.ts, endTs, incomplete))
       }
     } else {
-      out.push(buildPerTestEntry(samples, start, start.ts, endTs, incomplete));
+      out.push(buildPerTestEntry(samples, start, start.ts, endTs, incomplete))
     }
   }
 
-  return out;
+  return out
 }
 
 export function aggregateMemory(reportDir: string): MemorySummary | null {
-  const samples = readMemorySamples(path.join(reportDir, 'app-mem.ndjson'));
-  if (samples.length === 0) return null;
+  const samples = readMemorySamples(path.join(reportDir, 'app-mem.ndjson'))
+  if (samples.length === 0) return null
 
-  const timeline = readTimeline(path.join(reportDir, 'test-timeline.ndjson'));
+  const timeline = readTimeline(path.join(reportDir, 'test-timeline.ndjson'))
 
-  const first = samples[0];
-  const last = samples[samples.length - 1];
+  const first = samples[0]
+  const last = samples[samples.length - 1]
 
   // Suite peak
-  let peakSampleIdx = 0;
+  let peakSampleIdx = 0
   for (let i = 1; i < samples.length; i++) {
-    if (samples[i].memoryKb > samples[peakSampleIdx].memoryKb) peakSampleIdx = i;
+    if (samples[i].memoryKb > samples[peakSampleIdx].memoryKb) peakSampleIdx = i
   }
-  const peakSample = samples[peakSampleIdx];
+  const peakSample = samples[peakSampleIdx]
 
   // Rolling windows
-  const max5s = rollingMax(samples, ROLL_5S_MS);
-  const max60s = rollingMax(samples, ROLL_60S_MS);
+  const max5s = rollingMax(samples, ROLL_5S_MS)
+  const max60s = rollingMax(samples, ROLL_60S_MS)
   const chart: RollingPoint[] = samples.map((s, i) => ({
     ts: s.ts,
     memoryKb: s.memoryKb,
     max5sKb: max5s[i],
-    max60sKb: max60s[i],
-  }));
+    max60sKb: max60s[i]
+  }))
 
   // Per-test
-  const perTest = aggregatePerTest(samples, timeline).sort((a, b) => b.peakKb - a.peakKb);
+  const perTest = aggregatePerTest(samples, timeline).sort((a, b) => b.peakKb - a.peakKb)
 
   // Limit (latest non-null)
-  let limitKb: number | null = null;
+  let limitKb: number | null = null
   for (const s of samples) {
-    if (s.limitKb !== null) limitKb = s.limitKb;
+    if (s.limitKb !== null) limitKb = s.limitKb
   }
 
   return {
@@ -324,10 +326,10 @@ export function aggregateMemory(reportDir: string): MemorySummary | null {
     peakSuite: {
       memoryKb: peakSample.memoryKb,
       ts: peakSample.ts,
-      activeTestId: findActiveTest(timeline, peakSample.ts),
+      activeTestId: findActiveTest(timeline, peakSample.ts)
     },
     growthKb: last.memoryKb - first.memoryKb,
     perTest,
-    chart,
-  };
+    chart
+  }
 }

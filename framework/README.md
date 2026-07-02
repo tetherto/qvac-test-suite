@@ -35,28 +35,28 @@ npm install @tetherto/qvac-test-suite
 
 ```ts
 // tests/test-definitions.ts
-import type { TestDefinition } from '@tetherto/qvac-test-suite';
+import type { TestDefinition } from '@tetherto/qvac-test-suite'
 
 export const tests: TestDefinition[] = [
   {
     testId: 'api-create-user',
     params: { name: 'John', email: 'john@example.com' },
     expectation: { validation: 'type', expectedType: 'string' },
-    metadata: { category: 'api', estimatedDurationMs: 5000 },
-  },
-];
+    metadata: { category: 'api', estimatedDurationMs: 5000 }
+  }
+]
 ```
 
 ### 2. Create a desktop consumer entry
 
 ```ts
 // tests/desktop/consumer.ts
-import { createExecutor } from '@tetherto/qvac-test-suite';
-import { ApiExecutor } from './executors/api-executor.js';
+import { createExecutor } from '@tetherto/qvac-test-suite'
+import { ApiExecutor } from './executors/api-executor.js'
 
 export const executor = createExecutor({
-  handlers: [new ApiExecutor()],
-});
+  handlers: [new ApiExecutor()]
+})
 ```
 
 ### 3. Configure the framework
@@ -69,10 +69,10 @@ export default {
     broker: {
       protocol: { env: 'MQTT_PROTOCOL' },
       host: { env: 'MQTT_HOST' },
-      port: { env: 'MQTT_PORT' },
+      port: { env: 'MQTT_PORT' }
     },
     username: { env: 'MQTT_USERNAME' },
-    password: { env: 'MQTT_PASSWORD' },
+    password: { env: 'MQTT_PASSWORD' }
   },
   testDir: './tests',
   consumers: {
@@ -80,10 +80,10 @@ export default {
       platforms: ['macos'],
       entry: './tests/desktop/consumer.js',
       include: ['./src/**', './tests/**'],
-      dependencies: 'auto',
-    },
-  },
-};
+      dependencies: 'auto'
+    }
+  }
+}
 ```
 
 The desktop `entry` should point to compiled JavaScript or another module format that plain Node can import in your repository setup.
@@ -119,10 +119,10 @@ export default {
       appDir: '.',
       appName: 'MyElectronConsumer',
       packageManager: 'npm',
-      packageScript: 'package:electron',
-    },
-  },
-};
+      packageScript: 'package:electron'
+    }
+  }
+}
 ```
 
 ```bash
@@ -199,4 +199,3 @@ CI orchestration is consumer-repository specific. This package provides the CLI 
 ## License
 
 Proprietary - Tether
-

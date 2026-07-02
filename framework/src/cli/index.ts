@@ -1,23 +1,33 @@
 #!/usr/bin/env node
-import { readFileSync } from 'node:fs';
-import { Command } from 'commander';
-import { runProducer } from './commands/run-producer.js';
-import { runConsumerDesktop } from './commands/run-consumer-desktop.js';
-import { runConsumerElectron } from './commands/run-consumer-electron.js';
-import { runBootstrap } from './commands/run-bootstrap.js';
-import { buildConsumerMobile } from './commands/build-consumer-mobile.js';
-import { buildConsumerElectron } from './commands/build-consumer-electron.js';
-import { reportCompare } from './commands/report-compare.js';
-import { reportFormat } from './commands/report-format.js';
-import { runLocalDesktop, runLocalAndroid, runLocalIos, runLocalElectron } from './commands/run-local.js';
+import { readFileSync } from 'node:fs'
+import { Command } from 'commander'
+import { runProducer } from './commands/run-producer.js'
+import { runConsumerDesktop } from './commands/run-consumer-desktop.js'
+import { runConsumerElectron } from './commands/run-consumer-electron.js'
+import { runBootstrap } from './commands/run-bootstrap.js'
+import { buildConsumerMobile } from './commands/build-consumer-mobile.js'
+import { buildConsumerElectron } from './commands/build-consumer-electron.js'
+import { reportCompare } from './commands/report-compare.js'
+import { reportFormat } from './commands/report-format.js'
+import {
+  runLocalDesktop,
+  runLocalAndroid,
+  runLocalIos,
+  runLocalElectron
+} from './commands/run-local.js'
 
-const packageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf-8')) as {
-  version: string;
-};
+const packageJson = JSON.parse(
+  readFileSync(new URL('../../package.json', import.meta.url), 'utf-8')
+) as {
+  version: string
+}
 
-const program = new Command();
+const program = new Command()
 
-program.name('qvac-test').description('QVAC Test Suite - Distributed testing framework').version(packageJson.version);
+program
+  .name('qvac-test')
+  .description('QVAC Test Suite - Distributed testing framework')
+  .version(packageJson.version)
 
 program
   .command('run:producer')
@@ -25,19 +35,33 @@ program
   .option('--runId <id>', 'Unique run identifier')
   .option('--mqtt-broker <url>', 'MQTT broker URL (overrides config)')
   .option('--config <path>', 'Path to config directory', process.cwd())
-  .option('--consumer-timeout <seconds>', 'Timeout waiting for consumer connection (default: 30)', '30')
-  .option('--consumer-inactivity-timeout <seconds>', 'Timeout for consumer inactivity/heartbeat (default: 120)', '120')
+  .option(
+    '--consumer-timeout <seconds>',
+    'Timeout waiting for consumer connection (default: 30)',
+    '30'
+  )
+  .option(
+    '--consumer-inactivity-timeout <seconds>',
+    'Timeout for consumer inactivity/heartbeat (default: 120)',
+    '120'
+  )
   .option(
     '--filter <categories>',
     'Filter tests by category or testId prefix (comma-separated, e.g., "model,completion")'
   )
-  .option('--suite <suites>', 'Include only tests in these suites (comma-separated, e.g., "smoke,regression")')
-  .option('--exclude-suite <suites>', 'Exclude tests in these suites (comma-separated, e.g., "slow,flaky")')
+  .option(
+    '--suite <suites>',
+    'Include only tests in these suites (comma-separated, e.g., "smoke,regression")'
+  )
+  .option(
+    '--exclude-suite <suites>',
+    'Exclude tests in these suites (comma-separated, e.g., "slow,flaky")'
+  )
   .option(
     '--report-dir <dir>',
     'Directory to write reports + read device-mem.ndjson from (used by run:local; producer also writes test-timeline.ndjson here)'
   )
-  .action(runProducer);
+  .action(runProducer)
 
 program
   .command('run:consumer:desktop')
@@ -46,7 +70,7 @@ program
   .option('--mqtt-broker <url>', 'MQTT broker URL (overrides config)')
   .option('--config <path>', 'Path to config directory', process.cwd())
   .option('--platform <platform>', 'Platform name', 'desktop')
-  .action(runConsumerDesktop);
+  .action(runConsumerDesktop)
 
 program
   .command('run:consumer:electron')
@@ -54,23 +78,30 @@ program
   .requiredOption('--runId <id>', 'Unique run identifier (must match producer)')
   .option('--mqtt-broker <url>', 'MQTT broker URL (overrides config)')
   .option('--config <path>', 'Path to config directory', process.cwd())
-  .option('--platform <platform>', 'Target Electron platform (macos, windows, linux, darwin, win32)')
+  .option(
+    '--platform <platform>',
+    'Target Electron platform (macos, windows, linux, darwin, win32)'
+  )
   .option('--arch <arch>', 'Target architecture', process.arch)
   .option('--skip-build', 'Skip packaging, only launch existing packaged app')
   .option('--skip-install', 'Skip Electron app dependency install before packaging')
-  .action(runConsumerElectron);
+  .action(runConsumerElectron)
 
 program
   .command('run:bootstrap:desktop')
-  .description('Run bootstrap from desktop consumer entry (e.g., pre-download models for CI caching)')
+  .description(
+    'Run bootstrap from desktop consumer entry (e.g., pre-download models for CI caching)'
+  )
   .option('--config <path>', 'Path to config directory', process.cwd())
-  .action((opts) => runBootstrap({ ...opts, consumer: 'desktop' }));
+  .action((opts) => runBootstrap({ ...opts, consumer: 'desktop' }))
 
 program
   .command('run:bootstrap:electron')
-  .description('Run bootstrap from Electron consumer entry (e.g., pre-download models for CI caching)')
+  .description(
+    'Run bootstrap from Electron consumer entry (e.g., pre-download models for CI caching)'
+  )
   .option('--config <path>', 'Path to config directory', process.cwd())
-  .action((opts) => runBootstrap({ ...opts, consumer: 'electron' }));
+  .action((opts) => runBootstrap({ ...opts, consumer: 'electron' }))
 
 program
   .command('build:consumer:android')
@@ -78,7 +109,7 @@ program
   .option('--config <path>', 'Path to config directory', process.cwd())
   .option('--runId <id>', 'Bake runId into build (required for mobile)')
   .option('--mqtt-broker <url>', 'Override MQTT broker URL')
-  .action((opts) => buildConsumerMobile({ ...opts, platform: 'android' }));
+  .action((opts) => buildConsumerMobile({ ...opts, platform: 'android' }))
 
 program
   .command('build:consumer:ios')
@@ -86,16 +117,19 @@ program
   .option('--config <path>', 'Path to config directory', process.cwd())
   .option('--runId <id>', 'Bake runId into build (required for mobile)')
   .option('--mqtt-broker <url>', 'Override MQTT broker URL')
-  .action((opts) => buildConsumerMobile({ ...opts, platform: 'ios' }));
+  .action((opts) => buildConsumerMobile({ ...opts, platform: 'ios' }))
 
 program
   .command('build:consumer:electron')
   .description('Package Electron consumer app')
   .option('--config <path>', 'Path to config directory', process.cwd())
-  .option('--platform <platform>', 'Target Electron platform (macos, windows, linux, darwin, win32)')
+  .option(
+    '--platform <platform>',
+    'Target Electron platform (macos, windows, linux, darwin, win32)'
+  )
   .option('--arch <arch>', 'Target architecture', process.arch)
   .option('--skip-install', 'Skip Electron app dependency install before packaging')
-  .action(buildConsumerElectron);
+  .action(buildConsumerElectron)
 
 program
   .command('report:compare')
@@ -103,7 +137,7 @@ program
   .requiredOption('--baseline <file>', 'Baseline JSON report file')
   .requiredOption('--current <file>', 'Current JSON report file')
   .requiredOption('--output <file>', 'Output comparison JSON file')
-  .action(reportCompare);
+  .action(reportCompare)
 
 program
   .command('report:format')
@@ -111,7 +145,7 @@ program
   .requiredOption('--input <file>', 'Comparison JSON file')
   .requiredOption('--format <format>', 'Output format (markdown)')
   .option('--output <file>', 'Output file (optional, prints to stdout if not specified)')
-  .action(reportFormat);
+  .action(reportFormat)
 
 // ---------------------------------------------------------------------------
 // run:local:* — one-liner local development commands
@@ -124,31 +158,34 @@ const addLocalOpts = (cmd: Command) =>
     .option('--filter <categories>', 'Filter tests by category (forwarded to producer)')
     .option('--suite <suites>', 'Include only these suites (forwarded to producer)')
     .option('--exclude-suite <suites>', 'Exclude these suites (forwarded to producer)')
-    .option('--report-dir <dir>', 'Custom report directory');
+    .option('--report-dir <dir>', 'Custom report directory')
 
 addLocalOpts(program.command('run:local:desktop'))
   .description('Run producer + desktop consumer locally (one command)')
-  .action(runLocalDesktop);
+  .action(runLocalDesktop)
 
 addLocalOpts(program.command('run:local:electron'))
   .description('Package Electron consumer app + run producer locally')
   .option('--skip-build', 'Skip Electron package build, only launch existing packaged app')
   .option('--skip-install', 'Skip Electron app dependency install before packaging')
-  .option('--platform <platform>', 'Target Electron platform (macos, windows, linux, darwin, win32)')
+  .option(
+    '--platform <platform>',
+    'Target Electron platform (macos, windows, linux, darwin, win32)'
+  )
   .option('--arch <arch>', 'Target architecture', process.arch)
-  .action(runLocalElectron);
+  .action(runLocalElectron)
 
 addLocalOpts(program.command('run:local:android'))
   .description('Build, install, launch Android consumer + run producer locally')
   .option('--skip-build', 'Skip build, only install+launch existing APK')
   .option('--device <serial>', 'Target specific Android device')
-  .action(runLocalAndroid);
+  .action(runLocalAndroid)
 
 addLocalOpts(program.command('run:local:ios'))
   .description('Build, install, launch iOS consumer + run producer locally')
   .option('--skip-build', 'Skip build, only install+launch existing .app')
   .option('--bundle-suffix <suffix>', 'iOS bundle ID suffix (default: OS username)')
   .option('--device <udid>', 'Target specific iOS device')
-  .action(runLocalIos);
+  .action(runLocalIos)
 
-program.parse();
+program.parse()

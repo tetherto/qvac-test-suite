@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod'
 
 /**
  * Base consumer configuration (shared fields)
@@ -6,48 +6,64 @@ import { z } from 'zod';
 const baseConsumerSchema = z.object({
   entry: z.string().describe('Entry point file for the consumer'),
 
-  include: z.array(z.string()).describe('Glob patterns for files to bundle (e.g., ["./src/**", "./tests/**"])'),
+  include: z
+    .array(z.string())
+    .describe('Glob patterns for files to bundle (e.g., ["./src/**", "./tests/**"])'),
 
   dependencies: z
     .union([z.literal('auto'), z.record(z.string())])
     .optional()
-    .describe('Dependencies to install: "auto" reads from package.json, or provide manual map of package@version'),
-});
+    .describe(
+      'Dependencies to install: "auto" reads from package.json, or provide manual map of package@version'
+    )
+})
 
 /**
  * Desktop consumer configuration schema
  */
 const desktopConsumerSchema = baseConsumerSchema.extend({
-  platforms: z.array(z.enum(['macos', 'windows', 'linux'])).describe('Target desktop platforms'),
-});
+  platforms: z.array(z.enum(['macos', 'windows', 'linux'])).describe('Target desktop platforms')
+})
 
 /**
  * Electron consumer configuration schema
  */
-const electronConsumerSchema = baseConsumerSchema.omit({ include: true, dependencies: true }).extend({
-  platforms: z.array(z.enum(['macos', 'windows', 'linux'])).describe('Target Electron desktop platforms'),
+const electronConsumerSchema = baseConsumerSchema
+  .omit({ include: true, dependencies: true })
+  .extend({
+    platforms: z
+      .array(z.enum(['macos', 'windows', 'linux']))
+      .describe('Target Electron desktop platforms'),
 
-  appDir: z.string().describe('Directory containing the Electron app package.json and Forge config'),
+    appDir: z
+      .string()
+      .describe('Directory containing the Electron app package.json and Forge config'),
 
-  appName: z
-    .string()
-    .optional()
-    .describe('Packaged Electron app executable/name. Defaults to package.json productName or name'),
+    appName: z
+      .string()
+      .optional()
+      .describe(
+        'Packaged Electron app executable/name. Defaults to package.json productName or name'
+      ),
 
-  outDir: z.string().optional().default('out').describe('Electron Forge output directory relative to appDir'),
+    outDir: z
+      .string()
+      .optional()
+      .default('out')
+      .describe('Electron Forge output directory relative to appDir'),
 
-  packageManager: z
-    .enum(['npm', 'bun', 'pnpm', 'yarn'])
-    .optional()
-    .default('npm')
-    .describe('Package manager used to install and package the Electron app'),
+    packageManager: z
+      .enum(['npm', 'bun', 'pnpm', 'yarn'])
+      .optional()
+      .default('npm')
+      .describe('Package manager used to install and package the Electron app'),
 
-  packageScript: z
-    .string()
-    .optional()
-    .default('package')
-    .describe('package.json script that packages the Electron app'),
-});
+    packageScript: z
+      .string()
+      .optional()
+      .default('package')
+      .describe('package.json script that packages the Electron app')
+  })
 
 /**
  * Mobile consumer configuration schema
@@ -58,18 +74,24 @@ const mobileConsumerSchema = baseConsumerSchema.extend({
   mobileInit: z
     .string()
     .optional()
-    .describe('Optional mobile initialization file (e.g., "./mobile-init.ts") for platform-specific setup'),
+    .describe(
+      'Optional mobile initialization file (e.g., "./mobile-init.ts") for platform-specific setup'
+    ),
 
   metroConfig: z
     .string()
     .optional()
-    .describe('Optional Metro config file (e.g., "./metro.config.js") to override default Metro configuration'),
+    .describe(
+      'Optional Metro config file (e.g., "./metro.config.js") to override default Metro configuration'
+    ),
 
   assets: z
     .object({
       patterns: z
         .array(z.string())
-        .describe('Glob patterns for assets to bundle (e.g., ["./assets/audio/**/*", "./assets/documents/**/*"])'),
+        .describe(
+          'Glob patterns for assets to bundle (e.g., ["./assets/audio/**/*", "./assets/documents/**/*"])'
+        )
     })
     .optional()
     .describe('Asset bundling configuration'),
@@ -83,8 +105,8 @@ const mobileConsumerSchema = baseConsumerSchema.extend({
     .boolean()
     .optional()
     .default(true)
-    .describe('Whether to copy built APK/IPA to root of consumer directory (default: true)'),
-});
+    .describe('Whether to copy built APK/IPA to root of consumer directory (default: true)')
+})
 
 /**
  * MQTT broker configuration schema (separate host/port)
@@ -110,8 +132,10 @@ const mqttBrokerSchema = z.object({
   path: z
     .union([z.string(), z.object({ env: z.string() })])
     .optional()
-    .describe('MQTT broker path for WebSocket (e.g., "/mqtt"). Provide directly or { env: "VAR_NAME" }'),
-});
+    .describe(
+      'MQTT broker path for WebSocket (e.g., "/mqtt"). Provide directly or { env: "VAR_NAME" }'
+    )
+})
 
 /**
  * Complete MQTT configuration schema (broker + auth + certs)
@@ -121,32 +145,44 @@ const mqttConfigSchema = z.object({
   brokerUrl: z
     .union([z.string().url(), z.object({ env: z.string() })])
     .optional()
-    .describe('MQTT broker URL. Provide URL directly or { env: "VAR_NAME" }. Alternative: use broker object'),
+    .describe(
+      'MQTT broker URL. Provide URL directly or { env: "VAR_NAME" }. Alternative: use broker object'
+    ),
 
   // Broker configuration - Option B: Separate components
-  broker: mqttBrokerSchema.optional().describe('MQTT broker configuration (host/port). Alternative to brokerUrl'),
+  broker: mqttBrokerSchema
+    .optional()
+    .describe('MQTT broker configuration (host/port). Alternative to brokerUrl'),
 
   // Authentication
   username: z
     .union([z.string(), z.object({ env: z.string() })])
     .optional()
-    .describe('Username for MQTT authentication. Provide string directly or { env: "VAR_NAME" } to read from env'),
+    .describe(
+      'Username for MQTT authentication. Provide string directly or { env: "VAR_NAME" } to read from env'
+    ),
 
   password: z
     .union([z.string(), z.object({ env: z.string() })])
     .optional()
-    .describe('Password for MQTT authentication. Provide string directly or { env: "VAR_NAME" } to read from env'),
+    .describe(
+      'Password for MQTT authentication. Provide string directly or { env: "VAR_NAME" } to read from env'
+    ),
 
   // TLS Certificates
   caPath: z
     .union([z.string(), z.object({ env: z.string() })])
     .optional()
-    .describe('Path to CA certificate. Provide path directly or { env: "VAR_NAME" } to read from env'),
+    .describe(
+      'Path to CA certificate. Provide path directly or { env: "VAR_NAME" } to read from env'
+    ),
 
   certPath: z
     .union([z.string(), z.object({ env: z.string() })])
     .optional()
-    .describe('Path to client certificate. Provide path directly or { env: "VAR_NAME" } to read from env'),
+    .describe(
+      'Path to client certificate. Provide path directly or { env: "VAR_NAME" } to read from env'
+    ),
 
   keyPath: z
     .union([z.string(), z.object({ env: z.string() })])
@@ -157,8 +193,10 @@ const mqttConfigSchema = z.object({
     .boolean()
     .optional()
     .default(true)
-    .describe('Verify TLS certificates (default: true). Set to false to disable certificate validation (testing only)'),
-});
+    .describe(
+      'Verify TLS certificates (default: true). Set to false to disable certificate validation (testing only)'
+    )
+})
 
 /**
  * Main configuration schema for QVAC test suite
@@ -198,13 +236,13 @@ export const qvacTestConfigSchema = z.object({
             .array(z.string())
             .describe(
               'Glob patterns for shared code included in both desktop and mobile builds (e.g., ["./tests/shared/**"])'
-            ),
+            )
         })
         .optional()
-        .describe('Shared code configuration included in both desktop and mobile consumer builds'),
+        .describe('Shared code configuration included in both desktop and mobile consumer builds')
     })
     .refine((data) => data.desktop || data.mobile || data.electron, {
-      message: 'At least one consumer type (desktop, mobile, or electron) must be configured',
+      message: 'At least one consumer type (desktop, mobile, or electron) must be configured'
     })
     .describe('Consumer configuration per platform type'),
 
@@ -213,21 +251,23 @@ export const qvacTestConfigSchema = z.object({
       baselineRef: z
         .string()
         .default('main')
-        .describe('Branch, tag, or commit to use as baseline for comparison (e.g., "main", "dev", "v1.0.0")'),
+        .describe(
+          'Branch, tag, or commit to use as baseline for comparison (e.g., "main", "dev", "v1.0.0")'
+        )
     })
     .optional()
-    .describe('Report comparison configuration'),
-});
+    .describe('Report comparison configuration')
+})
 
 /**
  * Infer TypeScript type from schema
  */
-export type QvacTestConfig = z.infer<typeof qvacTestConfigSchema>;
+export type QvacTestConfig = z.infer<typeof qvacTestConfigSchema>
 
 /**
  * Helper function to define config with type safety and validation
  */
 export function defineConfig(config: QvacTestConfig): QvacTestConfig {
   // Validate at definition time (catches errors early)
-  return qvacTestConfigSchema.parse(config);
+  return qvacTestConfigSchema.parse(config)
 }
