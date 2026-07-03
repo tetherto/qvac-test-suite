@@ -19,7 +19,7 @@ import {
   type ReportProfilingData
 } from '../utils/report-generator.js'
 import { getMetricCount } from '../utils/profiler-adapter.js'
-import { aggregateMemory } from '../utils/memory-aggregator.js'
+import { aggregateMemory, type MemorySummary } from '../utils/memory-aggregator.js'
 
 interface TestCase {
   id: string // Unique test ID
@@ -48,6 +48,14 @@ interface ConsumerInfo {
   outstandingRequest?: boolean
 }
 
+interface ProfilingSnapshot {
+  profilerExport: ProfilerExport
+  kind: 'checkpoint' | 'final'
+  sequence?: number
+  timestamp: string
+  receivedAt: number
+}
+
 // Test result type imported from schemas
 type TestResult = MqttTestResult
 
@@ -67,7 +75,8 @@ export class BatchOrchestrator {
   private assignedTests = new Map<string, TestAssignment>() // uniqueTestId -> assignment
   private completedTests = new Map<string, TestResult>() // uniqueTestId -> result
   private consumers = new Map<string, ConsumerInfo>() // consumerId -> info
-  private profilingData = new Map<string, ProfilerExport>() // consumerId -> profiler export
+  private profilingData = new Map<string, ProfilingSnapshot>() // consumerId -> latest profiler snapshot
+  private finalProfilingConsumers = new Set<string>()
   private testSuites = new Map<string, string[]>() // testId -> suites
   private testCategories = new Map<string, string>() // testId -> metadata.category
   // Unique post-filter testIds, snapshotted in buildTestQueue and replayed
@@ -112,13 +121,19 @@ export class BatchOrchestrator {
     // Validate the minimum shape; ignore obviously broken entries.
     if (typeof m.ts !== 'number' || typeof m.memoryKb !== 'number') return
     if (typeof m.platform !== 'string') return
+    // unit/limitKb/peakKb are passed through for extended memory series
+    // (/proc-derived Android values and task_vm_info-derived iOS values). Older
+    // publishers omit them; default to the resident-memory shape (kb, no
+    // ceiling).
+    const unit = m.unit === 'count' ? 'count' : 'kb'
     const record = {
       ts: m.ts,
       pid: typeof m.pid === 'number' ? m.pid : null,
       memoryKb: m.memoryKb,
-      peakKb: null,
-      limitKb: null,
+      peakKb: typeof m.peakKb === 'number' ? m.peakKb : null,
+      limitKb: typeof m.limitKb === 'number' ? m.limitKb : null,
       metric: typeof m.metric === 'string' ? m.metric : 'in-app',
+      unit,
       platform: m.platform,
       consumerId: typeof m.consumerId === 'string' ? m.consumerId : undefined
     }
@@ -462,11 +477,49 @@ export class BatchOrchestrator {
       return
     }
 
-    this.profilingData.set(consumerId, profilerExport)
+    const kind = message.kind ?? 'final'
+    const existing = this.profilingData.get(consumerId)
+
+    // Guards run BEFORE the .set() so a late checkpoint can never overwrite the
+    // final snapshot: forceShutdown force-publishes a checkpoint (with a higher
+    // sequence) after finalize already published final, and QoS-1 reconnects can
+    // reorder delivery. lastSeen is still bumped below regardless of the guards.
+    const consumer = this.consumers.get(consumerId)
+    if (consumer) {
+      consumer.lastSeen = Date.now()
+    }
+
+    // Never downgrade a final snapshot to a checkpoint.
+    if (kind === 'checkpoint' && existing?.kind === 'final') {
+      return
+    }
+    // Drop out-of-order checkpoints. Skipped when either sequence is undefined so
+    // older publishers keep last-write-wins and never lose data.
+    if (
+      kind === 'checkpoint' &&
+      existing &&
+      message.sequence !== undefined &&
+      existing.sequence !== undefined &&
+      message.sequence <= existing.sequence
+    ) {
+      return
+    }
+
+    this.profilingData.set(consumerId, {
+      profilerExport,
+      kind,
+      sequence: message.sequence,
+      timestamp: message.timestamp,
+      receivedAt: Date.now()
+    })
+    if (kind === 'final') {
+      this.finalProfilingConsumers.add(consumerId)
+    }
+
     const metricCount = getMetricCount(profilerExport)
     const metricLabel = metricCount !== undefined ? `${metricCount} metrics` : 'N/A'
     console.log(
-      `📈 Received profiling data from ${consumerId.split('-').slice(1, 3).join('-')} (${metricLabel})`
+      `📈 Received ${kind} profiling data from ${consumerId.split('-').slice(1, 3).join('-')} (${metricLabel})`
     )
   }
 
@@ -687,7 +740,7 @@ export class BatchOrchestrator {
 
     const startTime = Date.now()
     const timer = setInterval(() => {
-      const pending = [...expectedIds].filter((id) => !this.profilingData.has(id))
+      const pending = [...expectedIds].filter((id) => !this.finalProfilingConsumers.has(id))
       const timedOut = Date.now() - startTime >= PROFILING_SAFETY_TIMEOUT_MS
 
       if (pending.length === 0 || timedOut) {
@@ -704,7 +757,7 @@ export class BatchOrchestrator {
         `⚠️  Safety timeout: missing profiling from ${pendingIds.length} consumer(s): ${pendingShort.join(', ')}`
       )
     } else {
-      const receivedCount = this.profilingData.size
+      const receivedCount = this.finalProfilingConsumers.size
       if (receivedCount > 0) {
         console.log(`✅ Received profiling data from all ${receivedCount} consumer(s)`)
       }
@@ -717,7 +770,15 @@ export class BatchOrchestrator {
     try {
       const profilingDataArray: ReportProfilingData[] = Array.from(
         this.profilingData.entries()
-      ).map(([consumerId, profilerExport]) => ({ consumerId, profilerExport }))
+      ).map(([consumerId, snapshot]) => ({
+        consumerId,
+        profilerExport: snapshot.profilerExport,
+        kind: snapshot.kind,
+        sequence: snapshot.sequence,
+        timestamp: snapshot.timestamp,
+        receivedAt: snapshot.receivedAt,
+        incomplete: snapshot.kind !== 'final'
+      }))
 
       const completedTests = Array.from(this.completedTests.values()).map((result) => ({
         ...result,
@@ -725,12 +786,12 @@ export class BatchOrchestrator {
         category: this.testCategories.get(result.testId)
       }))
 
-      let memorySummary
+      let memorySummaries: MemorySummary[] = []
       let memNdjsonPath: string | undefined
       if (this.reportDir) {
         memNdjsonPath = this.appMemPath
         try {
-          memorySummary = aggregateMemory(this.reportDir) ?? undefined
+          memorySummaries = aggregateMemory(this.reportDir)
         } catch (e) {
           console.warn(`⚠️  Failed to aggregate memory data: ${(e as Error).message}`)
         }
@@ -742,7 +803,7 @@ export class BatchOrchestrator {
         consumers: this.consumers,
         startTime: this.startTime,
         profilingData: profilingDataArray.length > 0 ? profilingDataArray : undefined,
-        memorySummary,
+        memorySummaries: memorySummaries.length > 0 ? memorySummaries : undefined,
         reportDir: this.reportDir
       }
 
@@ -755,10 +816,15 @@ export class BatchOrchestrator {
       if (profilingDataArray.length > 0) {
         console.log(`📈 Profiling data included from ${profilingDataArray.length} consumer(s)`)
       }
-      if (memorySummary) {
-        const peakMb = (memorySummary.peakSuite.memoryKb / 1024).toFixed(1)
+      if (memorySummaries.length > 0) {
+        const primary = memorySummaries[0]
+        const peak =
+          primary.unit === 'count'
+            ? `${primary.peakSuite.memoryKb} ${primary.metric}`
+            : `${(primary.peakSuite.memoryKb / 1024).toFixed(1)} MB`
+        const series = memorySummaries.map((s) => `${s.metric} (${s.chart.length})`).join(', ')
         console.log(
-          `📉 Memory: peak ${peakMb} MB (${memorySummary.metric}, ${memorySummary.chart.length} samples) — ${memNdjsonPath}`
+          `📉 Memory: ${memorySummaries.length} series [${series}] — peak ${peak} — ${memNdjsonPath}`
         )
       } else if (memNdjsonPath) {
         // Diagnostic: explain why the memory tab is missing.

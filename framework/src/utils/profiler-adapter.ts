@@ -61,7 +61,11 @@ export function escapeHtml(unsafe: string): string {
     .replace(/'/g, '&#039;')
 }
 
-export function renderRawProfilerFallback(consumerId: string, data: ProfilerExport): string {
+export function renderRawProfilerFallback(
+  consumerId: string,
+  data: ProfilerExport,
+  metadataHtml = ''
+): string {
   const shortId = consumerId.split('-').slice(1, 3).join('-')
   return `
   <div class="consumer-section">
@@ -69,6 +73,7 @@ export function renderRawProfilerFallback(consumerId: string, data: ProfilerExpo
       <h3>📊 ${shortId}</h3>
       <div class="consumer-stats"><span style="color: #f59e0b;">Unknown profiler format</span></div>
     </div>
+    ${metadataHtml}
     <details>
       <summary style="cursor: pointer; color: #6b7280;">View raw JSON</summary>
       <pre style="background: #f3f4f6; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 12px;">${escapeHtml(JSON.stringify(data, null, 2))}</pre>

@@ -158,7 +158,13 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
     fs.mkdirSync(outputDir, { recursive: true })
 
     // Clean generated files to ensure fresh config from current env
-    const generatedFiles = ['consumer-config.ts', 'app.json', 'executor.js', 'assets.ts']
+    const generatedFiles = [
+      'consumer-config.ts',
+      'app.json',
+      'executor.js',
+      'assets.ts',
+      'proc-mem-worklet.bundle.mjs'
+    ]
     for (const file of generatedFiles) {
       const filePath = path.join(outputDir, file)
       if (fs.existsSync(filePath)) {
@@ -229,6 +235,13 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
     })
     console.log('📥 Installing dependencies (with --install-links)...')
     execSync('npm install --install-links=true', { cwd: outputDir, stdio: 'inherit' })
+
+    patchPerformanceToolkitIosMemoryBuffer(outputDir, options.platform)
+
+    // Pre-bundle the /proc memory sampling worklet with bare-pack. Must happen
+    // after install (bare-pack + the linked bare-* deps are now present) and
+    // before prebuild/Metro (consumer-wrapper statically imports the bundle).
+    generateProcMemWorkletBundle(outputDir, options.platform)
 
     if (options.prepareOnly) {
       // Skip prebuild -- caller (e.g. expo run:ios) will handle prebuild + build + signing
@@ -398,6 +411,7 @@ function copyTemplateFiles(
     'App.tsx',
     'batch-consumer.tsx',
     'consumer-wrapper.tsx',
+    'proc-mem-worklet.mjs',
     'metro.config.js',
     'babel.config.js'
   ]
@@ -471,6 +485,277 @@ function copyTemplateFiles(
     for (const pluginFile of pluginFiles) {
       fs.copyFileSync(path.join(pluginsDir, pluginFile), path.join(destPluginsDir, pluginFile))
     }
+  }
+}
+
+// Exact react-native-performance-toolkit version this iOS patch was written
+// against. The block matching in patchPerformanceToolkitIosMemoryBuffer depends
+// on the upstream Swift source verbatim; the version is pinned in
+// package.json.template and enforced via npm overrides (see generatePackageJson).
+// If the pin is ever bumped, the patch must be re-verified against the new
+// source and this constant updated in lockstep.
+const EXPECTED_PERFORMANCE_TOOLKIT_VERSION = '0.3.1'
+
+/**
+ * Extend react-native-performance-toolkit's existing iOS memory buffer in the
+ * generated app project. The public Nitro method still returns ArrayBuffer and
+ * the first Int32 remains phys_footprint MB for compatibility with the package's
+ * getMemoryUsage() helper; QVAC reads the appended Float64 fields (resident_size,
+ * region_count) directly. virtual_size is intentionally not collected.
+ */
+function patchPerformanceToolkitIosMemoryBuffer(
+  outputDir: string,
+  platform: 'ios' | 'android'
+): void {
+  if (platform !== 'ios') return
+
+  const packageRoot = path.join(outputDir, 'node_modules', 'react-native-performance-toolkit')
+  const swiftPath = path.join(packageRoot, 'ios', 'HybridPerformanceToolkit.swift')
+  if (!fs.existsSync(swiftPath)) {
+    console.warn(
+      '   ⚠️  react-native-performance-toolkit iOS source not found; iOS VM metrics disabled'
+    )
+    return
+  }
+
+  // Loud signal on version drift: the block matches below silently no-op on a
+  // changed upstream source, which would quietly drop the iOS resident_size /
+  // region_count series. A version mismatch means the patch must be re-verified.
+  let installedVersion: string | undefined
+  try {
+    installedVersion = JSON.parse(
+      fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8')
+    ).version
+  } catch {
+    // Fall through; the block-match guards below still protect correctness.
+  }
+  if (installedVersion && installedVersion !== EXPECTED_PERFORMANCE_TOOLKIT_VERSION) {
+    console.warn(
+      `   ⚠️  react-native-performance-toolkit@${installedVersion} differs from the pinned ${EXPECTED_PERFORMANCE_TOOLKIT_VERSION}; ` +
+        're-verify patchPerformanceToolkitIosMemoryBuffer against the new source and update EXPECTED_PERFORMANCE_TOOLKIT_VERSION. iOS VM metrics may be disabled.'
+    )
+  }
+
+  let content = fs.readFileSync(swiftPath, 'utf8')
+  if (content.includes('QVAC_VM_INFO_BUFFER_SIZE')) {
+    console.log('   ✅ iOS VM memory buffer already patched')
+    return
+  }
+
+  const memoryTrackingBlock = `    // Memory tracking
+    private var memoryTimer: Timer?
+    private var memoryBuffer: ArrayBuffer?
+    private var isMemoryTrackingStarting = false
+`
+  const patchedMemoryTrackingBlock = `    // Memory tracking
+    private static let QVAC_VM_INFO_BUFFER_SIZE = 24
+    private static let QVAC_VM_INFO_PHYS_FOOTPRINT_MB_OFFSET = 0
+    private static let QVAC_VM_INFO_RESIDENT_SIZE_KB_OFFSET = 8
+    private static let QVAC_VM_INFO_REGION_COUNT_OFFSET = 16
+    private var memoryTimer: Timer?
+    private var memoryBuffer: ArrayBuffer?
+    private var isMemoryTrackingStarting = false
+`
+
+  const memoryBufferBlock = `        if memoryBuffer == nil {
+            memoryBuffer = ArrayBuffer.allocate(size: MemoryLayout<Int32>.size)
+            memoryBuffer!.data.withMemoryRebound(to: Int32.self, capacity: 1) { $0.pointee = 0 }
+        }
+`
+  const patchedMemoryBufferBlock = `        if memoryBuffer == nil {
+            memoryBuffer = ArrayBuffer.allocate(size: Self.QVAC_VM_INFO_BUFFER_SIZE)
+            memset(memoryBuffer!.data, 0, Self.QVAC_VM_INFO_BUFFER_SIZE)
+        }
+`
+
+  const memoryMethodsBlock = `    private func updateMemoryBuffer() {
+        guard let buffer = memoryBuffer else { return }
+        
+        let ramValue = collectUsedRam()
+        
+        buffer.data.withMemoryRebound(to: Int32.self, capacity: 1) { $0.pointee = Int32(ramValue) }
+    }
+    
+    private func collectUsedRam() -> Double {
+        // Use task_vm_info to get phys_footprint, which matches Xcode's memory gauge
+        // This excludes shared memory (frameworks, dylibs) and shows actual app footprint
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size) / 4
+        
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        
+        guard result == KERN_SUCCESS else {
+            return 0.0
+        }
+        
+        return Double(info.phys_footprint) / 1_048_576.0
+    }
+`
+  const patchedMemoryMethodsBlock = `    private struct QvacTaskVmInfoSample {
+        let physFootprintMb: Double?
+        let residentSizeKb: Double?
+        let regionCount: Double?
+    }
+    
+    private func updateMemoryBuffer() {
+        guard let buffer = memoryBuffer else { return }
+        
+        let sample = collectQvacTaskVmInfo()
+        
+        buffer.data.advanced(by: Self.QVAC_VM_INFO_PHYS_FOOTPRINT_MB_OFFSET)
+            .withMemoryRebound(to: Int32.self, capacity: 1) {
+                $0.pointee = Int32(sample.physFootprintMb ?? 0.0)
+            }
+        writeQvacDouble(buffer, offset: Self.QVAC_VM_INFO_RESIDENT_SIZE_KB_OFFSET, value: sample.residentSizeKb ?? 0.0)
+        writeQvacDouble(buffer, offset: Self.QVAC_VM_INFO_REGION_COUNT_OFFSET, value: sample.regionCount ?? 0.0)
+    }
+    
+    private func writeQvacDouble(_ buffer: ArrayBuffer, offset: Int, value: Double) {
+        var mutableValue = value
+        withUnsafeBytes(of: &mutableValue) { bytes in
+            memcpy(buffer.data.advanced(by: offset), bytes.baseAddress!, MemoryLayout<Double>.size)
+        }
+    }
+    
+    private func qvacTaskVmInfoCountCovers<T>(_ field: KeyPath<task_vm_info_data_t, T>, count: mach_msg_type_number_t) -> Bool {
+        guard let offset = MemoryLayout<task_vm_info_data_t>.offset(of: field) else {
+            return false
+        }
+        let wordSize = MemoryLayout<natural_t>.size
+        let requiredCount = mach_msg_type_number_t((offset + MemoryLayout<T>.size + wordSize - 1) / wordSize)
+        return count >= requiredCount
+    }
+    
+    private func collectQvacTaskVmInfo() -> QvacTaskVmInfoSample {
+        // TASK_VM_INFO gives phys_footprint plus resident size and region count.
+        // Swift does not import the TASK_VM_INFO_COUNT macro, so compute the same
+        // natural_t word count and verify the returned revision covers each late
+        // field before reading it. virtual_size is intentionally not read: it
+        // measures reserved-but-uncommitted address space and is useless as a
+        // memory-usage signal.
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        
+        guard result == KERN_SUCCESS else {
+            return QvacTaskVmInfoSample(physFootprintMb: nil, residentSizeKb: nil, regionCount: nil)
+        }
+        
+        let physFootprintMb: Double?
+        if qvacTaskVmInfoCountCovers(\\task_vm_info_data_t.phys_footprint, count: count) {
+            physFootprintMb = Double(info.phys_footprint) / 1_048_576.0
+        } else {
+            physFootprintMb = nil
+        }
+        
+        let residentSizeKb: Double?
+        if qvacTaskVmInfoCountCovers(\\task_vm_info_data_t.resident_size, count: count) {
+            residentSizeKb = Double(info.resident_size) / 1024.0
+        } else {
+            residentSizeKb = nil
+        }
+        
+        let regionCount: Double?
+        if qvacTaskVmInfoCountCovers(\\task_vm_info_data_t.region_count, count: count) {
+            regionCount = Double(info.region_count)
+        } else {
+            regionCount = nil
+        }
+        
+        return QvacTaskVmInfoSample(
+            physFootprintMb: physFootprintMb,
+            residentSizeKb: residentSizeKb,
+            regionCount: regionCount
+        )
+    }
+    
+    private func collectUsedRam() -> Double {
+        return collectQvacTaskVmInfo().physFootprintMb ?? 0.0
+    }
+`
+
+  if (
+    !content.includes(memoryTrackingBlock) ||
+    !content.includes(memoryBufferBlock) ||
+    !content.includes(memoryMethodsBlock)
+  ) {
+    console.warn(
+      '   ⚠️  Could not patch react-native-performance-toolkit iOS memory buffer; iOS VM metrics disabled'
+    )
+    return
+  }
+
+  content = content
+    .replace(memoryTrackingBlock, patchedMemoryTrackingBlock)
+    .replace(memoryBufferBlock, patchedMemoryBufferBlock)
+    .replace(memoryMethodsBlock, patchedMemoryMethodsBlock)
+
+  if (
+    !content.includes('QVAC_VM_INFO_BUFFER_SIZE') ||
+    !content.includes('collectQvacTaskVmInfo') ||
+    content.includes('memoryBuffer = ArrayBuffer.allocate(size: MemoryLayout<Int32>.size)')
+  ) {
+    console.warn(
+      '   ⚠️  Could not patch react-native-performance-toolkit iOS memory buffer; iOS VM metrics disabled'
+    )
+    return
+  }
+
+  fs.writeFileSync(swiftPath, content)
+  console.log('   ✅ Patched iOS memory buffer for task_vm_info resident size + region count')
+}
+
+/**
+ * Pre-bundle the Bare /proc memory sampling worklet with `bare-pack`.
+ *
+ * `consumer-wrapper.tsx` statically imports `./proc-mem-worklet.bundle.mjs`, so
+ * the file must always exist by the time Metro bundles — even on iOS (where the
+ * sampler is inert) or when bundling fails. In those cases we write a stub that
+ * exports `null`; the wrapper guards on a falsy bundle and simply skips the
+ * extra series.
+ *
+ * The worklet is Android-only (iOS has no /proc), so we only invoke bare-pack
+ * for Android builds. `--linked` reuses the native addons linked ahead of time
+ * by react-native-bare-kit rather than recompiling them.
+ */
+function generateProcMemWorkletBundle(outputDir: string, platform: 'ios' | 'android'): void {
+  const entry = path.join(outputDir, 'proc-mem-worklet.mjs')
+  const bundleOut = path.join(outputDir, 'proc-mem-worklet.bundle.mjs')
+  const stub = 'export default null\n'
+
+  if (platform !== 'android' || !fs.existsSync(entry)) {
+    fs.writeFileSync(bundleOut, stub)
+    return
+  }
+
+  try {
+    console.log('🧵 Bundling /proc memory worklet (bare-pack)...')
+    // bare-pack targets a host triple via --host (the Android consumer is built
+    // arm64-v8a only, see withAndroidArchitecture in the expo config), and
+    // --linked defers native addon (bare-fs/bare-rpc) resolution to the app's
+    // own native linking rather than bundling prebuilt binaries.
+    execSync(`npx bare-pack --host android-arm64 --linked --out "${bundleOut}" "${entry}"`, {
+      cwd: outputDir,
+      stdio: 'inherit'
+    })
+    if (!fs.existsSync(bundleOut)) {
+      throw new Error('bare-pack produced no output')
+    }
+    console.log('   ✅ Worklet bundle generated')
+  } catch (e) {
+    console.warn(
+      `   ⚠️  Worklet bundling failed (${(e as Error).message}); /proc memory series disabled`
+    )
+    fs.writeFileSync(bundleOut, stub)
   }
 }
 
@@ -623,7 +908,11 @@ async function generatePackageJson(
   // Pin RN-stack versions across the entire dependency graph via npm overrides.
   // Without this, transitive peer ranges like react-native-bare-kit's
   // `react-native: *` can pull in a different react-native at install time.
-  const pinned = ['react', 'react-native', 'react-native-bare-kit']
+  // react-native-performance-toolkit is pinned too because the iOS build patches
+  // its Swift source verbatim (see patchPerformanceToolkitIosMemoryBuffer /
+  // EXPECTED_PERFORMANCE_TOOLKIT_VERSION); an unexpected version silently breaks
+  // that patch.
+  const pinned = ['react', 'react-native', 'react-native-bare-kit', 'react-native-performance-toolkit']
   const overrides: Record<string, string> = { ...(template.overrides ?? {}) }
   for (const name of pinned) {
     const v = template.dependencies?.[name]

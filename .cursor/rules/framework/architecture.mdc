@@ -125,7 +125,7 @@ Configurable via `runIdStrategy`: `"auto"` generates the format above, `"manual"
   "consumers": [{ "consumerId": "", "platform": "" }],
   "system": { "hostname": "", "platform": "", "nodeVersion": "" },
   "profiling": [],
-  "memory": {}
+  "memory": []
 }
 ```
 
