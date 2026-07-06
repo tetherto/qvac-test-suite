@@ -401,17 +401,25 @@ const QVAC_CONFIG_PATTERN = /^qvac\.config\.\w+$/
 
 /**
  * Copies qvac.config.* into the mobile build output for SDK Expo plugins to
- * discover during `expo prebuild`. With `explicitPath` set, only that file
- * is copied, as `qvac.config.json`; otherwise all qvac.config.* in `configDir`
- * are copied as-is.
+ * discover during `expo prebuild`. An explicit `explicitPath` is required to
+ * exist and must be a `.json` file — it is copied as the canonical
+ * `qvac.config.json` and parsed as JSON by the SDK config loader, so a missing
+ * or non-JSON path is a hard error rather than a silent fallback. When
+ * `explicitPath` is omitted, all qvac.config.* in `configDir` are copied as-is.
  */
 function copyQvacConfigFiles(configDir: string, outputDir: string, explicitPath?: string): void {
   if (explicitPath) {
     const src = path.isAbsolute(explicitPath) ? explicitPath : path.join(configDir, explicitPath)
 
     if (!fs.existsSync(src)) {
-      console.warn(`   ⚠️  qvacConfig path not found: ${explicitPath}`)
-      return
+      throw new Error(`qvacConfig path not found: ${explicitPath}`)
+    }
+
+    if (path.extname(src) !== '.json') {
+      throw new Error(
+        `qvacConfig must point to a .json file (got "${explicitPath}"); it is copied as ` +
+          `qvac.config.json and parsed as JSON by the SDK config loader.`
+      )
     }
 
     const dest = path.join(outputDir, 'qvac.config.json')
