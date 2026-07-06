@@ -23,6 +23,11 @@ export interface TestExecutor {
     expectation: unknown
   ): Promise<TestResult>
   teardown?(testId: string, context: unknown): Promise<void>
+  /**
+   * Called between the first failed attempt and the retry when `retryOnFailure` is true.
+   * Should fully unload model resources and re-run setup for a clean retry state.
+   */
+  reload?(testId: string, context: unknown): Promise<void>
   getProfilingData?(): ProfilerExport | undefined
   initProfiling?(): void
 }
@@ -52,6 +57,13 @@ export interface ConsumerCallbacks {
 const DEFAULT_REQUEST_ASSIGNMENT_TIMEOUT_MS = 10000
 const DEFAULT_TEARDOWN_TIMEOUT_MS = 120000
 
+class TimeoutError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'TimeoutError'
+  }
+}
+
 export class ConsumerBase {
   protected client: MqttClient
   protected consumerId: string
@@ -67,6 +79,8 @@ export class ConsumerBase {
   protected testsPassed = 0
   protected testsFailed = 0
   protected testsSkipped = 0
+  protected testsRetried = 0
+  protected testsRetriedPassed = 0
   protected isProcessingTest = false
   protected shutdownRequested = false
   protected callbacks: ConsumerCallbacks
@@ -124,6 +138,26 @@ export class ConsumerBase {
   }) {
     if (this.callbacks.updateStats) {
       this.callbacks.updateStats(update)
+    }
+  }
+
+  protected async runWithTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    message: string
+  ): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new TimeoutError(message)), timeoutMs)
+        })
+      ])
+    } finally {
+      if (timer) {
+        clearTimeout(timer)
+      }
     }
   }
 
@@ -449,6 +483,14 @@ export class ConsumerBase {
     this.log(`📊 Total: ${message.totalTests || 0}`)
     this.log(`✅ Passed: ${message.successCount || 0}`)
     this.log(`❌ Failed: ${message.failureCount || 0}`)
+    if (this.testsRetried > 0) {
+      const retriedPassedCount = this.testsRetriedPassed
+      const retriedFailedCount = this.testsRetried - this.testsRetriedPassed
+      const parts: string[] = []
+      if (retriedPassedCount > 0) parts.push(`✅ passed: ${retriedPassedCount}`)
+      if (retriedFailedCount > 0) parts.push(`❌ failed: ${retriedFailedCount}`)
+      this.log(`🔄 Retried: ${this.testsRetried} (${parts.join(', ')})`)
+    }
     this.log(`⏱️  Duration: ${((message.duration || 0) / 1000).toFixed(2)}s`)
 
     this.shutdownRequested = true
@@ -495,6 +537,7 @@ export class ConsumerBase {
   protected async executeTest(uniqueTestId: string, definition: TestDefinition) {
     this.isProcessingTest = true
     const { testId, params, expectation } = definition
+    let skipTeardown = false
 
     const progress = this.totalTests > 0 ? `[${this.testsCompleted + 1}/${this.totalTests}]` : ''
     this.log(`▶️  ${progress} ${testId}`)
@@ -580,25 +623,119 @@ export class ConsumerBase {
     )
 
     const startTime = Date.now()
+    const stopConsumerAfterTimeout = (message: string) => {
+      skipTeardown = true
+      this.shutdownRequested = true
+      this.clearOutstandingRequest()
+      this.log(message)
+    }
 
     try {
       const metadata = definition.metadata || {}
       const estimatedMs =
         typeof metadata.estimatedDurationMs === 'number' ? metadata.estimatedDurationMs : 0
       const timeoutMs = Math.max(estimatedMs * 2, 120000)
+      // A first-attempt timeout on a retry test becomes a failed result so it
+      // hits the reload+retry path. Other throws keep the original fail-fast.
+      let result: TestResult
+      try {
+        result = await this.runWithTimeout(
+          this.executor.executeTest(testId, context, params, expectation),
+          timeoutMs,
+          `Test timeout after ${timeoutMs / 1000}s`
+        )
+      } catch (attemptError: unknown) {
+        if (attemptError instanceof TimeoutError && definition.retryOnFailure === true) {
+          result = { passed: false, output: attemptError.message }
+        } else {
+          throw attemptError
+        }
+      }
 
-      const testPromise = this.executor.executeTest(testId, context, params, expectation)
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`Test timeout after ${timeoutMs / 1000}s`)), timeoutMs)
-      })
+      let retried = false
+      let retryPassed: boolean | undefined
+      let retryOutput: string | undefined
+      let attempt1DurationMs: number | undefined
 
-      const result = await Promise.race([testPromise, timeoutPromise])
+      if (!result.passed && !result.skipped && definition.retryOnFailure === true) {
+        retried = true
+        this.log(`   ❌ attempt 1:`)
+        if (result.output) {
+          result.output.split('\n').forEach((line) => this.log(`      ${line}`))
+        }
+        this.log(`   ┄┄ reload + retry ┄┄`)
+
+        const reloadBoundaryTs = Date.now()
+        attempt1DurationMs = reloadBoundaryTs - startTime
+        this.client.publish(
+          'qvac/test-reload',
+          JSON.stringify({
+            runId: this.runId,
+            consumerId: this.consumerId,
+            uniqueTestId,
+            testId,
+            ts: reloadBoundaryTs
+          }),
+          { qos: 1 }
+        )
+
+        if (this.executor.reload) {
+          try {
+            const reloadStart = Date.now()
+            await this.runWithTimeout(
+              this.executor.reload(testId, context),
+              timeoutMs,
+              `Reload timeout after ${timeoutMs / 1000}s`
+            )
+            this.log(`   reload: ${Date.now() - reloadStart}ms`)
+          } catch (reloadError: unknown) {
+            const msg = reloadError instanceof Error ? reloadError.message : String(reloadError)
+            if (reloadError instanceof TimeoutError) {
+              stopConsumerAfterTimeout(`   ⚠️  consumer will stop after reload timeout`)
+            }
+            this.log(`   ⚠️  reload failed: ${msg}`)
+            retryPassed = false
+            retryOutput = `reload failed: ${msg}`
+          }
+        }
+
+        if (retryOutput === undefined) {
+          try {
+            const retryResult = await this.runWithTimeout(
+              this.executor.executeTest(testId, context, params, expectation),
+              timeoutMs,
+              `Retry timeout after ${timeoutMs / 1000}s`
+            )
+            retryPassed = retryResult.passed
+            retryOutput = retryResult.output
+            if (retryResult.passed) {
+              this.log(`   ✅ attempt 2: PASSED`)
+            } else {
+              this.log(`   ❌ attempt 2: FAILED`)
+              retryResult.output?.split('\n').forEach((line) => this.log(`      ${line}`))
+            }
+          } catch (retryErr: unknown) {
+            retryPassed = false
+            retryOutput = `retry threw: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`
+            this.log(`   ❌ attempt 2 threw: ${retryOutput}`)
+            if (retryErr instanceof TimeoutError) {
+              stopConsumerAfterTimeout(`   ⚠️  consumer will stop after retry timeout`)
+            }
+          }
+        }
+
+        this.testsRetried++
+        if (retryPassed) this.testsRetriedPassed++
+      }
 
       const duration = Date.now() - startTime
       const outcome = result.skipped ? 'skipped' : result.passed ? 'success' : 'failure'
 
       if (result.skipped) {
         this.log(`⏭️  ${testId}: ${result.output}`)
+      } else if (retried) {
+        const verdict = retryPassed ? '✅ passed' : '❌ failed'
+        this.log(`⚠️  ${testId} (${duration}ms) [retry:${verdict}]`)
       } else {
         this.log(`${outcome === 'success' ? '✅' : '❌'} ${testId} (${duration}ms)`)
         if (!result.passed && result.output) {
@@ -639,7 +776,8 @@ export class ConsumerBase {
           outcome,
           duration: result.skipped ? 0 : duration,
           timestamp: new Date().toISOString(),
-          error: result.skipped ? result.output : result.passed ? undefined : result.output
+          error: result.skipped ? result.output : result.passed ? undefined : result.output,
+          ...(retried && { retried: true, retryPassed, retryOutput, attempt1DurationMs })
         }),
         { qos: 1 }
       )
@@ -673,7 +811,9 @@ export class ConsumerBase {
         { qos: 1 }
       )
     } finally {
-      await this.runTeardown(testId, context)
+      if (!skipTeardown) {
+        await this.runTeardown(testId, context)
+      }
 
       this.isProcessingTest = false
 
@@ -690,25 +830,15 @@ export class ConsumerBase {
       return
     }
 
-    let timeout: ReturnType<typeof setTimeout> | undefined
     try {
-      await Promise.race([
+      await this.runWithTimeout(
         this.executor.teardown(testId, context),
-        new Promise<never>((_, reject) => {
-          timeout = setTimeout(() => {
-            reject(
-              new Error(`Teardown timeout after ${Math.round(this.teardownTimeoutMs / 1000)}s`)
-            )
-          }, this.teardownTimeoutMs)
-        })
-      ])
+        this.teardownTimeoutMs,
+        `Teardown timeout after ${Math.round(this.teardownTimeoutMs / 1000)}s`
+      )
     } catch (teardownError: unknown) {
       const msg = teardownError instanceof Error ? teardownError.message : String(teardownError)
       this.log(`⚠️  ${testId} teardown error: ${msg}`)
-    } finally {
-      if (timeout) {
-        clearTimeout(timeout)
-      }
     }
   }
 

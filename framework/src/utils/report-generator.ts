@@ -23,6 +23,12 @@ export interface ReportTestResult {
    * into "wrong".
    */
   category?: string
+  /** True when a diagnostic reload retry was executed after the first failure. */
+  retried?: boolean
+  /** Whether the retry attempt passed. Set only when retried is true. */
+  retryPassed?: boolean
+  /** Output/error from the retry attempt. Set only when retried is true. */
+  retryOutput?: string
 }
 
 export interface ReportConsumerInfo {
@@ -60,6 +66,91 @@ const systemInfo = {
   nodeVersion: process.version
 }
 
+function buildTestDetailsHtml(
+  test: ReportTestResult,
+  opts: { includeConsumer?: boolean } = {}
+): string {
+  const errorMsg = test.error || 'No error message'
+  const outputMsg = test.output || 'No output'
+
+  let html = '<div class="error-details">'
+
+  if (test.retried) {
+    const escapedFirst = escapeHtml(errorMsg)
+    const escapedRetry = escapeHtml(test.retryOutput || '(no output)')
+    const attempt2Class = test.retryPassed ? 'attempt-pass' : 'attempt-fail-retry'
+    const attempt2Label = test.retryPassed
+      ? '✓ Attempt 2 — PASSED after reload'
+      : '✗ Attempt 2 — FAILED after reload'
+
+    html += '<div class="retry-attempt-box">'
+    html += '<div class="retry-attempt-header attempt-fail">✗ Attempt 1 — Failed</div>'
+    html += '<div class="retry-attempt-body">' + escapedFirst + '</div>'
+    html += '</div>'
+
+    html += '<div class="retry-attempt-box">'
+    html += '<div class="retry-attempt-header ' + attempt2Class + '">' + attempt2Label + '</div>'
+    html += '<div class="retry-attempt-body">' + escapedRetry + '</div>'
+    html += '</div>'
+  } else {
+    const escapedError = escapeHtml(errorMsg)
+    const escapedOutput = escapeHtml(outputMsg)
+
+    html += '<div class="error-label">❌ Failure Analysis</div>'
+
+    if (test.expected && test.actual) {
+      const escapedExpected = escapeHtml(test.expected)
+      const escapedActual = escapeHtml(test.actual)
+      html += '<div class="comparison-container">'
+      html +=
+        '<div class="expected-box"><div class="box-label">✅ Expected</div><div class="box-content">' +
+        escapedExpected +
+        '</div></div>'
+      html +=
+        '<div class="actual-box"><div class="box-label">❌ Actual</div><div class="box-content">' +
+        escapedActual +
+        '</div></div>'
+      html += '</div>'
+    }
+
+    html += '<div class="log-section"><div class="log-header">📋 Error Message</div>'
+    html += '<div class="output-text">' + escapedError + '</div></div>'
+
+    if (outputMsg !== errorMsg && outputMsg !== 'No output') {
+      html += '<div class="log-section"><div class="log-header">📄 Test Output / Log</div>'
+      html += '<div class="output-text">' + escapedOutput + '</div></div>'
+    }
+  }
+
+  html += '<div class="log-section"><div class="log-header">ℹ️  Test Information</div>'
+  html += '<div class="output-text">'
+  if (opts.includeConsumer) {
+    html += '<strong>Consumer:</strong> ' + escapeHtml(test.consumerId) + '<br>'
+  }
+  html += '<strong>Duration:</strong> ' + (test.duration / 1000).toFixed(2) + 's'
+  html += '</div></div>'
+  html += '</div>'
+
+  return html
+}
+
+function renderRetryBadge(test: ReportTestResult): string {
+  if (!test.retried) return ''
+  return (
+    ' <span class="badge ' +
+    (test.retryPassed ? 'retry-pass' : 'retry-fail') +
+    '">↩ ' +
+    (test.retryPassed ? 'RETRY:✓' : 'RETRY:✗') +
+    '</span>'
+  )
+}
+
+function testRowClass(test: ReportTestResult): string {
+  if (test.outcome !== 'failure') return ''
+  if (test.retried) return test.retryPassed ? 'retry-pass-highlight' : 'retry-fail-highlight'
+  return 'failure-highlight'
+}
+
 export function generateHtmlReport(data: ReportData): string {
   const outDir = data.reportDir || 'reports'
   if (!fs.existsSync(outDir)) {
@@ -79,6 +170,9 @@ export function generateHtmlReport(data: ReportData): string {
   const successCount = data.completedTests.filter((t) => t.outcome === 'success').length
   const failureCount = data.completedTests.filter((t) => t.outcome === 'failure').length
   const skippedCount = data.completedTests.filter((t) => t.outcome === 'skipped').length
+  const retriedCount = data.completedTests.filter((t) => t.retried).length
+  const retriedPassedCount = data.completedTests.filter((t) => t.retried && t.retryPassed).length
+  const retriedFailedCount = retriedCount - retriedPassedCount
   const nonSkipped = data.completedTests.length - skippedCount
   const successRate = nonSkipped > 0 ? ((successCount / nonSkipped) * 100).toFixed(1) : '0.0'
 
@@ -142,7 +236,7 @@ export function generateHtmlReport(data: ReportData): string {
 		.header p { opacity: 0.9; }
 		.stats {
 			display: grid;
-			grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+			grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
 			gap: 15px;
 			margin-bottom: 20px;
 		}
@@ -234,6 +328,26 @@ export function generateHtmlReport(data: ReportData): string {
 		.badge.success { background: #d1fae5; color: #065f46; }
 		.badge.failure { background: #fee2e2; color: #991b1b; }
 		.badge.skipped { background: #fef3c7; color: #92400e; }
+		.badge.retry-pass { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
+		.badge.retry-fail { background: #fce7f3; color: #9d174d; border: 1px solid #f9a8d4; }
+		.retry-pass-highlight { background: #fefce8 !important; }
+		.retry-fail-highlight { background: #fdf2f8 !important; }
+		.retry-attempt-box {
+			border: 1px solid #e5e7eb;
+			border-radius: 6px;
+			margin: 8px 0;
+			overflow: hidden;
+		}
+		.retry-attempt-header {
+			padding: 6px 10px;
+			font-size: 12px;
+			font-weight: 600;
+			border-bottom: 1px solid #e5e7eb;
+		}
+		.retry-attempt-header.attempt-fail { background: #fee2e2; color: #991b1b; }
+		.retry-attempt-header.attempt-pass { background: #d1fae5; color: #065f46; }
+		.retry-attempt-header.attempt-fail-retry { background: #fce7f3; color: #9d174d; }
+		.retry-attempt-body { padding: 8px 10px; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
 		.consumer-section { margin-bottom: 30px; }
 		.consumer-header {
 			background: #f3f4f6;
@@ -399,6 +513,20 @@ export function generateHtmlReport(data: ReportData): string {
 				<h3>Skipped</h3>
 				<div class="value" style="color: #f59e0b;">${skippedCount}</div>
 			</div>
+			${
+        retriedCount > 0
+          ? `
+			<div class="stat-card" style="border-left: 3px solid #d97706; background: #fffbeb;">
+				<h3>🔄 Retried</h3>
+				<div class="value" style="color: #d97706;">${retriedCount}</div>
+				<div style="font-size:11px; color:#92400e; margin-top:4px;">
+					${retriedPassedCount > 0 ? `✓ ${retriedPassedCount} passed` : ''}
+					${retriedPassedCount > 0 && retriedFailedCount > 0 ? ' · ' : ''}
+					${retriedFailedCount > 0 ? `✗ ${retriedFailedCount} failed` : ''}
+				</div>
+			</div>`
+          : ''
+      }
 			<div class="stat-card info">
 				<h3>Success Rate</h3>
 				<div class="value">${successRate}%</div>
@@ -522,67 +650,17 @@ export function generateHtmlReport(data: ReportData): string {
 						${data.completedTests
               .filter((t) => t.outcome === 'failure')
               .map((test, idx) => {
-                const errorMsg = test.error || 'No error message'
-                const outputMsg = test.output || 'No output'
                 const detailsId = 'details-' + idx
-                const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
-                // Build comprehensive error details with Expected vs Actual comparison
-                let errorDetailsHtml = '<div class="error-details">'
-                errorDetailsHtml += '<div class="error-label">❌ Failure Analysis</div>'
-
-                // Show Expected vs Actual if available
-                if (test.expected && test.actual) {
-                  const escapedExpected = test.expected.replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                  const escapedActual = test.actual.replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                  errorDetailsHtml += '<div class="comparison-container">'
-                  errorDetailsHtml += '<div class="expected-box">'
-                  errorDetailsHtml += '<div class="box-label">✅ Expected</div>'
-                  errorDetailsHtml += '<div class="box-content">' + escapedExpected + '</div>'
-                  errorDetailsHtml += '</div>'
-                  errorDetailsHtml += '<div class="actual-box">'
-                  errorDetailsHtml += '<div class="box-label">❌ Actual</div>'
-                  errorDetailsHtml += '<div class="box-content">' + escapedActual + '</div>'
-                  errorDetailsHtml += '</div>'
-                  errorDetailsHtml += '</div>'
-                }
-
-                // Show error message
-                errorDetailsHtml += '<div class="log-section">'
-                errorDetailsHtml += '<div class="log-header">📋 Error Message</div>'
-                errorDetailsHtml += '<div class="output-text">' + escapedError + '</div>'
-                errorDetailsHtml += '</div>'
-
-                // Show output if different from error
-                if (outputMsg !== errorMsg && outputMsg !== 'No output') {
-                  errorDetailsHtml += '<div class="log-section">'
-                  errorDetailsHtml += '<div class="log-header">📄 Test Output / Log</div>'
-                  errorDetailsHtml += '<div class="output-text">' + escapedOutput + '</div>'
-                  errorDetailsHtml += '</div>'
-                }
-
-                // Show test information
-                errorDetailsHtml += '<div class="log-section">'
-                errorDetailsHtml += '<div class="log-header">ℹ️  Test Information</div>'
-                errorDetailsHtml += '<div class="output-text">'
-                errorDetailsHtml += '<strong>Test ID:</strong> ' + test.testId + '<br>'
-                errorDetailsHtml += '<strong>Consumer:</strong> ' + test.consumerId + '<br>'
-                errorDetailsHtml +=
-                  '<strong>Duration:</strong> ' + (test.duration / 1000).toFixed(2) + 's<br>'
-                errorDetailsHtml += '<strong>Timestamp:</strong> ' + new Date().toISOString()
-                errorDetailsHtml += '</div></div>'
-                errorDetailsHtml += '</div>'
-
+                const retryBadge = renderRetryBadge(test)
                 return `
-						<tr class="failure-highlight">
-							<td><strong>${test.testId}</strong></td>
-							<td title="${test.consumerId}">${test.consumerId.split('-').slice(1, 3).join('-')}</td>
+						<tr class="${testRowClass(test)}">
+							<td><strong>${escapeHtml(test.testId)}</strong>${retryBadge}</td>
+							<td title="${escapeHtml(test.consumerId)}">${escapeHtml(test.consumerId.split('-').slice(1, 3).join('-'))}</td>
 							<td>${(test.duration / 1000).toFixed(2)}s</td>
 							<td>
-								<span class="details-toggle" onclick="toggleDetails('${detailsId}')">📋 View Complete Log</span>
+								<span class="details-toggle" onclick="toggleDetails('${detailsId}')">📋 View Log</span>
 								<div id="${detailsId}" class="details-content">
-									${errorDetailsHtml}
+									${buildTestDetailsHtml(test, { includeConsumer: true })}
 								</div>
 							</td>
 						</tr>
@@ -629,71 +707,25 @@ export function generateHtmlReport(data: ReportData): string {
 							</tr>
 						</thead>
 						<tbody>
-							${tests
+              ${tests
                 .map((test, testIdx) => {
                   const detailsId = 'consumer-' + idx + '-test-' + testIdx
-                  const errorMsg = test.error || 'No error message'
-                  const outputMsg = test.output || 'No output'
-                  const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                  const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
-                  // Build comprehensive error details with Expected vs Actual
-                  let errorDetailsHtml = '<div class="error-details">'
-                  errorDetailsHtml += '<div class="error-label">❌ Failure Analysis</div>'
-
-                  // Show Expected vs Actual if available
-                  if (test.expected && test.actual) {
-                    const escapedExpected = test.expected
-                      .replace(/</g, '&lt;')
-                      .replace(/>/g, '&gt;')
-                    const escapedActual = test.actual.replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                    errorDetailsHtml += '<div class="comparison-container">'
-                    errorDetailsHtml += '<div class="expected-box">'
-                    errorDetailsHtml += '<div class="box-label">✅ Expected</div>'
-                    errorDetailsHtml += '<div class="box-content">' + escapedExpected + '</div>'
-                    errorDetailsHtml += '</div>'
-                    errorDetailsHtml += '<div class="actual-box">'
-                    errorDetailsHtml += '<div class="box-label">❌ Actual</div>'
-                    errorDetailsHtml += '<div class="box-content">' + escapedActual + '</div>'
-                    errorDetailsHtml += '</div>'
-                    errorDetailsHtml += '</div>'
-                  }
-
-                  // Show error message
-                  errorDetailsHtml +=
-                    '<div class="log-section"><div class="log-header">📋 Error Message</div>'
-                  errorDetailsHtml += '<div class="output-text">' + escapedError + '</div></div>'
-
-                  // Show output if different
-                  if (outputMsg !== errorMsg && outputMsg !== 'No output') {
-                    errorDetailsHtml +=
-                      '<div class="log-section"><div class="log-header">📄 Test Output / Log</div>'
-                    errorDetailsHtml += '<div class="output-text">' + escapedOutput + '</div></div>'
-                  }
-
-                  errorDetailsHtml +=
-                    '<div class="log-section"><div class="log-header">ℹ️  Test Information</div>'
-                  errorDetailsHtml +=
-                    '<div class="output-text"><strong>Duration:</strong> ' +
-                    (test.duration / 1000).toFixed(2) +
-                    's</div></div>'
-                  errorDetailsHtml += '</div>'
-
+                  const retryBadge = renderRetryBadge(test)
                   const detailsCell =
                     test.outcome === 'failure'
                       ? '<span class="details-toggle" onclick="toggleDetails(\'' +
                         detailsId +
-                        '\')">📋 View Complete Log</span>' +
+                        '\')">📋 View Log</span>' +
                         '<div id="' +
                         detailsId +
                         '" class="details-content">' +
-                        errorDetailsHtml +
+                        buildTestDetailsHtml(test) +
                         '</div>'
                       : '✅'
                   return `
-							<tr class="${test.outcome === 'failure' ? 'failure-highlight' : ''}">
-								<td>${test.testId}</td>
-								<td><span class="badge ${test.outcome}">${test.outcome.toUpperCase()}</span></td>
+							<tr class="${testRowClass(test)}">
+								<td>${escapeHtml(test.testId)}</td>
+								<td><span class="badge ${test.outcome}">${test.outcome.toUpperCase()}</span>${retryBadge}</td>
 								<td>${(test.duration / 1000).toFixed(2)}s</td>
 								<td>${detailsCell}</td>
 							</tr>
@@ -724,69 +756,23 @@ export function generateHtmlReport(data: ReportData): string {
 						${data.completedTests
               .map((test, allIdx) => {
                 const detailsId = 'all-test-' + allIdx
-                const errorMsg = test.error || 'No error message'
-                const outputMsg = test.output || 'No output'
-                const escapedError = errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                const escapedOutput = outputMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
-                // Build comprehensive error details with Expected vs Actual
-                let errorDetailsHtml = '<div class="error-details">'
-                errorDetailsHtml += '<div class="error-label">❌ Failure Analysis</div>'
-
-                // Show Expected vs Actual if available
-                if (test.expected && test.actual) {
-                  const escapedExpected = test.expected.replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                  const escapedActual = test.actual.replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                  errorDetailsHtml += '<div class="comparison-container">'
-                  errorDetailsHtml += '<div class="expected-box">'
-                  errorDetailsHtml += '<div class="box-label">✅ Expected</div>'
-                  errorDetailsHtml += '<div class="box-content">' + escapedExpected + '</div>'
-                  errorDetailsHtml += '</div>'
-                  errorDetailsHtml += '<div class="actual-box">'
-                  errorDetailsHtml += '<div class="box-label">❌ Actual</div>'
-                  errorDetailsHtml += '<div class="box-content">' + escapedActual + '</div>'
-                  errorDetailsHtml += '</div>'
-                  errorDetailsHtml += '</div>'
-                }
-
-                // Show error message
-                errorDetailsHtml +=
-                  '<div class="log-section"><div class="log-header">📋 Error Message</div>'
-                errorDetailsHtml += '<div class="output-text">' + escapedError + '</div></div>'
-
-                // Show output if different
-                if (outputMsg !== errorMsg && outputMsg !== 'No output') {
-                  errorDetailsHtml +=
-                    '<div class="log-section"><div class="log-header">📄 Test Output / Log</div>'
-                  errorDetailsHtml += '<div class="output-text">' + escapedOutput + '</div></div>'
-                }
-
-                errorDetailsHtml +=
-                  '<div class="log-section"><div class="log-header">ℹ️  Test Information</div>'
-                errorDetailsHtml +=
-                  '<div class="output-text"><strong>Consumer:</strong> ' + test.consumerId + '<br>'
-                errorDetailsHtml +=
-                  '<strong>Duration:</strong> ' +
-                  (test.duration / 1000).toFixed(2) +
-                  's</div></div>'
-                errorDetailsHtml += '</div>'
-
+                const allRetryBadge = renderRetryBadge(test)
                 const detailsCell =
                   test.outcome === 'failure'
                     ? '<span class="details-toggle" onclick="toggleDetails(\'' +
                       detailsId +
-                      '\')">📋 View Complete Log</span>' +
+                      '\')">📋 View Log</span>' +
                       '<div id="' +
                       detailsId +
                       '" class="details-content">' +
-                      errorDetailsHtml +
+                      buildTestDetailsHtml(test, { includeConsumer: true }) +
                       '</div>'
                     : '✅'
                 return `
-						<tr class="${test.outcome === 'failure' ? 'failure-highlight' : ''}">
-							<td>${test.testId}</td>
-							<td title="${test.consumerId}">${test.consumerId.split('-').slice(1, 3).join('-')}</td>
-							<td><span class="badge ${test.outcome}">${test.outcome.toUpperCase()}</span></td>
+						<tr class="${testRowClass(test)}">
+							<td>${escapeHtml(test.testId)}</td>
+							<td title="${escapeHtml(test.consumerId)}">${escapeHtml(test.consumerId.split('-').slice(1, 3).join('-'))}</td>
+							<td><span class="badge ${test.outcome}">${test.outcome.toUpperCase()}</span>${allRetryBadge}</td>
 							<td>${(test.duration / 1000).toFixed(2)}s</td>
 							<td>${detailsCell}</td>
 						</tr>
@@ -1107,7 +1093,12 @@ export function generateJsonReport(data: ReportData): string {
       duration: test.duration,
       error: test.error,
       output: test.output,
-      suites: test.suites
+      suites: test.suites,
+      ...(test.retried && {
+        retried: true,
+        retryPassed: test.retryPassed,
+        retryOutput: test.retryOutput
+      })
     })),
     consumers: Array.from(data.consumers.values()),
     system: systemInfo,
@@ -1167,9 +1158,13 @@ function renderMemoryTab(summary: MemorySummary, completedTests: ReportTestResul
   // didn't include uniqueTestId in the test-result payload.
   const outcomeByUid = new Map<string, ReportTestResult['outcome']>()
   const outcomeByTestKey = new Map<string, ReportTestResult['outcome']>()
+  const retryOutcomeByUid = new Map<string, ReportTestResult['outcome']>()
   for (const t of completedTests) {
     if (t.uniqueTestId) outcomeByUid.set(t.uniqueTestId, t.outcome)
     outcomeByTestKey.set(`${t.testId}|${t.consumerId}`, t.outcome)
+    if (t.retried && t.uniqueTestId) {
+      retryOutcomeByUid.set(t.uniqueTestId, t.retryPassed ? 'success' : 'failure')
+    }
   }
   const outcomeFor = (uniqueTestId: string, testId: string, consumerId: string) =>
     outcomeByUid.get(uniqueTestId) ?? outcomeByTestKey.get(`${testId}|${consumerId}`) ?? 'success'
@@ -1189,13 +1184,21 @@ function renderMemoryTab(summary: MemorySummary, completedTests: ReportTestResul
       // the table doesn't silently drop the test the user most cares
       // about (often the one responsible for the suite peak).
       const baseOutcome = outcomeFor(t.uniqueTestId, t.testId, t.consumerId)
+      const rowOutcome =
+        t.attemptLabel === '1'
+          ? 'failure'
+          : t.attemptLabel === '2'
+            ? (retryOutcomeByUid.get(t.uniqueTestId) ?? baseOutcome)
+            : baseOutcome
       const outcome: 'success' | 'failure' | 'skipped' | 'crashed' = t.incomplete
         ? 'crashed'
-        : baseOutcome
-      if (outcome === 'skipped') perTestSkippedCount++
-      else if (outcome === 'failure') perTestFailedCount++
-      else if (outcome === 'crashed') perTestIncompleteCount++
-      else perTestPassedCount++
+        : rowOutcome
+      if (t.attemptLabel !== '1') {
+        if (outcome === 'skipped') perTestSkippedCount++
+        else if (outcome === 'failure') perTestFailedCount++
+        else if (outcome === 'crashed') perTestIncompleteCount++
+        else perTestPassedCount++
+      }
 
       const fmtBefore = t.beforeKb !== null ? formatKb(t.beforeKb) : '—'
       const fmtAfter = t.afterKb !== null ? formatKb(t.afterKb) : '—'
@@ -1205,17 +1208,28 @@ function renderMemoryTab(summary: MemorySummary, completedTests: ReportTestResul
         t.deltaKb === null ? '—' : `${t.deltaKb >= 0 ? '+' : '-'}${formatKb(Math.abs(t.deltaKb))}`
       const deltaColor =
         t.deltaKb === null ? '' : `color:${t.deltaKb >= 0 ? '#ef4444' : '#10b981'};`
-      const rowStyle =
-        outcome === 'skipped'
-          ? ' style="opacity:0.55;"'
-          : outcome === 'crashed'
-            ? ' style="background:#fef2f2;"'
-            : ''
+      const isAttempt1 = t.attemptLabel === '1'
+      const isAttempt2 = t.attemptLabel === '2'
+      let rowStyle = ''
+      if (outcome === 'skipped') {
+        rowStyle = ' style="opacity:0.55;"'
+      } else if (outcome === 'crashed') {
+        rowStyle = ' style="background:#fef2f2;"'
+      } else if (isAttempt1 || isAttempt2) {
+        rowStyle = ' style="border-left:3px solid #f59e0b;"'
+      }
+
+      const attemptCell = isAttempt1
+        ? `<code>${escapeHtml(t.testId)}</code><br><span style="font-size:11px;color:#92400e;font-weight:600;">attempt 1</span>`
+        : isAttempt2
+          ? `<code>${escapeHtml(t.testId)}</code><br><span style="font-size:11px;color:#92400e;font-weight:600;">attempt 2 (after reload)</span>`
+          : `<code>${escapeHtml(t.testId)}</code>`
+
       // data-* attributes carry sortable raw numbers so client-side sort
       // can avoid re-parsing the formatted values.
       return `
 					<tr${rowStyle}>
-						<td data-sort="${escapeHtml(t.testId)}"><code>${escapeHtml(t.testId)}</code></td>
+						<td data-sort="${escapeHtml(t.testId)}">${attemptCell}</td>
 						<td data-sort="${escapeHtml(outcome)}"><span class="badge ${outcome === 'crashed' ? 'failure' : escapeHtml(outcome)}">${escapeHtml(outcome.toUpperCase())}</span></td>
 						<td data-sort="${escapeHtml(t.consumerId)}" title="${escapeHtml(t.consumerId)}">${escapeHtml(consumerShort)}</td>
 						<td data-sort="${t.startTs}">+${startedSec}s</td>
@@ -1274,6 +1288,11 @@ function renderMemoryTab(summary: MemorySummary, completedTests: ReportTestResul
 				<strong>Δ</strong> = After − Before, the test's effect on resident memory across its observable
 				window. Inter-test gaps are visible in the chart above (samples between test boundaries reflect
 				cleanup of the previous test plus setup of the next). Click any column header to sort.
+				Retried tests are split into two rows (marked
+				<span style="font-size:11px;color:#92400e;font-weight:600;">attempt 1</span> /
+				<span style="font-size:11px;color:#92400e;font-weight:600;">attempt 2 (after reload)</span>)
+				with a <span style="display:inline-block;width:8px;height:12px;background:#f59e0b;vertical-align:middle;border-radius:1px;"></span>
+				amber border — each row covers only its own phase, making it easy to spot which attempt caused a memory spike or crash.
 			</p>
 			${
         perTestSkippedCount + perTestFailedCount + perTestPassedCount + perTestIncompleteCount > 0
