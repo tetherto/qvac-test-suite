@@ -970,7 +970,12 @@ async function generatePackageJson(
   // its Swift source verbatim (see patchPerformanceToolkitIosMemoryBuffer /
   // EXPECTED_PERFORMANCE_TOOLKIT_VERSION); an unexpected version silently breaks
   // that patch.
-  const pinned = ['react', 'react-native', 'react-native-bare-kit', 'react-native-performance-toolkit']
+  const pinned = [
+    'react',
+    'react-native',
+    'react-native-bare-kit',
+    'react-native-performance-toolkit'
+  ]
   const overrides: Record<string, string> = { ...(template.overrides ?? {}) }
   for (const name of pinned) {
     const v = template.dependencies?.[name]

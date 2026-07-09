@@ -117,6 +117,11 @@ export class ConsumerBase {
   // Guards forceShutdown() so its body runs at most once (double-Ctrl-C,
   // overlapping signal + React unmount).
   private forceShutdownStarted = false
+  // Guards shutdown() so onShutdown/client teardown run at most once. On
+  // mobile process.exit is a no-op, so finalize() -> shutdown() followed by a
+  // React unmount -> forceShutdown() -> shutdown() would otherwise fire
+  // onShutdown twice.
+  private shutdownStarted = false
   protected requestAssignmentTimeoutMs = DEFAULT_REQUEST_ASSIGNMENT_TIMEOUT_MS
   protected teardownTimeoutMs = DEFAULT_TEARDOWN_TIMEOUT_MS
 
@@ -969,6 +974,13 @@ export class ConsumerBase {
   }
 
   protected async shutdown() {
+    // Idempotent: finalize() and a later forceShutdown() both call this, but
+    // onShutdown and the client teardown must run at most once.
+    if (this.shutdownStarted) {
+      return
+    }
+    this.shutdownStarted = true
+
     this.log('\n👋 Consumer shutting down...')
     this.stopProfilingCheckpoints()
     if (this.heartbeatTimer) {
