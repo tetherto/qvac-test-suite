@@ -15,6 +15,7 @@ export {
   consumerRegistrationSchema,
   testRequestSchema,
   testStartSchema,
+  testReloadSchema,
   testResultSchema,
   heartbeatSchema,
   batchCompleteSchema,

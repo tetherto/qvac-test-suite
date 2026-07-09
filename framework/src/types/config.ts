@@ -101,6 +101,15 @@ const mobileConsumerSchema = baseConsumerSchema.extend({
     .optional()
     .describe('Additional Expo plugins to include (e.g., ["@qvac/sdk/expo-plugin"])'),
 
+  qvacConfig: z
+    .string()
+    .optional()
+    .describe(
+      'Path to a qvac.config.json file, copied into the mobile build output as qvac.config.json ' +
+        'so SDK Expo plugins (e.g. withMobileBundle) can discover it during expo prebuild. ' +
+        'Required to exist and must be a .json file when set.'
+    ),
+
   copyArtifact: z
     .boolean()
     .optional()

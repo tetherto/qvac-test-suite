@@ -36,6 +36,19 @@ export const testStartSchema = z.object({
 export type TestStart = z.infer<typeof testStartSchema>
 
 /**
+ * Published immediately before reload starts.
+ */
+export const testReloadSchema = z.object({
+  runId: z.string(),
+  consumerId: z.string(),
+  uniqueTestId: z.string(),
+  testId: z.string(),
+  ts: z.number()
+})
+
+export type TestReload = z.infer<typeof testReloadSchema>
+
+/**
  * Test result schema
  */
 export const testResultSchema = z.object({
@@ -44,10 +57,14 @@ export const testResultSchema = z.object({
   testId: z.string().describe('Test identifier'),
   uniqueTestId: z.string().describe('Unique test instance ID'),
   outcome: z.enum(['success', 'failure', 'skipped']),
-  duration: z.number().describe('Test duration in milliseconds'),
+  duration: z.number().describe('Test duration in milliseconds including retry if any'),
   timestamp: z.string(),
   error: z.string().optional().describe('Error message if failed'),
-  output: z.string().optional().describe('Test output')
+  output: z.string().optional().describe('Test output'),
+  retried: z.boolean().optional(),
+  retryPassed: z.boolean().optional(),
+  retryOutput: z.string().optional(),
+  attempt1DurationMs: z.number().optional()
 })
 
 export type TestResult = z.infer<typeof testResultSchema>

@@ -78,6 +78,17 @@ class DefaultTestExecutor implements TestExecutor {
     }
   }
 
+  async reload(testId: string, context: unknown): Promise<void> {
+    const handler = this.findHandler(testId)
+    if (handler?.reload) {
+      const handlerContext = (context && typeof context === 'object' ? context : {}) as Record<
+        string,
+        unknown
+      >
+      await handler.reload(testId, handlerContext)
+    }
+  }
+
   initProfiling(): void {
     if (this.profiler) {
       this.profiler.init()

@@ -172,6 +172,13 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
       }
     }
 
+    // Clean stale qvac.config.* from a previous build (e.g. a different qvacConfig setting)
+    for (const entry of fs.readdirSync(outputDir, { withFileTypes: true })) {
+      if (entry.isFile() && QVAC_CONFIG_PATTERN.test(entry.name)) {
+        fs.unlinkSync(path.join(outputDir, entry.name))
+      }
+    }
+
     // Copy template files
     console.log('📋 Copying template files...')
     copyTemplateFiles(
@@ -181,6 +188,9 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
       mobileConfig.metroConfig,
       configDir
     )
+
+    // Copy qvac.config.* so SDK bundler plugins (e.g. withMobileBundle) can find it during expo prebuild
+    copyQvacConfigFiles(configDir, outputDir, mobileConfig.qvacConfig)
 
     // Validate MQTT protocol for mobile (only ws/wss supported)
     if (config.mqtt?.broker?.protocol) {
@@ -397,6 +407,54 @@ export async function buildConsumerMobile(options: MobileBuildOptions) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     console.error('❌ Build failed:', errorMessage)
     process.exit(1)
+  }
+}
+
+const QVAC_CONFIG_PATTERN = /^qvac\.config\.\w+$/
+
+/**
+ * Copies qvac.config.* into the mobile build output for SDK Expo plugins to
+ * discover during `expo prebuild`. An explicit `explicitPath` is required to
+ * exist and must be a `.json` file — it is copied as the canonical
+ * `qvac.config.json` and parsed as JSON by the SDK config loader, so a missing
+ * or non-JSON path is a hard error rather than a silent fallback. When
+ * `explicitPath` is omitted, all qvac.config.* in `configDir` are copied as-is.
+ */
+function copyQvacConfigFiles(configDir: string, outputDir: string, explicitPath?: string): void {
+  if (explicitPath) {
+    const src = path.isAbsolute(explicitPath) ? explicitPath : path.join(configDir, explicitPath)
+
+    if (!fs.existsSync(src)) {
+      throw new Error(`qvacConfig path not found: ${explicitPath}`)
+    }
+
+    if (path.extname(src) !== '.json') {
+      throw new Error(
+        `qvacConfig must point to a .json file (got "${explicitPath}"); it is copied as ` +
+          `qvac.config.json and parsed as JSON by the SDK config loader.`
+      )
+    }
+
+    const dest = path.join(outputDir, 'qvac.config.json')
+    fs.copyFileSync(src, dest)
+    console.log(`   ✅ Copied ${explicitPath} → qvac.config.json`)
+    return
+  }
+
+  const entries = fs.readdirSync(configDir, { withFileTypes: true })
+  let copied = 0
+
+  for (const entry of entries) {
+    if (!entry.isFile() || !QVAC_CONFIG_PATTERN.test(entry.name)) continue
+    fs.copyFileSync(path.join(configDir, entry.name), path.join(outputDir, entry.name))
+    copied++
+    console.log(`   ✅ Copied ${entry.name}`)
+  }
+
+  if (copied === 0) {
+    console.log(
+      '   ℹ️  No qvac.config.* files found in project root — SDK will use default plugin set'
+    )
   }
 }
 
