@@ -18,6 +18,25 @@ const baseConsumerSchema = z.object({
     )
 })
 
+const packageManagerSchema = z.enum(['npm', 'bun', 'pnpm', 'yarn'])
+const snapIdentifierSchema = z
+  .string()
+  .regex(
+    /^(?=.*[a-z])[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/,
+    'Snap identifiers must be 1-40 lowercase letters, numbers, or hyphens, include a letter, and start/end with a letter or number'
+  )
+
+const packagedConsumerSchema = baseConsumerSchema
+  .omit({ include: true, dependencies: true })
+  .extend({
+    appDir: z.string().describe('Directory containing the packaged consumer application'),
+
+    packageManager: packageManagerSchema
+      .optional()
+      .default('npm')
+      .describe('Package manager used to install and package the application')
+  })
+
 /**
  * Desktop consumer configuration schema
  */
@@ -28,42 +47,59 @@ const desktopConsumerSchema = baseConsumerSchema.extend({
 /**
  * Electron consumer configuration schema
  */
-const electronConsumerSchema = baseConsumerSchema
-  .omit({ include: true, dependencies: true })
-  .extend({
-    platforms: z
-      .array(z.enum(['macos', 'windows', 'linux']))
-      .describe('Target Electron desktop platforms'),
+const electronConsumerSchema = packagedConsumerSchema.extend({
+  platforms: z
+    .array(z.enum(['macos', 'windows', 'linux']))
+    .describe('Target Electron desktop platforms'),
 
-    appDir: z
-      .string()
-      .describe('Directory containing the Electron app package.json and Forge config'),
+  appName: z
+    .string()
+    .optional()
+    .describe(
+      'Packaged Electron app executable/name. Defaults to package.json productName or name'
+    ),
 
-    appName: z
-      .string()
-      .optional()
-      .describe(
-        'Packaged Electron app executable/name. Defaults to package.json productName or name'
-      ),
+  outDir: z
+    .string()
+    .optional()
+    .default('out')
+    .describe('Electron Forge output directory relative to appDir'),
 
-    outDir: z
-      .string()
-      .optional()
-      .default('out')
-      .describe('Electron Forge output directory relative to appDir'),
+  packageScript: z
+    .string()
+    .optional()
+    .default('package')
+    .describe('package.json script that packages the Electron app')
+})
 
-    packageManager: z
-      .enum(['npm', 'bun', 'pnpm', 'yarn'])
-      .optional()
-      .default('npm')
-      .describe('Package manager used to install and package the Electron app'),
+/**
+ * Snap consumer configuration schema
+ */
+export const snapConsumerSchema = packagedConsumerSchema.extend({
+  runtime: z
+    .literal('electron')
+    .describe('Packaged application runtime; Snap consumers currently support Electron'),
 
-    packageScript: z
-      .string()
-      .optional()
-      .default('package')
-      .describe('package.json script that packages the Electron app')
-  })
+  snapName: snapIdentifierSchema.describe(
+    'Snap package name used for installation and mount paths'
+  ),
+
+  appCommand: snapIdentifierSchema.describe('App command declared under apps in snapcraft.yaml'),
+
+  artifactPath: z.string().describe('Path to the built .snap artifact, relative to appDir'),
+
+  snapConfigDir: z
+    .string()
+    .optional()
+    .default('.')
+    .describe('Config directory inside the mounted Snap, relative to its root'),
+
+  packageScript: z
+    .string()
+    .optional()
+    .default('package:snap')
+    .describe('package.json script that builds the .snap artifact')
+})
 
 /**
  * Mobile consumer configuration schema
@@ -239,6 +275,10 @@ export const qvacTestConfigSchema = z.object({
         .optional()
         .describe('Electron consumer configuration for packaged Electron apps'),
 
+      snap: snapConsumerSchema
+        .optional()
+        .describe('Snap consumer configuration for strict-confined Linux packages'),
+
       shared: z
         .object({
           include: z
@@ -250,8 +290,8 @@ export const qvacTestConfigSchema = z.object({
         .optional()
         .describe('Shared code configuration included in both desktop and mobile consumer builds')
     })
-    .refine((data) => data.desktop || data.mobile || data.electron, {
-      message: 'At least one consumer type (desktop, mobile, or electron) must be configured'
+    .refine((data) => data.desktop || data.mobile || data.electron || data.snap, {
+      message: 'At least one consumer type (desktop, mobile, electron, or snap) must be configured'
     })
     .describe('Consumer configuration per platform type'),
 

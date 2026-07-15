@@ -4,6 +4,7 @@ import { execSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { config as loadDotenv } from 'dotenv'
 import { loadConfig } from '../../utils/config-loader.js'
+import { snapConsumerSchema } from '../../types/config.js'
 import { buildMqttConnectionConfig } from '../../utils/mqtt-connection.js'
 import {
   spawnTracked,
@@ -27,6 +28,8 @@ import {
 } from '../utils/device-utils.js'
 import { buildConsumerMobile } from './build-consumer-mobile.js'
 import { buildConsumerElectron } from './build-consumer-electron.js'
+import { buildConsumerSnap } from './build-consumer-snap.js'
+import { assertSnapHostPlatform, runSnapAdmin } from '../utils/snap-utils.js'
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -57,6 +60,12 @@ interface ElectronOptions extends LocalOptions {
   skipInstall?: boolean
   platform?: string
   arch?: string
+}
+
+interface SnapOptions extends LocalOptions {
+  skipBuild?: boolean
+  skipInstall?: boolean
+  skipSnapInstall?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +121,33 @@ function buildElectronConsumerArgs(
   return args
 }
 
+function buildSnapConsumerArgs(
+  cliPath: string,
+  runId: string,
+  configDir: string,
+  brokerUrl: string,
+  opts: SnapOptions
+): string[] {
+  const args = [
+    cliPath,
+    'run:consumer:snap',
+    `--runId=${runId}`,
+    `--config=${configDir}`,
+    `--mqtt-broker=${brokerUrl}`,
+    '--skip-build'
+  ]
+  if (opts.skipSnapInstall) args.push('--skip-snap-install')
+  return args
+}
+
+function removeSnap(snapName: string): void {
+  try {
+    runSnapAdmin(['remove', '--purge', snapName])
+  } catch {
+    console.warn(`⚠️  Failed to remove Snap ${snapName}; manual cleanup may be required`)
+  }
+}
+
 async function setupLocal(opts: LocalOptions): Promise<{
   runId: string
   configDir: string
@@ -154,27 +190,38 @@ function setupCleanup(
   brokerHandle: BrokerHandle,
   extraCleanup?: () => void
 ): void {
-  const cleanup = () => {
+  let cleaningUp = false
+  const cleanup = (exitCode: number) => {
+    if (cleaningUp) return
+    cleaningUp = true
     console.log('\n⚠️  Shutting down...')
-    extraCleanup?.()
     killTracked(reportDir)
+    extraCleanup?.()
     brokerHandle.cleanup()
     printLogPaths(reportDir)
-    process.exit(0)
+    process.exit(exitCode)
   }
 
-  process.on('SIGINT', cleanup)
-  process.on('SIGTERM', cleanup)
+  process.on('SIGINT', () => cleanup(0))
+  process.on('SIGTERM', () => cleanup(0))
 
   const producer = tracked.find((t) => t.name === 'producer')
   if (producer) {
     producer.child.on('exit', (code) => {
       console.log(`\n📊 Producer exited with code ${code ?? 0}`)
-      extraCleanup?.()
-      killTracked(reportDir)
-      brokerHandle.cleanup()
-      printLogPaths(reportDir)
-      process.exit(code ?? 0)
+      cleanup(code ?? 0)
+    })
+  }
+
+  for (const consumer of tracked.filter((trackedProcess) =>
+    trackedProcess.name.startsWith('consumer-')
+  )) {
+    consumer.child.on('exit', (code, signal) => {
+      if (cleaningUp || (signal === null && (code ?? 0) === 0)) return
+      console.error(
+        `\n❌ ${consumer.name} exited before the producer completed (code=${code ?? 'null'}, signal=${signal ?? 'none'})`
+      )
+      cleanup(code ?? 1)
     })
   }
 }
@@ -272,6 +319,73 @@ export async function runLocalElectron(opts: ElectronOptions) {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error)
     console.error(`❌ run:local:electron failed: ${msg}`)
+    process.exit(1)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// run:local:snap
+// ---------------------------------------------------------------------------
+
+export async function runLocalSnap(opts: SnapOptions) {
+  try {
+    assertSnapHostPlatform(process.platform)
+    console.log('📦 run:local:snap\n')
+
+    const { runId, configDir, reportDir, brokerUrl, brokerHandle } = await setupLocal(opts)
+    const config = await loadConfig(configDir)
+    if (!config.consumers.snap) {
+      throw new Error('No Snap consumer configuration found')
+    }
+    const snap = snapConsumerSchema.parse(config.consumers.snap)
+
+    const cliPath = resolveCliPath()
+    const tracked: TrackedProcess[] = []
+
+    if (!opts.skipBuild) {
+      await buildConsumerSnap({
+        config: configDir,
+        skipInstall: opts.skipInstall
+      })
+    } else {
+      console.log('⏭️  Skipping Snap package build (--skip-build)\n')
+    }
+
+    const producer = spawnTracked(
+      'node',
+      buildProducerArgs(cliPath, runId, configDir, reportDir, opts),
+      {
+        reportDir,
+        name: 'producer',
+        cwd: configDir
+      }
+    )
+    tracked.push(producer)
+
+    const consumer = spawnTracked(
+      'node',
+      buildSnapConsumerArgs(cliPath, runId, configDir, brokerUrl, opts),
+      {
+        reportDir,
+        name: 'consumer-snap',
+        cwd: configDir
+      }
+    )
+    tracked.push(consumer)
+
+    const pidEntries = tracked.map((trackedProcess) => ({
+      name: trackedProcess.name,
+      pid: trackedProcess.pid,
+      logPath: trackedProcess.logPath
+    }))
+    printPidTable(pidEntries)
+    printLogPaths(reportDir)
+    setupCleanup(tracked, reportDir, brokerHandle, () => {
+      if (!opts.skipSnapInstall) removeSnap(snap.snapName)
+    })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`❌ run:local:snap failed: ${message}`)
     process.exit(1)
   }
 }

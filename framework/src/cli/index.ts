@@ -4,16 +4,19 @@ import { Command } from 'commander'
 import { runProducer } from './commands/run-producer.js'
 import { runConsumerDesktop } from './commands/run-consumer-desktop.js'
 import { runConsumerElectron } from './commands/run-consumer-electron.js'
+import { runConsumerSnap } from './commands/run-consumer-snap.js'
 import { runBootstrap } from './commands/run-bootstrap.js'
 import { buildConsumerMobile } from './commands/build-consumer-mobile.js'
 import { buildConsumerElectron } from './commands/build-consumer-electron.js'
+import { buildConsumerSnap } from './commands/build-consumer-snap.js'
 import { reportCompare } from './commands/report-compare.js'
 import { reportFormat } from './commands/report-format.js'
 import {
   runLocalDesktop,
   runLocalAndroid,
   runLocalIos,
-  runLocalElectron
+  runLocalElectron,
+  runLocalSnap
 } from './commands/run-local.js'
 
 const packageJson = JSON.parse(
@@ -88,6 +91,17 @@ program
   .action(runConsumerElectron)
 
 program
+  .command('run:consumer:snap')
+  .description('Build, install, and run a strict-confined Electron Snap consumer')
+  .requiredOption('--runId <id>', 'Unique run identifier (must match producer)')
+  .option('--mqtt-broker <url>', 'MQTT broker URL (overrides config)')
+  .option('--config <path>', 'Path to config directory', process.cwd())
+  .option('--skip-build', 'Skip Snap package build')
+  .option('--skip-install', 'Skip app dependency install before packaging')
+  .option('--skip-snap-install', 'Skip installation of the built Snap')
+  .action(runConsumerSnap)
+
+program
   .command('run:bootstrap:desktop')
   .description(
     'Run bootstrap from desktop consumer entry (e.g., pre-download models for CI caching)'
@@ -102,6 +116,21 @@ program
   )
   .option('--config <path>', 'Path to config directory', process.cwd())
   .action((opts) => runBootstrap({ ...opts, consumer: 'electron' }))
+
+program
+  .command('run:bootstrap:snap')
+  .description('Build, install, and run bootstrap inside the Electron Snap consumer')
+  .option('--config <path>', 'Path to config directory', process.cwd())
+  .option('--skip-build', 'Skip Snap package build')
+  .option('--skip-install', 'Skip app dependency install before packaging')
+  .option('--skip-snap-install', 'Skip installation of the built Snap')
+  .action((opts) =>
+    runConsumerSnap({
+      ...opts,
+      runId: `snap-bootstrap-${Date.now()}`,
+      mode: 'bootstrap'
+    })
+  )
 
 program
   .command('build:consumer:android')
@@ -130,6 +159,15 @@ program
   .option('--arch <arch>', 'Target architecture', process.arch)
   .option('--skip-install', 'Skip Electron app dependency install before packaging')
   .action(buildConsumerElectron)
+
+program
+  .command('build:consumer:snap')
+  .description('Build strict-confined Electron Snap consumer package')
+  .option('--config <path>', 'Path to config directory', process.cwd())
+  .option('--skip-install', 'Skip app dependency install before packaging')
+  .action(async (opts) => {
+    await buildConsumerSnap(opts)
+  })
 
 program
   .command('report:compare')
@@ -174,6 +212,13 @@ addLocalOpts(program.command('run:local:electron'))
   )
   .option('--arch <arch>', 'Target architecture', process.arch)
   .action(runLocalElectron)
+
+addLocalOpts(program.command('run:local:snap'))
+  .description('Build, install, and run Electron Snap consumer + producer locally')
+  .option('--skip-build', 'Skip Snap package build')
+  .option('--skip-install', 'Skip app dependency install before packaging')
+  .option('--skip-snap-install', 'Skip installation of the built Snap')
+  .action(runLocalSnap)
 
 addLocalOpts(program.command('run:local:android'))
   .description('Build, install, launch Android consumer + run producer locally')
