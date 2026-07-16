@@ -61,6 +61,15 @@ export async function runConsumerSnap(options: ConsumerSnapOptions) {
     }
     const snap = snapConsumerSchema.parse(config.consumers.snap)
 
+    const env = createSnapRuntimeEnv(process.env, {
+      snapName: snap.snapName,
+      snapConfigDir: snap.snapConfigDir ?? '.',
+      entry: snap.entry,
+      runId: options.runId,
+      mqttBroker: options.mqttBroker
+    })
+    env.QVAC_TEST_MODE = options.mode ?? 'consumer'
+
     const appDir = path.resolve(configDir, snap.appDir)
     let artifactPath: string | undefined
     if (!options.skipBuild) {
@@ -79,15 +88,6 @@ export async function runConsumerSnap(options: ConsumerSnapOptions) {
       console.log(`📥 Installing Snap consumer: ${artifactPath}\n`)
       installSnapArtifact(artifactPath)
     }
-
-    const env = createSnapRuntimeEnv(process.env, {
-      snapName: snap.snapName,
-      snapConfigDir: snap.snapConfigDir ?? '.',
-      entry: snap.entry,
-      runId: options.runId,
-      mqttBroker: options.mqttBroker
-    })
-    env.QVAC_TEST_MODE = options.mode ?? 'consumer'
 
     const target = resolveSnapRunTarget(snap.snapName, snap.appCommand)
     const launch = resolveLaunch(target, env)

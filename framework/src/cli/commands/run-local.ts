@@ -29,7 +29,14 @@ import {
 import { buildConsumerMobile } from './build-consumer-mobile.js'
 import { buildConsumerElectron } from './build-consumer-electron.js'
 import { buildConsumerSnap } from './build-consumer-snap.js'
-import { assertSnapHostPlatform, runSnapAdmin } from '../utils/snap-utils.js'
+import { resolveSnapArtifactPath } from '../utils/snap-build-utils.js'
+import {
+  assertSnapHostPlatform,
+  installSnapArtifact,
+  isSnapInstalled,
+  resolveSnapMountedPath,
+  runSnapAdmin
+} from '../utils/snap-utils.js'
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -125,19 +132,17 @@ function buildSnapConsumerArgs(
   cliPath: string,
   runId: string,
   configDir: string,
-  brokerUrl: string,
-  opts: SnapOptions
+  brokerUrl: string
 ): string[] {
-  const args = [
+  return [
     cliPath,
     'run:consumer:snap',
     `--runId=${runId}`,
     `--config=${configDir}`,
     `--mqtt-broker=${brokerUrl}`,
-    '--skip-build'
+    '--skip-build',
+    '--skip-snap-install'
   ]
-  if (opts.skipSnapInstall) args.push('--skip-snap-install')
-  return args
 }
 
 function removeSnap(snapName: string): void {
@@ -145,6 +150,14 @@ function removeSnap(snapName: string): void {
     runSnapAdmin(['remove', '--purge', snapName])
   } catch {
     console.warn(`⚠️  Failed to remove Snap ${snapName}; manual cleanup may be required`)
+  }
+}
+
+function assertSnapNotInstalled(snapName: string): void {
+  if (isSnapInstalled(snapName)) {
+    throw new Error(
+      `Snap ${snapName} is already installed; use --skip-snap-install to reuse it without replacement, or remove it manually`
+    )
   }
 }
 
@@ -328,28 +341,55 @@ export async function runLocalElectron(opts: ElectronOptions) {
 // ---------------------------------------------------------------------------
 
 export async function runLocalSnap(opts: SnapOptions) {
+  let installedSnapName: string | undefined
+  let activeBroker: BrokerHandle | undefined
+
   try {
     assertSnapHostPlatform(process.platform)
     console.log('📦 run:local:snap\n')
 
     const { runId, configDir, reportDir, brokerUrl, brokerHandle } = await setupLocal(opts)
+    activeBroker = brokerHandle
     const config = await loadConfig(configDir)
     if (!config.consumers.snap) {
       throw new Error('No Snap consumer configuration found')
     }
     const snap = snapConsumerSchema.parse(config.consumers.snap)
 
-    const cliPath = resolveCliPath()
-    const tracked: TrackedProcess[] = []
+    resolveSnapMountedPath(snap.snapName, snap.snapConfigDir ?? '.')
+    resolveSnapMountedPath(snap.snapName, snap.entry)
 
+    const appDir = path.resolve(configDir, snap.appDir)
+    if (!opts.skipSnapInstall) {
+      assertSnapNotInstalled(snap.snapName)
+    }
+
+    let artifactPath: string | undefined
     if (!opts.skipBuild) {
-      await buildConsumerSnap({
+      artifactPath = await buildConsumerSnap({
         config: configDir,
         skipInstall: opts.skipInstall
       })
     } else {
       console.log('⏭️  Skipping Snap package build (--skip-build)\n')
+      if (!opts.skipSnapInstall) {
+        artifactPath = resolveSnapArtifactPath(appDir, snap.artifactPath)
+      }
     }
+
+    if (!opts.skipSnapInstall) {
+      if (!artifactPath) {
+        throw new Error('Snap artifact is required when installation is enabled')
+      }
+
+      assertSnapNotInstalled(snap.snapName)
+      console.log(`📥 Installing Snap consumer: ${artifactPath}\n`)
+      installSnapArtifact(artifactPath)
+      installedSnapName = snap.snapName
+    }
+
+    const cliPath = resolveCliPath()
+    const tracked: TrackedProcess[] = []
 
     const producer = spawnTracked(
       'node',
@@ -364,7 +404,7 @@ export async function runLocalSnap(opts: SnapOptions) {
 
     const consumer = spawnTracked(
       'node',
-      buildSnapConsumerArgs(cliPath, runId, configDir, brokerUrl, opts),
+      buildSnapConsumerArgs(cliPath, runId, configDir, brokerUrl),
       {
         reportDir,
         name: 'consumer-snap',
@@ -381,9 +421,16 @@ export async function runLocalSnap(opts: SnapOptions) {
     printPidTable(pidEntries)
     printLogPaths(reportDir)
     setupCleanup(tracked, reportDir, brokerHandle, () => {
-      if (!opts.skipSnapInstall) removeSnap(snap.snapName)
+      if (installedSnapName) {
+        removeSnap(installedSnapName)
+        installedSnapName = undefined
+      }
     })
   } catch (error: unknown) {
+    if (installedSnapName) {
+      removeSnap(installedSnapName)
+    }
+    activeBroker?.cleanup()
     const message = error instanceof Error ? error.message : String(error)
     console.error(`❌ run:local:snap failed: ${message}`)
     process.exit(1)

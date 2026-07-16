@@ -1,5 +1,5 @@
 import * as path from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 
 interface SnapRuntimeOptions {
   snapName: string
@@ -21,6 +21,21 @@ export function runSnapAdmin(args: string[]): void {
     return
   }
   execFileSync('sudo', ['snap', ...args], { stdio: 'inherit' })
+}
+
+export function isSnapInstalled(snapName: string): boolean {
+  const result = spawnSync('snap', ['list', snapName], { encoding: 'utf8' })
+  if (result.status === 0) {
+    return true
+  }
+
+  const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim()
+  if (/no matching snaps installed/i.test(output)) {
+    return false
+  }
+
+  const detail = result.error?.message ?? (output || `exit code ${result.status ?? 'unknown'}`)
+  throw new Error(`Unable to determine whether Snap ${snapName} is installed: ${detail}`)
 }
 
 export function installSnapArtifact(artifactPath: string): void {

@@ -1,10 +1,14 @@
+import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { config as loadDotenv } from 'dotenv'
 import { loadConfig } from '../../utils/config-loader.js'
 import { snapConsumerSchema } from '../../types/config.js'
 import { assertSnapHostPlatform } from '../utils/snap-utils.js'
-import { resolveSnapArtifactPath } from '../utils/snap-build-utils.js'
+import {
+  resolveSnapArtifactOutputPath,
+  resolveSnapArtifactPath
+} from '../utils/snap-build-utils.js'
 
 interface BuildConsumerSnapOptions {
   config: string
@@ -38,20 +42,30 @@ export async function buildConsumerSnap(options: BuildConsumerSnapOptions): Prom
   const appDir = path.resolve(configDir, snap.appDir)
   const packageManager = snap.packageManager ?? 'npm'
   const packageScript = snap.packageScript ?? 'package:snap'
+  const artifactPath = resolveSnapArtifactOutputPath(appDir, snap.artifactPath)
 
   console.log('📦 Building Snap consumer...\n')
   console.log(`📂 App: ${appDir}`)
   console.log(`📛 Snap: ${snap.snapName}`)
 
+  fs.rmSync(artifactPath, { force: true })
   if (!options.skipInstall) {
     console.log(`\n📦 Installing Snap app dependencies with ${packageManager}...`)
     runPackageManager(packageManager, installArgs(packageManager), appDir)
   }
 
   console.log(`\n🏗️  Running ${packageManager} run ${packageScript}...`)
-  runPackageManager(packageManager, ['run', packageScript], appDir)
+  try {
+    runPackageManager(packageManager, ['run', packageScript], appDir)
+  } catch (error) {
+    try {
+      const failedArtifactPath = resolveSnapArtifactOutputPath(appDir, snap.artifactPath)
+      fs.rmSync(failedArtifactPath, { force: true })
+    } catch {}
+    throw error
+  }
 
-  const artifactPath = resolveSnapArtifactPath(appDir, snap.artifactPath)
-  console.log(`\n✅ Snap consumer packaged: ${artifactPath}`)
-  return artifactPath
+  const builtArtifactPath = resolveSnapArtifactPath(appDir, snap.artifactPath)
+  console.log(`\n✅ Snap consumer packaged: ${builtArtifactPath}`)
+  return builtArtifactPath
 }

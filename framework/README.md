@@ -163,6 +163,10 @@ The package script owns Snapcraft configuration and must create the exact `artif
 sets mounted `QVAC_TEST_CONFIG_DIR` and `QVAC_TEST_CONSUMER_ENTRY` paths under
 `/snap/<snapName>/current`, strips host `QVAC_CONFIG_PATH`, and forwards the run ID and MQTT broker.
 
+`run:local:snap` installs the artifact before starting the producer and removes it after the run. To avoid
+replacing or purging user data, it refuses to install when the same Snap name is already present. Use
+`--skip-snap-install` only when you intentionally want to run that existing installation.
+
 The packaged Electron main process must import `QVAC_TEST_CONSUMER_ENTRY`. In normal mode it starts the
 consumer; when `QVAC_TEST_MODE=bootstrap`, it calls the entry's exported `bootstrap()` function and exits
 with its result. The framework launches through Xvfb when available and otherwise supplies Electron
