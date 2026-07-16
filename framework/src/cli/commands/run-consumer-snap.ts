@@ -8,7 +8,7 @@ import { resolveSnapArtifactPath } from '../utils/snap-build-utils.js'
 import {
   assertSnapHostPlatform,
   createSnapRuntimeEnv,
-  installOrRefreshSnap,
+  installSnapArtifact,
   resolveSnapRunTarget
 } from '../utils/snap-utils.js'
 
@@ -77,7 +77,7 @@ export async function runConsumerSnap(options: ConsumerSnapOptions) {
         throw new Error('Snap artifact is required when installation is enabled')
       }
       console.log(`📥 Installing Snap consumer: ${artifactPath}\n`)
-      installOrRefreshSnap(snap.snapName, artifactPath)
+      installSnapArtifact(artifactPath)
     }
 
     const env = createSnapRuntimeEnv(process.env, {

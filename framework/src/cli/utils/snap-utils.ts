@@ -1,5 +1,5 @@
 import * as path from 'node:path'
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 
 interface SnapRuntimeOptions {
   snapName: string
@@ -23,14 +23,9 @@ export function runSnapAdmin(args: string[]): void {
   execFileSync('sudo', ['snap', ...args], { stdio: 'inherit' })
 }
 
-export function isSnapInstalled(snapName: string): boolean {
-  const result = spawnSync('snap', ['list', snapName], { stdio: 'ignore' })
-  return !result.error && result.status === 0
-}
-
-export function installOrRefreshSnap(snapName: string, artifactPath: string): void {
-  const operation = isSnapInstalled(snapName) ? 'refresh' : 'install'
-  runSnapAdmin([operation, '--dangerous', artifactPath])
+export function installSnapArtifact(artifactPath: string): void {
+  // snap install treats another local revision of an installed Snap as a refresh.
+  runSnapAdmin(['install', '--dangerous', artifactPath])
 }
 
 export function resolveSnapRunTarget(snapName: string, appCommand: string): string {
