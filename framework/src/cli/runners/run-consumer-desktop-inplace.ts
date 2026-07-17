@@ -111,12 +111,27 @@ async function main() {
 
   consumer.setupMqttHandlers()
 
-  const shutdown = () => {
+  // Safety net: hard-exit if forceShutdown() stalls (e.g. unreachable broker
+  // blocking the awaited QoS-1 checkpoint PUBACK) so signals can't hang forever.
+  const FORCE_EXIT_TIMEOUT_MS = 10_000
+  const shutdown = async () => {
     memoryPoller?.stop()
-    consumer.forceShutdown()
+    const forceExit = setTimeout(() => process.exit(0), FORCE_EXIT_TIMEOUT_MS)
+    forceExit.unref?.()
+    try {
+      await consumer.forceShutdown()
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error('⚠️  Force shutdown error:', message)
+    } finally {
+      clearTimeout(forceExit)
+      process.exit(0)
+    }
   }
-  process.on('SIGINT', shutdown)
-  process.on('SIGTERM', shutdown)
+  // once() so double-Ctrl-C can't re-enter the async handler; catch to avoid an
+  // unhandled rejection from the async signal handler.
+  process.once('SIGINT', () => void shutdown())
+  process.once('SIGTERM', () => void shutdown())
 }
 
 main().catch((error: unknown) => {

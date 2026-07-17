@@ -56,6 +56,19 @@ export interface ConsumerCallbacks {
 
 const DEFAULT_REQUEST_ASSIGNMENT_TIMEOUT_MS = 10000
 const DEFAULT_TEARDOWN_TIMEOUT_MS = 120000
+const DEFAULT_PROFILING_CHECKPOINT_INTERVAL_MS = 5000
+
+type ProfilingPublishKind = 'checkpoint' | 'final'
+
+function readProfilingCheckpointIntervalMs(): number {
+  const raw =
+    typeof process !== 'undefined'
+      ? (process.env?.EXPO_PUBLIC_QVAC_PROFILING_CHECKPOINT_INTERVAL_MS ??
+        process.env?.QVAC_PROFILING_CHECKPOINT_INTERVAL_MS)
+      : undefined
+  const parsed = Number.parseInt(raw ?? String(DEFAULT_PROFILING_CHECKPOINT_INTERVAL_MS), 10)
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : DEFAULT_PROFILING_CHECKPOINT_INTERVAL_MS
+}
 
 class TimeoutError extends Error {
   constructor(message: string) {
@@ -96,6 +109,19 @@ export class ConsumerBase {
   // hits the 180 s timeout.
   private outstandingRequest = false
   private seenAssignmentIds = new Set<string>()
+  private profilingCheckpointTimer?: ReturnType<typeof setInterval>
+  private profilingCheckpointIntervalMs = readProfilingCheckpointIntervalMs()
+  private profilingPublishInFlight = false
+  private profilingSequence = 0
+  private finalProfilingPublished = false
+  // Guards forceShutdown() so its body runs at most once (double-Ctrl-C,
+  // overlapping signal + React unmount).
+  private forceShutdownStarted = false
+  // Guards shutdown() so onShutdown/client teardown run at most once. On
+  // mobile process.exit is a no-op, so finalize() -> shutdown() followed by a
+  // React unmount -> forceShutdown() -> shutdown() would otherwise fire
+  // onShutdown twice.
+  private shutdownStarted = false
   protected requestAssignmentTimeoutMs = DEFAULT_REQUEST_ASSIGNMENT_TIMEOUT_MS
   protected teardownTimeoutMs = DEFAULT_TEARDOWN_TIMEOUT_MS
 
@@ -401,6 +427,7 @@ export class ConsumerBase {
       this.bootstrapped = true
     }
 
+    this.startProfilingCheckpoints()
     this.requestNextTest()
   }
 
@@ -506,6 +533,14 @@ export class ConsumerBase {
   }
 
   protected async finalize() {
+    if (this.finalProfilingPublished) {
+      await this.shutdown()
+      return
+    }
+
+    this.finalProfilingPublished = true
+    this.stopProfilingCheckpoints()
+
     try {
       const profilingData = this.executor.getProfilingData?.()
       const exportData: ProfilerExport = profilingData ?? {
@@ -519,7 +554,7 @@ export class ConsumerBase {
         aggregates: {},
         exportedAt: Date.now()
       }
-      await this.publishProfilingData(exportData)
+      await this.publishProfilingData(exportData, 'final')
     } catch (e) {
       this.log(`⚠️  Failed to publish profiling data: ${e}`)
     }
@@ -842,12 +877,67 @@ export class ConsumerBase {
     }
   }
 
-  public publishProfilingData(profilerExport: ProfilerExport): Promise<void> {
+  private async publishProfilingCheckpoint(force = false): Promise<void> {
+    if ((!force && this.shutdownRequested) || this.profilingPublishInFlight) {
+      return
+    }
+
+    // Never emit a checkpoint after the final profiling data has been published;
+    // it would be stale and could arrive after 'final' at the orchestrator.
+    if (this.finalProfilingPublished) {
+      return
+    }
+
+    this.profilingPublishInFlight = true
+    try {
+      // getProfilingData() is user-supplied and may throw; keep it inside the
+      // try so a checkpoint attempt is always best-effort and never rejects.
+      const profilingData = this.executor.getProfilingData?.()
+      if (!profilingData) {
+        return
+      }
+      await this.publishProfilingData(profilingData, 'checkpoint')
+    } catch (e) {
+      this.log(`⚠️  Failed to publish profiling checkpoint: ${e}`)
+    } finally {
+      this.profilingPublishInFlight = false
+    }
+  }
+
+  private startProfilingCheckpoints() {
+    if (
+      this.profilingCheckpointTimer ||
+      this.profilingCheckpointIntervalMs <= 0 ||
+      !this.executor.getProfilingData
+    ) {
+      return
+    }
+
+    void this.publishProfilingCheckpoint()
+    this.profilingCheckpointTimer = setInterval(() => {
+      void this.publishProfilingCheckpoint()
+    }, this.profilingCheckpointIntervalMs)
+  }
+
+  private stopProfilingCheckpoints() {
+    if (this.profilingCheckpointTimer) {
+      clearInterval(this.profilingCheckpointTimer)
+      this.profilingCheckpointTimer = undefined
+    }
+  }
+
+  public publishProfilingData(
+    profilerExport: ProfilerExport,
+    kind: ProfilingPublishKind = 'final'
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
+      const sequence = ++this.profilingSequence
       const payload = JSON.stringify({
         runId: this.runId,
         consumerId: this.consumerId,
         timestamp: new Date().toISOString(),
+        kind,
+        sequence,
         profilerExport
       })
 
@@ -856,7 +946,9 @@ export class ConsumerBase {
           this.log(`⚠️  Failed to publish profiling data: ${err.message}`)
           reject(err)
         } else {
-          this.log('📈 Profiling data published')
+          if (kind === 'final') {
+            this.log('📈 Profiling data published')
+          }
           resolve()
         }
       })
@@ -882,7 +974,15 @@ export class ConsumerBase {
   }
 
   protected async shutdown() {
+    // Idempotent: finalize() and a later forceShutdown() both call this, but
+    // onShutdown and the client teardown must run at most once.
+    if (this.shutdownStarted) {
+      return
+    }
+    this.shutdownStarted = true
+
     this.log('\n👋 Consumer shutting down...')
+    this.stopProfilingCheckpoints()
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer)
       this.heartbeatTimer = undefined
@@ -905,8 +1005,24 @@ export class ConsumerBase {
     })
   }
 
-  public forceShutdown() {
+  public async forceShutdown() {
+    // Idempotent: re-entry (double-Ctrl-C, overlapping signal + unmount) is a no-op.
+    if (this.forceShutdownStarted) {
+      return
+    }
+    this.forceShutdownStarted = true
+
     this.log('⚠️  Force shutdown - closing immediately')
-    this.shutdown()
+    this.stopProfilingCheckpoints()
+    // Best-effort checkpoint: skip if final was already published (stale) and
+    // never let a publish failure reject forceShutdown — teardown must proceed.
+    if (!this.finalProfilingPublished) {
+      try {
+        await this.publishProfilingCheckpoint(true)
+      } catch (e) {
+        this.log(`⚠️  Force shutdown checkpoint error: ${e}`)
+      }
+    }
+    await this.shutdown()
   }
 }

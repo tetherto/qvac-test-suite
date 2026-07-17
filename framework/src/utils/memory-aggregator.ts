@@ -2,32 +2,51 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 
 /**
- * Aggregates in-app memory samples + producer-side test timeline into a
- * `MemorySummary` consumed by the report generator.
+ * Aggregates in-app memory samples + producer-side test timeline into one
+ * `MemorySummary` per metric, consumed by the report generator.
  *
  * Samples are published from the consumer over MQTT (`qvac/app-memory`) and
  * appended to `app-mem.ndjson` by the orchestrator. The sample stream is
  * crash-resilient: messages reach the producer immediately, so a hard crash
  * on the device does not lose the run-up to the crash.
  *
+ * A single run can carry several independent series, each tagged with its own
+ * `metric` label (e.g. `smaps_rollup.pss`, `smaps_rollup.uss`,
+ * `maps.count`).
+ * Samples are grouped by metric and each group is summarized separately so the
+ * report can draw a chart + per-test delta table per series.
+ *
  * Inputs (both NDJSON, both written by the orchestrator):
  *   - app-mem.ndjson        -- one record per in-app memory sample
  *   - test-timeline.ndjson  -- start/end events emitted by the orchestrator
  *
- * Outputs in `MemorySummary`:
+ * Outputs in each `MemorySummary`:
  *   - peakSuite     -- `max(memoryKb)` across the run, plus active testId at peak
  *   - perTest       -- per-test peak / mean / growth from samples in window
  *   - chart         -- raw samples + rolling max5s / max60s for plotting
  *   - metric        -- in-app metric label
+ *   - unit          -- how to interpret the values ("kb" for memory sizes,
+ *                      "count" for dimensionless counters like mmap regions)
  *   - platform
  */
+/**
+ * How to interpret a series' numeric values. `kb` is a memory size in
+ * kibibytes (rendered as KB/MB/GB); `count` is a raw integer counter such as
+ * the number of mmap regions (rendered as a plain number). The `memoryKb`
+ * field on a sample is the generic value carrier regardless of unit.
+ */
+export type MemoryUnit = 'kb' | 'count'
+
 export interface MemorySample {
   ts: number
   pid: number | null
+  /** Generic value carrier. KB for `unit: 'kb'`, a raw count for `unit: 'count'`. */
   memoryKb: number
   peakKb: number | null
+  /** Ceiling for the series in the same unit as `memoryKb` (e.g. max_map_count). */
   limitKb: number | null
   metric: string
+  unit: MemoryUnit
   platform: 'android' | 'ios' | 'desktop'
 }
 
@@ -80,6 +99,7 @@ export interface RollingPoint {
 
 export interface MemorySummary {
   metric: string
+  unit: MemoryUnit
   platform: 'android' | 'ios' | 'desktop'
   limitKb: number | null
   startTs: number
@@ -116,6 +136,7 @@ export function readMemorySamples(filePath: string): MemorySample[] {
         peakKb: obj.peakKb ?? null,
         limitKb: obj.limitKb ?? null,
         metric: obj.metric ?? 'unknown',
+        unit: obj.unit === 'count' ? 'count' : 'kb',
         platform: obj.platform
       })
     } catch {
@@ -281,12 +302,11 @@ function aggregatePerTest(samples: MemorySample[], timeline: TimelineEvent[]): P
   return out
 }
 
-export function aggregateMemory(reportDir: string): MemorySummary | null {
-  const samples = readMemorySamples(path.join(reportDir, 'app-mem.ndjson'))
-  if (samples.length === 0) return null
-
-  const timeline = readTimeline(path.join(reportDir, 'test-timeline.ndjson'))
-
+/**
+ * Summarize a single metric's samples (already filtered to one `metric`) into
+ * a `MemorySummary`. `samples` must be sorted by `ts` and non-empty.
+ */
+function summarizeSeries(samples: MemorySample[], timeline: TimelineEvent[]): MemorySummary {
   const first = samples[0]
   const last = samples[samples.length - 1]
 
@@ -318,6 +338,7 @@ export function aggregateMemory(reportDir: string): MemorySummary | null {
 
   return {
     metric: first.metric,
+    unit: first.unit,
     platform: first.platform,
     limitKb,
     startTs: first.ts,
@@ -332,4 +353,67 @@ export function aggregateMemory(reportDir: string): MemorySummary | null {
     perTest,
     chart
   }
+}
+
+// Preferred display order for known metrics; everything else is appended
+// alphabetically. Ordering reflects how useful each series is for memory
+// profiling:
+//   1. Primary OOM-relevant series first (PSS on Android, phys_footprint on
+//      iOS) so the Memory tab opens on the chart that drives jetsam/LMK.
+//   2. Resident + unique (RSS / USS) as secondary "real usage" signals.
+//   3. Address-space diagnostics (VM region / mmap counts) for mmap-leak
+//      hunting.
+// Virtual-size totals (virtual_size / VmSize / VmPeak) are deliberately not
+// collected: they count reserved-but-uncommitted address space, so they're
+// huge, noisy, and useless as a memory-consumption signal. Region/mmap counts
+// cover address-space leak detection better.
+const METRIC_ORDER = [
+  'smaps_rollup.pss',
+  'task_vm_info.physFootprint',
+  'physFootprint',
+  'smaps_rollup.uss',
+  'task_vm_info.resident_size',
+  'rss',
+  'VmRSS',
+  'status.VmRSS',
+  'task_vm_info.region_count',
+  'maps.count'
+]
+
+function metricRank(metric: string): number {
+  const idx = METRIC_ORDER.indexOf(metric)
+  return idx === -1 ? METRIC_ORDER.length : idx
+}
+
+/**
+ * Read `app-mem.ndjson`, group samples by `metric`, and summarize each group
+ * independently. Returns one `MemorySummary` per metric, ordered with the
+ * primary resident-memory series first. Empty array when no samples exist.
+ */
+export function aggregateMemory(reportDir: string): MemorySummary[] {
+  const samples = readMemorySamples(path.join(reportDir, 'app-mem.ndjson'))
+  if (samples.length === 0) return []
+
+  const timeline = readTimeline(path.join(reportDir, 'test-timeline.ndjson'))
+
+  // Group by metric, preserving the per-metric ts ordering inherited from the
+  // already-sorted `samples` array.
+  const byMetric = new Map<string, MemorySample[]>()
+  for (const s of samples) {
+    const list = byMetric.get(s.metric)
+    if (list) list.push(s)
+    else byMetric.set(s.metric, [s])
+  }
+
+  const summaries: MemorySummary[] = []
+  for (const group of byMetric.values()) {
+    summaries.push(summarizeSeries(group, timeline))
+  }
+
+  summaries.sort((a, b) => {
+    const rank = metricRank(a.metric) - metricRank(b.metric)
+    return rank !== 0 ? rank : a.metric.localeCompare(b.metric)
+  })
+
+  return summaries
 }

@@ -178,6 +178,8 @@ export const profilingDataSchema = z.object({
   runId: z.string(),
   consumerId: z.string(),
   timestamp: z.string(),
+  kind: z.enum(['checkpoint', 'final']).optional(),
+  sequence: z.number().int().nonnegative().optional(),
   profilerExport: profilerExportSchema
 })
 

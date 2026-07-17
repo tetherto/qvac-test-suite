@@ -3,6 +3,7 @@ node_modules/
 .env
 package-lock.json
 reports/
+.tmp/
 *.log
 *.apk
 *.tgz
