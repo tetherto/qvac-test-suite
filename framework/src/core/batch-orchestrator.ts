@@ -4,14 +4,16 @@ import type { MqttClient } from 'mqtt'
 import type { TestDefinition } from '../types/test-definition.js'
 import {
   consumerRegistrationSchema,
-  testRequestSchema,
   testStartSchema,
   testResultSchema,
   testReloadSchema,
   heartbeatSchema,
+  queueReadySchema,
   profilingDataSchema,
   type TestResult as MqttTestResult,
-  type ProfilerExport
+  type TestReload,
+  type ProfilerExport,
+  type BatchComplete
 } from '../schemas/messages.js'
 import {
   generateHtmlReport,
@@ -30,11 +32,12 @@ interface TestCase {
   estimatedDurationMs: number
 }
 
-interface TestAssignment {
+interface RunningTest {
   testCase: TestCase
   consumerId: string
-  assignedAt: number
-  startedAt?: number
+  sessionId: string
+  startedAt: number
+  timelineStartedAt: number
   timeoutMs: number
   originalTimeoutMs: number
   reloadRecorded?: boolean
@@ -42,13 +45,14 @@ interface TestAssignment {
 
 interface ConsumerInfo {
   consumerId: string
+  sessionId: string
   platform: string
   registeredAt: number
   lastSeen: number
   testsCompleted: number
   testsRunning: number
   bootstrapped?: boolean
-  outstandingRequest?: boolean
+  queueReady: boolean
 }
 
 interface ProfilingSnapshot {
@@ -59,13 +63,18 @@ interface ProfilingSnapshot {
   receivedAt: number
 }
 
-// Test result type imported from schemas
-type TestResult = MqttTestResult
+// Producer catalog skips and orphaned queued tests do not belong to a consumer session.
+type ProducerTestResult = Omit<MqttTestResult, 'consumerId' | 'sessionId'> & {
+  consumerId: 'producer' | 'none'
+  sessionId?: never
+}
+type TestResult = MqttTestResult | ProducerTestResult
 
 // Safety timeout for crashed consumers (normal path: all consumers publish on batch-complete)
-const PROFILING_SAFETY_TIMEOUT_MS = 10000
+const PROFILING_SAFETY_TIMEOUT_MS = 180000
 const TIMEOUT_CHECK_INTERVAL_MS = 10000
 const TIMEOUT_GRACE_MS = TIMEOUT_CHECK_INTERVAL_MS + 5000
+const MAX_PENDING_MEMORY_SAMPLES = 1000
 
 export class BatchOrchestrator {
   private client: MqttClient
@@ -77,9 +86,14 @@ export class BatchOrchestrator {
   private timelinePath?: string
   private appMemPath?: string
   private testQueue: TestCase[] = []
-  private assignedTests = new Map<string, TestAssignment>() // uniqueTestId -> assignment
+  private runningTests = new Map<string, RunningTest>() // uniqueTestId -> running test
   private completedTests = new Map<string, TestResult>() // uniqueTestId -> result
   private consumers = new Map<string, ConsumerInfo>() // consumerId -> info
+  private queueConsumerId?: string
+  private pendingTestResults = new Map<string, MqttTestResult>()
+  private pendingTestReloads = new Map<string, TestReload>()
+  private pendingAppMemorySamples: Record<string, unknown>[] = []
+  private latestMemorySampleTs = new Map<string, number>()
   private profilingData = new Map<string, ProfilingSnapshot>() // consumerId -> latest profiler snapshot
   private finalProfilingConsumers = new Set<string>()
   private testSuites = new Map<string, string[]>() // testId -> suites
@@ -91,6 +105,10 @@ export class BatchOrchestrator {
   private initialTotalTests = 0
   private startTime = 0
   private batchStarted = false
+  private batchCompleting = false
+  private batchCompleteSummary?: Omit<BatchComplete, 'consumerId' | 'sessionId'>
+  private batchCompleteSentSessions = new Set<string>()
+  private disconnectedCompletionRecipients = new Map<string, ConsumerInfo>()
   private allConsumersDead = false
   private shutdownTimer?: NodeJS.Timeout
   private consumerTimeoutTimer?: NodeJS.Timeout
@@ -126,21 +144,56 @@ export class BatchOrchestrator {
     // Validate the minimum shape; ignore obviously broken entries.
     if (typeof m.ts !== 'number' || typeof m.memoryKb !== 'number') return
     if (typeof m.platform !== 'string') return
+    const consumerId = typeof m.consumerId === 'string' ? m.consumerId : undefined
+    const sessionId = typeof m.sessionId === 'string' ? m.sessionId : undefined
+    if (!consumerId || !sessionId) {
+      return
+    }
+    if (!this.queueConsumerId) {
+      this.pendingAppMemorySamples.push(m)
+      if (this.pendingAppMemorySamples.length > MAX_PENDING_MEMORY_SAMPLES) {
+        this.pendingAppMemorySamples.shift()
+      }
+      return
+    }
+    if (
+      consumerId !== this.queueConsumerId ||
+      !this.isCurrentConsumerSession(consumerId, sessionId)
+    ) {
+      return
+    }
+    this.appendAppMemorySample(m, consumerId, sessionId)
+  }
+
+  private appendAppMemorySample(
+    message: Record<string, unknown>,
+    consumerId: string,
+    sessionId: string
+  ) {
+    if (!this.appMemPath) {
+      return
+    }
     // unit/limitKb/peakKb are passed through for extended memory series
     // (/proc-derived Android values and task_vm_info-derived iOS values). Older
     // publishers omit them; default to the resident-memory shape (kb, no
     // ceiling).
-    const unit = m.unit === 'count' ? 'count' : 'kb'
+    const unit = message.unit === 'count' ? 'count' : 'kb'
     const record = {
-      ts: m.ts,
-      pid: typeof m.pid === 'number' ? m.pid : null,
-      memoryKb: m.memoryKb,
-      peakKb: typeof m.peakKb === 'number' ? m.peakKb : null,
-      limitKb: typeof m.limitKb === 'number' ? m.limitKb : null,
-      metric: typeof m.metric === 'string' ? m.metric : 'in-app',
+      ts: message.ts,
+      pid: typeof message.pid === 'number' ? message.pid : null,
+      memoryKb: message.memoryKb,
+      peakKb: typeof message.peakKb === 'number' ? message.peakKb : null,
+      limitKb: typeof message.limitKb === 'number' ? message.limitKb : null,
+      metric: typeof message.metric === 'string' ? message.metric : 'in-app',
       unit,
-      platform: m.platform,
-      consumerId: typeof m.consumerId === 'string' ? m.consumerId : undefined
+      platform: message.platform,
+      consumerId,
+      sessionId
+    }
+    if (typeof message.ts === 'number') {
+      const sessionKey = this.getConsumerSessionKey(consumerId, sessionId)
+      const previousTs = this.latestMemorySampleTs.get(sessionKey) ?? 0
+      this.latestMemorySampleTs.set(sessionKey, Math.max(previousTs, message.ts))
     }
     try {
       fs.appendFileSync(this.appMemPath, JSON.stringify(record) + '\n')
@@ -149,12 +202,22 @@ export class BatchOrchestrator {
     }
   }
 
+  private flushPendingAppMemorySamples() {
+    const pending = this.pendingAppMemorySamples
+    this.pendingAppMemorySamples = []
+    for (const sample of pending) {
+      this.handleAppMemorySample(sample)
+    }
+  }
+
   private appendTimeline(event: {
     ts: number
     consumerId: string
+    sessionId?: string
     testId: string
     uniqueTestId: string
     phase: 'start' | 'end' | 'reload'
+    incomplete?: boolean
   }): void {
     if (!this.timelinePath) return
     try {
@@ -174,11 +237,11 @@ export class BatchOrchestrator {
       this.client.subscribe(
         [
           'qvac/register',
-          'qvac/request-test',
           'qvac/test-start',
           'qvac/test-reload',
           'qvac/results',
           'qvac/heartbeat',
+          'qvac/queue-ready',
           'qvac/profiling',
           'qvac/app-memory'
         ],
@@ -189,6 +252,12 @@ export class BatchOrchestrator {
             process.exit(1)
           }
           console.log('📡 Subscribed to coordination topics')
+          for (const consumer of this.consumers.values()) {
+            this.publishRegistrationAck(consumer)
+            if (this.batchCompleteSummary) {
+              this.publishBatchComplete(consumer, true)
+            }
+          }
         }
       )
     })
@@ -208,9 +277,6 @@ export class BatchOrchestrator {
           case 'qvac/register':
             this.handleConsumerRegistration(message)
             break
-          case 'qvac/request-test':
-            this.handleTestRequest(message)
-            break
           case 'qvac/test-start':
             this.handleTestStart(message)
             break
@@ -222,6 +288,9 @@ export class BatchOrchestrator {
             break
           case 'qvac/heartbeat':
             this.handleHeartbeat(message)
+            break
+          case 'qvac/queue-ready':
+            this.handleQueueReady(message)
             break
           case 'qvac/profiling':
             this.handleProfilingData(message)
@@ -254,25 +323,54 @@ export class BatchOrchestrator {
 
   private handleConsumerRegistration(rawMessage: unknown) {
     const message = consumerRegistrationSchema.parse(rawMessage)
-    const { consumerId, platform } = message
+    const { consumerId, sessionId, platform } = message
     const now = Date.now()
 
-    const existing = this.consumers.get(consumerId)
+    let existing = this.consumers.get(consumerId)
+    if (!existing && consumerId === this.queueConsumerId) {
+      const disconnectedConsumer = this.disconnectedCompletionRecipients.get(consumerId)
+      if (disconnectedConsumer) {
+        if (disconnectedConsumer.sessionId !== sessionId) {
+          this.publishRegistrationRejection(
+            consumerId,
+            sessionId,
+            'Consumer ID belongs to another session'
+          )
+          return
+        }
+        existing = disconnectedConsumer
+        this.consumers.set(consumerId, existing)
+        this.disconnectedCompletionRecipients.delete(consumerId)
+      }
+    }
     if (existing) {
+      if (existing.sessionId !== sessionId) {
+        this.publishRegistrationRejection(
+          consumerId,
+          sessionId,
+          'Consumer ID belongs to another active session'
+        )
+        return
+      }
+
       existing.lastSeen = now
-      // Always re-send ack (consumer may not have received it yet)
-      this.client.publish(
-        `qvac/register-ack/${consumerId}`,
-        JSON.stringify({
-          runId: this.runId,
-          status: 'registered',
-          totalTests: this.initialTotalTests,
-          filteredTestIds: this.filteredTestIds
-        }),
-        { qos: 1 }
-      )
+      this.publishRegistrationAck(existing)
+      if (this.batchCompleteSummary) {
+        this.publishBatchComplete(existing, true)
+      } else {
+        this.checkBatchComplete()
+      }
       return
     }
+
+    if (this.queueConsumerId) {
+      const reason = `Test queue is already owned by ${this.queueConsumerId}`
+      console.warn(`⚠️  Rejecting additional consumer ${consumerId}; ${reason}`)
+      this.publishRegistrationRejection(consumerId, sessionId, reason)
+      return
+    }
+
+    this.queueConsumerId = consumerId
 
     // Cancel consumer timeout on first registration
     if (this.consumers.size === 0 && this.consumerTimeoutTimer) {
@@ -280,166 +378,183 @@ export class BatchOrchestrator {
       this.consumerTimeoutTimer = undefined
     }
 
-    this.consumers.set(consumerId, {
+    const consumer: ConsumerInfo = {
       consumerId,
+      sessionId,
       platform,
       registeredAt: now,
       lastSeen: now,
       testsCompleted: 0,
-      testsRunning: 0
-    })
+      testsRunning: 0,
+      queueReady: false
+    }
+    this.consumers.set(consumerId, consumer)
 
     console.log(`\n🔌 Consumer registered: ${consumerId} (${platform})`)
     this.displayStatus()
 
-    // Send acknowledgment with initial total (not current queue length, which shrinks as tests are assigned)
-    // filteredTestIds lets the consumer scope its bootstrap to only the deps these tests will hit.
+    this.flushPendingAppMemorySamples()
+    this.publishRegistrationAck(consumer)
+  }
+
+  private publishRegistrationAck(consumer: ConsumerInfo) {
+    const runningQueue = Array.from(this.runningTests.values())
+      .filter((runningTest) => runningTest.consumerId === consumer.consumerId)
+      .map(({ testCase }) => testCase)
+    const queue = [...runningQueue, ...this.testQueue].map(({ id, testId }) => ({
+      uniqueTestId: id,
+      testId
+    }))
     this.client.publish(
-      `qvac/register-ack/${consumerId}`,
+      `qvac/register-ack/${consumer.consumerId}`,
       JSON.stringify({
         runId: this.runId,
         status: 'registered',
+        sessionId: consumer.sessionId,
         totalTests: this.initialTotalTests,
+        queue,
         filteredTestIds: this.filteredTestIds
       }),
       { qos: 1 }
     )
   }
 
-  private handleTestRequest(rawMessage: unknown) {
-    const message = testRequestSchema.parse(rawMessage)
-    const { consumerId } = message
-    const consumer = this.consumers.get(consumerId)
+  private getConsumerSessionKey(consumerId: string, sessionId: string) {
+    return `${consumerId}:${sessionId}`
+  }
 
-    if (!consumer) {
-      console.warn(`⚠️  Test request from unregistered consumer: ${consumerId}`)
-      return
-    }
-
-    consumer.lastSeen = Date.now()
-
-    // Idempotent request handling: duplicate request-test publishes
-    // (consumer-side retry, broker QoS-1 duplicate, future regression)
-    // must not hand out a second test while the consumer still has one
-    // outstanding. Re-send the current assignment instead, so a consumer can
-    // recover if the original test-assigned reply was lost in transit.
-    for (const existing of this.assignedTests.values()) {
-      if (existing.consumerId === consumerId) {
-        console.warn(
-          `⚠️  Re-sending assignment to ${consumerId}: already has ${existing.testCase.testId} (${existing.testCase.id}) assigned`
-        )
-        this.client.publish(
-          `qvac/test-assigned/${consumerId}`,
-          JSON.stringify({
-            runId: this.runId,
-            status: 'assigned',
-            uniqueTestId: existing.testCase.id,
-            testId: existing.testCase.testId
-          }),
-          { qos: 1 }
-        )
-        return
-      }
-    }
-
-    // Find next available test in queue
-    const nextTest = this.getNextTestForConsumer(consumerId)
-
-    if (!nextTest) {
-      // No more tests - signal queue empty
-      this.client.publish(
-        `qvac/test-assigned/${consumerId}`,
-        JSON.stringify({ runId: this.runId, status: 'queue-empty' }),
-        { qos: 1 }
-      )
-      console.log(`📭 No more tests for ${consumerId} (completed: ${consumer.testsCompleted})`)
-      return
-    }
-
-    // Assign test
-    const assignment: TestAssignment = {
-      testCase: nextTest,
-      consumerId,
-      assignedAt: Date.now(),
-      // 3x estimate min 180s: accounts for setup phase (model loading) + test + buffer
-      timeoutMs: Math.max(nextTest.estimatedDurationMs * 3, 180000),
-      originalTimeoutMs: Math.max(nextTest.estimatedDurationMs * 3, 180000)
-    }
-
-    this.assignedTests.set(nextTest.id, assignment)
-    consumer.testsRunning++
-
-    // Remove from queue
-    this.testQueue = this.testQueue.filter((t) => t.id !== nextTest.id)
-
-    // Send test assignment — consumer resolves full definition locally
+  private publishRegistrationRejection(consumerId: string, sessionId: string, reason: string) {
     this.client.publish(
-      `qvac/test-assigned/${consumerId}`,
+      `qvac/register-ack/${consumerId}`,
       JSON.stringify({
         runId: this.runId,
-        status: 'assigned',
-        uniqueTestId: nextTest.id,
-        testId: nextTest.testId
+        status: 'rejected',
+        sessionId,
+        reason
       }),
       { qos: 1 }
     )
+  }
 
-    // Memory timeline `start` fires at assignment time, not when the
-    // consumer sends test-start. The window between assignment and
-    // consumer-reported start is the setup phase (model loading etc.) --
-    // exactly where OOM crashes during model load happen, and where we
-    // most want to attribute memory usage to the test responsible.
-    this.appendTimeline({
-      ts: assignment.assignedAt,
-      consumerId,
-      testId: nextTest.testId,
-      uniqueTestId: nextTest.id,
-      phase: 'start'
-    })
-
-    console.log(`📤 Assigned ${nextTest.testId} (${nextTest.id}) to ${consumerId}`)
-    this.displayStatus()
+  private isCurrentConsumerSession(consumerId: string, sessionId: string) {
+    const current = this.consumers.get(consumerId)
+    if (!current) {
+      return false
+    }
+    return current.sessionId === sessionId
   }
 
   private handleTestStart(rawMessage: unknown) {
     const message = testStartSchema.parse(rawMessage)
-    const { consumerId, uniqueTestId } = message
-    const assignment = this.assignedTests.get(uniqueTestId)
+    const { consumerId, sessionId, uniqueTestId, timestamp } = message
+    if (!this.isCurrentConsumerSession(consumerId, sessionId)) {
+      console.warn(`⚠️  Ignoring test start from stale consumer session: ${consumerId}`)
+      return
+    }
+    const existing = this.runningTests.get(uniqueTestId)
 
-    if (!assignment) {
+    if (existing) {
+      return
+    }
+
+    if (this.completedTests.has(uniqueTestId)) {
+      return
+    }
+
+    const testCase = this.testQueue.find((test) => test.id === uniqueTestId)
+    if (!testCase) {
       console.warn(`⚠️  Test start for unknown test: ${uniqueTestId}`)
       return
     }
 
-    assignment.startedAt = Date.now()
-    console.log(`▶️  Test ${assignment.testCase.testId} started by ${consumerId}`)
+    const consumer = this.consumers.get(consumerId)
+    if (!consumer || consumerId !== this.queueConsumerId) {
+      console.warn(`⚠️  Test start from unregistered consumer: ${consumerId}`)
+      return
+    }
+
+    const startedAt = Date.now()
+    const consumerStartedAt = Date.parse(timestamp)
+    const timelineStartedAt = Number.isFinite(consumerStartedAt) ? consumerStartedAt : startedAt
+    const timeoutMs = Math.max(testCase.estimatedDurationMs * 3, 180000)
+    const assignment: RunningTest = {
+      testCase,
+      consumerId,
+      sessionId,
+      startedAt,
+      timelineStartedAt,
+      timeoutMs,
+      originalTimeoutMs: timeoutMs
+    }
+
+    this.runningTests.set(uniqueTestId, assignment)
+    this.testQueue = this.testQueue.filter((test) => test.id !== uniqueTestId)
+    consumer.testsRunning++
+    consumer.lastSeen = startedAt
+
+    // Start is published before consumer setup, preserving memory attribution
+    // for model loading and other setup work.
+    this.appendTimeline({
+      ts: timelineStartedAt,
+      consumerId,
+      sessionId,
+      testId: testCase.testId,
+      uniqueTestId,
+      phase: 'start'
+    })
+
+    console.log(`▶️  Test ${testCase.testId} started by ${consumerId}`)
+    this.displayStatus()
+
+    const pendingReload = this.pendingTestReloads.get(uniqueTestId)
+    if (pendingReload) {
+      this.pendingTestReloads.delete(uniqueTestId)
+      this.handleTestReload(pendingReload)
+    }
+    const pendingResult = this.pendingTestResults.get(uniqueTestId)
+    if (pendingResult) {
+      this.pendingTestResults.delete(uniqueTestId)
+      this.handleTestResult(pendingResult)
+    }
   }
 
   private handleTestReload(rawMessage: unknown) {
     const message = testReloadSchema.parse(rawMessage)
-    const { consumerId, uniqueTestId, testId, ts } = message
+    const { consumerId, sessionId, uniqueTestId, testId, ts } = message
 
-    const assignment = this.assignedTests.get(uniqueTestId)
+    if (!this.isCurrentConsumerSession(consumerId, sessionId)) {
+      console.warn(`⚠️  Ignoring reload from stale consumer session: ${consumerId}`)
+      return
+    }
+
+    const assignment = this.runningTests.get(uniqueTestId)
 
     if (!assignment) {
+      if (this.completedTests.has(uniqueTestId)) {
+        return
+      }
+      if (this.testQueue.some((test) => test.id === uniqueTestId)) {
+        this.pendingTestReloads.set(uniqueTestId, message)
+        return
+      }
       console.warn(`⚠️  Reload boundary for unknown/timed-out test: ${uniqueTestId}`)
       return
     }
 
     if (!assignment.reloadRecorded) {
       assignment.reloadRecorded = true
-      const elapsed = Date.now() - assignment.assignedAt
+      const elapsed = Date.now() - assignment.startedAt
       assignment.timeoutMs = elapsed + 2 * assignment.originalTimeoutMs
 
-      const producerTs = Date.now()
       this.appendTimeline({
-        ts: producerTs,
+        ts,
         consumerId,
+        sessionId,
         testId,
         uniqueTestId,
         phase: 'reload'
       })
-      const skewMs = producerTs - ts
+      const skewMs = Date.now() - ts
       console.log(
         `🔄 Test ${testId} reload boundary (${uniqueTestId}) from ${consumerId} (consumer skew: ${skewMs}ms)`
       )
@@ -450,10 +565,21 @@ export class BatchOrchestrator {
 
   private handleTestResult(rawMessage: unknown) {
     const message = testResultSchema.parse(rawMessage)
-    const { consumerId, uniqueTestId, outcome, duration } = message
-    const assignment = this.assignedTests.get(uniqueTestId)
+    const { consumerId, sessionId, uniqueTestId, outcome, duration } = message
+    if (!this.isCurrentConsumerSession(consumerId, sessionId)) {
+      console.warn(`⚠️  Ignoring result from stale consumer session: ${consumerId}`)
+      return
+    }
+    const assignment = this.runningTests.get(uniqueTestId)
 
     if (!assignment) {
+      if (this.completedTests.has(uniqueTestId)) {
+        return
+      }
+      if (this.testQueue.some((test) => test.id === uniqueTestId)) {
+        this.pendingTestResults.set(uniqueTestId, message)
+        return
+      }
       console.warn(`⚠️  Result for unknown test: ${uniqueTestId}`)
       return
     }
@@ -468,15 +594,19 @@ export class BatchOrchestrator {
 
     if (message.retried && !assignment.reloadRecorded) {
       assignment.reloadRecorded = true
-      const baseTs = assignment.startedAt ?? assignment.assignedAt
+      const baseTs = assignment.timelineStartedAt
       const attempt1DurationMs =
         typeof message.attempt1DurationMs === 'number'
           ? Math.max(0, Math.floor(message.attempt1DurationMs))
           : 0
-      const syntheticReloadTs = baseTs + attempt1DurationMs
+      const syntheticReloadTs =
+        typeof message.reloadTimestamp === 'number'
+          ? message.reloadTimestamp
+          : baseTs + attempt1DurationMs
       this.appendTimeline({
         ts: syntheticReloadTs,
         consumerId,
+        sessionId,
         testId: assignment.testCase.testId,
         uniqueTestId,
         phase: 'reload'
@@ -488,11 +618,13 @@ export class BatchOrchestrator {
 
     // Store result
     this.completedTests.set(uniqueTestId, message)
-    this.assignedTests.delete(uniqueTestId)
+    this.runningTests.delete(uniqueTestId)
 
+    const consumerCompletedAt = Date.parse(message.timestamp)
     this.appendTimeline({
-      ts: Date.now(),
+      ts: Number.isFinite(consumerCompletedAt) ? consumerCompletedAt : Date.now(),
       consumerId,
+      sessionId,
       testId: assignment.testCase.testId,
       uniqueTestId,
       phase: 'end'
@@ -520,20 +652,39 @@ export class BatchOrchestrator {
 
   private handleHeartbeat(rawMessage: unknown) {
     const message = heartbeatSchema.parse(rawMessage)
-    const { consumerId } = message
+    const { consumerId, sessionId } = message
+    if (!this.isCurrentConsumerSession(consumerId, sessionId)) {
+      return
+    }
     const consumer = this.consumers.get(consumerId)
     if (consumer) {
       consumer.lastSeen = Date.now()
       consumer.bootstrapped = message.bootstrapped
-      consumer.outstandingRequest = message.outstandingRequest
     }
+  }
+
+  private handleQueueReady(rawMessage: unknown) {
+    const message = queueReadySchema.parse(rawMessage)
+    const { consumerId, sessionId } = message
+    if (!this.isCurrentConsumerSession(consumerId, sessionId)) {
+      return
+    }
+    const consumer = this.consumers.get(consumerId)
+    if (!consumer) {
+      return
+    }
+    consumer.queueReady = true
+    consumer.bootstrapped = true
+    consumer.lastSeen = Date.now()
+    this.checkBatchComplete()
   }
 
   private handleProfilingData(rawMessage: unknown) {
     const message = profilingDataSchema.parse(rawMessage)
-    const { consumerId, profilerExport } = message
-
-    if (!this.consumers.has(consumerId)) {
+    const { consumerId, sessionId, profilerExport } = message
+    const consumer =
+      this.consumers.get(consumerId) ?? this.disconnectedCompletionRecipients.get(consumerId)
+    if (!consumer || consumer.sessionId !== sessionId) {
       console.log(
         `⚠️  Ignoring profiling from unknown consumer: ${consumerId.split('-').slice(1, 3).join('-')}`
       )
@@ -547,8 +698,7 @@ export class BatchOrchestrator {
     // final snapshot: forceShutdown force-publishes a checkpoint (with a higher
     // sequence) after finalize already published final, and QoS-1 reconnects can
     // reorder delivery. lastSeen is still bumped below regardless of the guards.
-    const consumer = this.consumers.get(consumerId)
-    if (consumer) {
+    if (this.consumers.has(consumerId)) {
       consumer.lastSeen = Date.now()
     }
 
@@ -577,6 +727,18 @@ export class BatchOrchestrator {
     })
     if (kind === 'final') {
       this.finalProfilingConsumers.add(consumerId)
+      if (message.sequence !== undefined) {
+        this.client.publish(
+          `qvac/profiling-ack/${consumerId}`,
+          JSON.stringify({
+            runId: this.runId,
+            consumerId,
+            sessionId,
+            sequence: message.sequence
+          }),
+          { qos: 1 }
+        )
+      }
     }
 
     const metricCount = getMetricCount(profilerExport)
@@ -586,26 +748,35 @@ export class BatchOrchestrator {
     )
   }
 
-  private getNextTestForConsumer(_consumerId: string): TestCase | null {
-    // Simple FIFO for now - could be enhanced with dependency-aware scheduling
-    return this.testQueue.length > 0 ? this.testQueue[0] : null
-  }
-
   private checkBatchComplete() {
     const queueEmpty = this.testQueue.length === 0
-    const noAssignedTests = this.assignedTests.size === 0
+    const noRunningTests = this.runningTests.size === 0
+    const queueOwnerReady =
+      this.queueConsumerId !== undefined &&
+      this.consumers.get(this.queueConsumerId)?.queueReady === true
 
-    if (queueEmpty && noAssignedTests) {
+    if (queueEmpty && noRunningTests && queueOwnerReady) {
       this.completeBatch()
     }
+  }
+
+  private getInterruptedTimelineEnd(assignment: RunningTest) {
+    const latestSampleTs = this.latestMemorySampleTs.get(
+      this.getConsumerSessionKey(assignment.consumerId, assignment.sessionId)
+    )
+    if (latestSampleTs !== undefined) {
+      return Math.max(assignment.timelineStartedAt, latestSampleTs)
+    }
+    const producerElapsed = Math.max(0, Date.now() - assignment.startedAt)
+    return assignment.timelineStartedAt + producerElapsed
   }
 
   private checkTimeouts() {
     const now = Date.now()
     const timeouts: string[] = []
 
-    for (const [uniqueTestId, assignment] of this.assignedTests) {
-      const elapsed = now - assignment.assignedAt
+    for (const [uniqueTestId, assignment] of this.runningTests) {
+      const elapsed = now - assignment.startedAt
       if (elapsed > assignment.timeoutMs + TIMEOUT_GRACE_MS) {
         timeouts.push(uniqueTestId)
       }
@@ -614,7 +785,7 @@ export class BatchOrchestrator {
     if (timeouts.length > 0) {
       console.log(`\n⏱️  ${timeouts.length} test(s) timed out:`)
       for (const uniqueTestId of timeouts) {
-        const assignment = this.assignedTests.get(uniqueTestId)
+        const assignment = this.runningTests.get(uniqueTestId)
         if (assignment) {
           console.log(`   - ${assignment.testCase.testId} (${assignment.consumerId})`)
 
@@ -622,21 +793,32 @@ export class BatchOrchestrator {
           const timeoutResult: TestResult = {
             runId: this.runId,
             consumerId: assignment.consumerId,
+            sessionId: assignment.sessionId,
             testId: assignment.testCase.testId,
             uniqueTestId,
             outcome: 'failure',
-            duration: Date.now() - assignment.assignedAt,
+            duration: Date.now() - assignment.startedAt,
             timestamp: new Date().toISOString(),
             error: `Test timed out after ${assignment.timeoutMs}ms`
           }
 
           this.completedTests.set(uniqueTestId, timeoutResult)
-          this.assignedTests.delete(uniqueTestId)
+          this.runningTests.delete(uniqueTestId)
+          this.appendTimeline({
+            ts: this.getInterruptedTimelineEnd(assignment),
+            consumerId: assignment.consumerId,
+            sessionId: assignment.sessionId,
+            testId: assignment.testCase.testId,
+            uniqueTestId,
+            phase: 'end',
+            incomplete: true
+          })
 
           // Update consumer stats
           const consumer = this.consumers.get(assignment.consumerId)
           if (consumer) {
-            consumer.testsRunning--
+            consumer.testsCompleted++
+            consumer.testsRunning = Math.max(0, consumer.testsRunning - 1)
           }
         }
       }
@@ -654,25 +836,45 @@ export class BatchOrchestrator {
     }
 
     for (const consumerId of deadConsumers) {
-      const silent = now - (this.consumers.get(consumerId)?.lastSeen ?? 0)
+      const disconnectedConsumer = this.consumers.get(consumerId)
+      const silent = now - (disconnectedConsumer?.lastSeen ?? 0)
       console.error(
         `\n💀 Consumer ${consumerId.split('-').slice(1, 3).join('-')} unresponsive for ${Math.round(silent / 1000)}s — marking as dead`
       )
+      if (disconnectedConsumer) {
+        // Preserve its persistent-session address so batch-complete is queued
+        // by MQTT even when the consumer reconnects after the inactivity limit.
+        this.disconnectedCompletionRecipients.set(consumerId, disconnectedConsumer)
+      }
 
-      for (const [uniqueTestId, assignment] of this.assignedTests) {
+      for (const [uniqueTestId, assignment] of this.runningTests) {
         if (assignment.consumerId === consumerId) {
           const failResult: TestResult = {
             runId: this.runId,
             consumerId,
+            sessionId: assignment.sessionId,
             testId: assignment.testCase.testId,
             uniqueTestId,
             outcome: 'failure',
-            duration: Date.now() - assignment.assignedAt,
+            duration: Date.now() - assignment.startedAt,
             timestamp: new Date().toISOString(),
             error: `Consumer became unresponsive (no heartbeat for ${Math.round(silent / 1000)}s)`
           }
           this.completedTests.set(uniqueTestId, failResult)
-          this.assignedTests.delete(uniqueTestId)
+          this.runningTests.delete(uniqueTestId)
+          this.appendTimeline({
+            ts: this.getInterruptedTimelineEnd(assignment),
+            consumerId,
+            sessionId: assignment.sessionId,
+            testId: assignment.testCase.testId,
+            uniqueTestId,
+            phase: 'end',
+            incomplete: true
+          })
+          if (disconnectedConsumer) {
+            disconnectedConsumer.testsCompleted++
+            disconnectedConsumer.testsRunning = Math.max(0, disconnectedConsumer.testsRunning - 1)
+          }
         }
       }
 
@@ -680,14 +882,14 @@ export class BatchOrchestrator {
     }
 
     if (deadConsumers.length > 0) {
-      if (this.consumers.size === 0 && (this.testQueue.length > 0 || this.assignedTests.size > 0)) {
+      if (this.consumers.size === 0 && this.queueConsumerId) {
         console.error('\n❌ All consumers are dead. Terminating batch.')
         this.allConsumersDead = true
 
         // Fail all remaining queued tests
         while (this.testQueue.length > 0) {
           const testCase = this.testQueue.shift()!
-          const uniqueTestId = `${testCase.testId}-orphaned`
+          const uniqueTestId = testCase.id
           const failResult: TestResult = {
             runId: this.runId,
             consumerId: 'none',
@@ -709,9 +911,9 @@ export class BatchOrchestrator {
   }
 
   private displayStatus() {
-    const total = this.testQueue.length + this.assignedTests.size + this.completedTests.size
+    const total = this.testQueue.length + this.runningTests.size + this.completedTests.size
     const completed = this.completedTests.size
-    const running = this.assignedTests.size
+    const running = this.runningTests.size
     const queued = this.testQueue.length
     const consumers = this.consumers.size
     const elapsed =
@@ -723,21 +925,17 @@ export class BatchOrchestrator {
 
     if (running > 0) {
       const now = Date.now()
-      for (const assignment of this.assignedTests.values()) {
-        const waitSec = Math.round((now - (assignment.startedAt ?? assignment.assignedAt)) / 1000)
+      for (const assignment of this.runningTests.values()) {
+        const waitSec = Math.round((now - assignment.startedAt) / 1000)
         const timeoutSec = Math.round(assignment.timeoutMs / 1000)
-        const phase = assignment.startedAt ? 'running' : 'setup'
         console.log(
-          `   ⏳ ${assignment.testCase.testId} → ${assignment.consumerId} (${phase}, ${waitSec}s / ${timeoutSec}s)`
+          `   ⏳ ${assignment.testCase.testId} → ${assignment.consumerId} (active, ${waitSec}s / ${timeoutSec}s)`
         )
       }
     }
     if (this.consumers.size > 0) {
       const consumerStates = Array.from(this.consumers.values())
-        .map(
-          (c) =>
-            `${c.consumerId} <bootstrapped=${c.bootstrapped ?? false}, outstandingRequest=${c.outstandingRequest ?? false}>`
-        )
+        .map((c) => `${c.consumerId} <bootstrapped=${c.bootstrapped ?? false}>`)
         .join(', ')
       console.log(`   🫀 ${consumerStates}`)
     }
@@ -745,7 +943,8 @@ export class BatchOrchestrator {
   }
 
   private completeBatch() {
-    if (this.shutdownTimer) return // Already shutting down
+    if (this.batchCompleting) return
+    this.batchCompleting = true
 
     const duration = this.startTime > 0 ? Date.now() - this.startTime : 0
     const totalTests = this.completedTests.size
@@ -767,7 +966,8 @@ export class BatchOrchestrator {
     )
     console.log('\n👥 Consumer Stats:')
 
-    for (const consumer of this.consumers.values()) {
+    const completionRecipients = this.getCompletionRecipients()
+    for (const consumer of completionRecipients.values()) {
       console.log(
         `   - ${consumer.consumerId} (${consumer.platform}): ${consumer.testsCompleted} tests`
       )
@@ -777,23 +977,49 @@ export class BatchOrchestrator {
     this.displayResultsByCategory()
     this.displayResultsBySuite()
 
-    console.log(`\n📨 Signaling ${this.consumers.size} consumer(s) to complete...`)
+    console.log(`\n📨 Signaling ${completionRecipients.size} consumer(s) to complete...`)
+    this.batchCompleteSummary = {
+      runId: this.runId,
+      status: 'complete',
+      totalTests,
+      successCount,
+      failureCount,
+      skippedCount,
+      duration
+    }
+    for (const consumer of completionRecipients.values()) {
+      this.publishBatchComplete(consumer)
+    }
+
+    this.waitForProfilingData(new Set(completionRecipients.keys()))
+  }
+
+  private publishBatchComplete(consumer: ConsumerInfo, force = false) {
+    if (!this.batchCompleteSummary) {
+      return
+    }
+    const sessionKey = this.getConsumerSessionKey(consumer.consumerId, consumer.sessionId)
+    if (!force && this.batchCompleteSentSessions.has(sessionKey)) {
+      return
+    }
+    this.batchCompleteSentSessions.add(sessionKey)
     this.client.publish(
-      'qvac/batch-complete',
+      `qvac/batch-complete/${consumer.consumerId}`,
       JSON.stringify({
-        runId: this.runId,
-        status: 'complete',
-        totalTests,
-        successCount,
-        failureCount,
-        skippedCount,
-        duration
+        ...this.batchCompleteSummary,
+        consumerId: consumer.consumerId,
+        sessionId: consumer.sessionId
       }),
       { qos: 1 }
     )
+  }
 
-    const expectedIds = new Set(this.consumers.keys())
-    this.waitForProfilingData(expectedIds)
+  private getCompletionRecipients() {
+    const recipients = new Map(this.disconnectedCompletionRecipients)
+    for (const [consumerId, consumer] of this.consumers) {
+      recipients.set(consumerId, consumer)
+    }
+    return recipients
   }
 
   private waitForProfilingData(expectedIds: Set<string>) {
@@ -863,7 +1089,7 @@ export class BatchOrchestrator {
       const reportData: ReportData = {
         runId: this.runId,
         completedTests,
-        consumers: this.consumers,
+        consumers: this.getCompletionRecipients(),
         startTime: this.startTime,
         profilingData: profilingDataArray.length > 0 ? profilingDataArray : undefined,
         memorySummaries: memorySummaries.length > 0 ? memorySummaries : undefined,
@@ -1077,7 +1303,7 @@ export class BatchOrchestrator {
 
     // Display status every 30 seconds
     setInterval(() => {
-      if (this.assignedTests.size > 0 || this.testQueue.length > 0) {
+      if (this.runningTests.size > 0 || this.testQueue.length > 0) {
         this.displayStatus()
       }
     }, 30000)

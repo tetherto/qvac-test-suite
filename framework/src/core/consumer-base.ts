@@ -1,11 +1,17 @@
 import type { MqttClient } from 'mqtt'
 import type { TestDefinition } from '../types/test-definition.js'
 import {
+  batchCompleteSchema,
+  profilingAckSchema,
   registerAckSchema,
-  testAssignmentSchema,
+  type BatchComplete,
+  type ProfilingData,
   type ProfilerExport,
   type RegisterAck,
-  type TestAssignment
+  type TestQueueItem,
+  type TestReload,
+  type TestResult as MqttTestResult,
+  type TestStart
 } from '../schemas/messages.js'
 
 export interface TestResult {
@@ -44,21 +50,35 @@ export interface ConsumerCallbacks {
     isComplete?: boolean
   }) => void
   /**
-   * Runs once after register-ack. `filteredTests` is the post-filter test
-   * set resolved from `registerAck.filteredTestIds` against local
-   * `testDefinitions`; `undefined` if the producer didn't send the field
-   * (older framework) or the consumer has no local definitions — callers
-   * should then fall back to their "no filter" path.
+   * Runs once after register-ack. `filteredTests` is the producer queue
+   * resolved against local `testDefinitions`, excluding definitions skipped
+   * on this platform. It is undefined when the consumer has no local
+   * definitions.
    */
   onBootstrap?: (filteredTests?: TestDefinition[]) => Promise<void>
   onShutdown?: () => void | Promise<void>
 }
 
-const DEFAULT_REQUEST_ASSIGNMENT_TIMEOUT_MS = 10000
 const DEFAULT_TEARDOWN_TIMEOUT_MS = 120000
 const DEFAULT_PROFILING_CHECKPOINT_INTERVAL_MS = 5000
+const DEFAULT_PROFILING_ACK_TIMEOUT_MS = 30000
 
 type ProfilingPublishKind = 'checkpoint' | 'final'
+
+interface LifecycleJournalEntry {
+  start?: TestStart
+  reload?: TestReload
+  result?: MqttTestResult
+}
+
+interface PendingFinalProfiling {
+  message: ProfilingData
+  published: boolean
+  acknowledged: boolean
+  resolve: () => void
+  reject: (error: Error) => void
+  timer?: ReturnType<typeof setTimeout>
+}
 
 function readProfilingCheckpointIntervalMs(): number {
   const raw =
@@ -68,6 +88,16 @@ function readProfilingCheckpointIntervalMs(): number {
       : undefined
   const parsed = Number.parseInt(raw ?? String(DEFAULT_PROFILING_CHECKPOINT_INTERVAL_MS), 10)
   return Number.isFinite(parsed) ? Math.max(0, parsed) : DEFAULT_PROFILING_CHECKPOINT_INTERVAL_MS
+}
+
+function readProfilingAckTimeoutMs() {
+  const raw =
+    typeof process !== 'undefined'
+      ? (process.env?.EXPO_PUBLIC_QVAC_PROFILING_ACK_TIMEOUT_MS ??
+        process.env?.QVAC_PROFILING_ACK_TIMEOUT_MS)
+      : undefined
+  const parsed = Number.parseInt(raw ?? String(DEFAULT_PROFILING_ACK_TIMEOUT_MS), 10)
+  return Number.isFinite(parsed) ? Math.max(1, parsed) : DEFAULT_PROFILING_ACK_TIMEOUT_MS
 }
 
 class TimeoutError extends Error {
@@ -98,21 +128,20 @@ export class ConsumerBase {
   protected shutdownRequested = false
   protected callbacks: ConsumerCallbacks
   private messageQueue: Promise<void> = Promise.resolve()
+  private pendingBatchComplete?: BatchComplete
   private heartbeatTimer?: ReturnType<typeof setInterval>
-  private outstandingRequestTimer?: ReturnType<typeof setTimeout>
-  // True between publishing `qvac/request-test` and receiving the matching
-  // `qvac/test-assigned` reply. Without this, any caller of
-  // `requestNextTest()` that fires inside that on-the-wire window (e.g. the
-  // `connect` handler on an MQTT reconnect, or a stacked `setTimeout`
-  // retry) would re-publish and the producer would assign a second test,
-  // leaving the first one orphaned in its `assignedTests` map until it
-  // hits the 180 s timeout.
-  private outstandingRequest = false
-  private seenAssignmentIds = new Set<string>()
+  private registrationRetryTimer?: ReturnType<typeof setInterval>
+  private sessionId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  private queueExecutionStarted = false
+  private completedQueueItems = new Set<string>()
+  private lifecycleJournal = new Map<string, LifecycleJournalEntry>()
+  private batchCompleteHandled = false
   private profilingCheckpointTimer?: ReturnType<typeof setInterval>
   private profilingCheckpointIntervalMs = readProfilingCheckpointIntervalMs()
+  private profilingAckTimeoutMs = readProfilingAckTimeoutMs()
   private profilingPublishInFlight = false
   private profilingSequence = 0
+  private pendingFinalProfiling?: PendingFinalProfiling
   private finalProfilingPublished = false
   // Guards forceShutdown() so its body runs at most once (double-Ctrl-C,
   // overlapping signal + React unmount).
@@ -122,7 +151,6 @@ export class ConsumerBase {
   // React unmount -> forceShutdown() -> shutdown() would otherwise fire
   // onShutdown twice.
   private shutdownStarted = false
-  protected requestAssignmentTimeoutMs = DEFAULT_REQUEST_ASSIGNMENT_TIMEOUT_MS
   protected teardownTimeoutMs = DEFAULT_TEARDOWN_TIMEOUT_MS
 
   constructor(
@@ -151,6 +179,10 @@ export class ConsumerBase {
 
   protected log(message: string) {
     this.callbacks.log(message)
+  }
+
+  public getSessionId() {
+    return this.sessionId
   }
 
   protected updateStats(update: {
@@ -187,95 +219,22 @@ export class ConsumerBase {
     }
   }
 
-  protected requestNextTest() {
-    // `registered` flips before `await onBootstrap`, so a reconnect during
-    // bootstrap could otherwise pull a test the consumer can't run yet. The
-    // trailing requestNextTest() in handleRegistrationAck (or shutdown on
-    // bootstrap failure) covers the suppressed call.
-    //
-    // `outstandingRequest` covers the symmetric race on the other side: a
-    // request-test is on the wire, the producer hasn't replied yet, so
-    // `isProcessingTest` is still false but a second publish would still
-    // get a second assignment. Cleared in `handleTestAssignment`.
-    if (
-      !this.registered ||
-      !this.bootstrapped ||
-      this.isProcessingTest ||
-      this.outstandingRequest ||
-      this.shutdownRequested
-    ) {
-      return
-    }
-
-    this.outstandingRequest = true
-    this.publishTestRequest()
-  }
-
-  private publishTestRequest() {
-    this.client.publish(
-      'qvac/request-test',
-      JSON.stringify({
-        runId: this.runId,
-        consumerId: this.consumerId,
-        timestamp: new Date().toISOString()
-      }),
-      { qos: 1 }
-    )
-    this.armOutstandingRequestTimer()
-  }
-
-  private armOutstandingRequestTimer() {
-    if (this.outstandingRequestTimer) {
-      clearTimeout(this.outstandingRequestTimer)
-    }
-
-    this.outstandingRequestTimer = setTimeout(() => {
-      this.outstandingRequestTimer = undefined
-      if (!this.outstandingRequest || this.shutdownRequested) {
-        return
-      }
-
-      if (!this.registered || !this.bootstrapped || this.isProcessingTest) {
-        this.clearOutstandingRequest()
-        return
-      }
-
-      this.log(
-        `⚠️  No test assignment received within ${Math.round(this.requestAssignmentTimeoutMs / 1000)}s - re-sending request`
-      )
-      this.publishTestRequest()
-    }, this.requestAssignmentTimeoutMs)
-  }
-
-  private clearOutstandingRequest() {
-    this.outstandingRequest = false
-    if (this.outstandingRequestTimer) {
-      clearTimeout(this.outstandingRequestTimer)
-      this.outstandingRequestTimer = undefined
-    }
-  }
-
-  private rememberAssignment(uniqueTestId: string) {
-    this.seenAssignmentIds.add(uniqueTestId)
-  }
-
   public setupMqttHandlers() {
     this.client.on('connect', () => {
       if (this.registered) {
         this.log('✅ Reconnected to MQTT broker')
-        this.requestNextTest()
-        return
+      } else {
+        this.log('✅ Connected to MQTT broker')
+        this.log(`🔑 Run ID: ${this.runId}${this.isWildcard ? ' (wildcard mode)' : ''}`)
       }
 
-      this.log('✅ Connected to MQTT broker')
-      this.log(`🔑 Run ID: ${this.runId}${this.isWildcard ? ' (wildcard mode)' : ''}`)
-
-      // Subscribe to consumer-specific topics
+      // Re-subscribe and re-register on every connection. This is required
+      // when the broker loses persistent session state during an outage.
       this.client.subscribe(
         [
           `qvac/register-ack/${this.consumerId}`,
-          `qvac/test-assigned/${this.consumerId}`,
-          'qvac/batch-complete'
+          `qvac/batch-complete/${this.consumerId}`,
+          `qvac/profiling-ack/${this.consumerId}`
         ],
         { qos: 1 },
         (err) => {
@@ -285,18 +244,23 @@ export class ConsumerBase {
           }
           this.log('📡 Subscribed to topics\n')
 
-          // Bootstrap is deferred to handleRegistrationAck — we need the
-          // producer's filteredTestIds before we can scope it.
+          // Bootstrap is deferred until the producer provides the queue.
 
           // Register with producer (with retry)
           this.sendRegistration()
 
-          const registrationInterval = setInterval(() => {
+          if (this.registrationRetryTimer) {
+            clearInterval(this.registrationRetryTimer)
+          }
+          this.registrationRetryTimer = setInterval(() => {
             if (!this.registered) {
               this.log(`🔄 Re-sending registration...`)
               this.sendRegistration()
             } else {
-              clearInterval(registrationInterval)
+              if (this.registrationRetryTimer) {
+                clearInterval(this.registrationRetryTimer)
+                this.registrationRetryTimer = undefined
+              }
             }
           }, 3000)
         }
@@ -304,6 +268,37 @@ export class ConsumerBase {
     })
 
     this.client.on('message', (topic, payload) => {
+      if (topic === `qvac/register-ack/${this.consumerId}` && this.pendingFinalProfiling) {
+        try {
+          const parsed = registerAckSchema.safeParse(JSON.parse(payload.toString()))
+          if (
+            parsed.success &&
+            parsed.data.status === 'registered' &&
+            parsed.data.sessionId === this.sessionId &&
+            (this.isWildcard || parsed.data.runId === this.runId)
+          ) {
+            this.replayFinalProfiling()
+          }
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          this.log(`❌ Error handling ${topic}: ${errorMessage}`)
+        }
+        return
+      }
+
+      if (topic === `qvac/profiling-ack/${this.consumerId}`) {
+        try {
+          const message = JSON.parse(payload.toString())
+          if (this.isWildcard || message.runId === this.runId) {
+            this.handleProfilingAck(message)
+          }
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          this.log(`❌ Error handling ${topic}: ${errorMessage}`)
+        }
+        return
+      }
+
       this.messageQueue = this.messageQueue.then(async () => {
         try {
           const message = JSON.parse(payload.toString())
@@ -314,9 +309,7 @@ export class ConsumerBase {
 
           if (topic === `qvac/register-ack/${this.consumerId}`) {
             await this.handleRegistrationAck(message)
-          } else if (topic === `qvac/test-assigned/${this.consumerId}`) {
-            await this.handleTestAssignment(message)
-          } else if (topic === 'qvac/batch-complete') {
+          } else if (topic === `qvac/batch-complete/${this.consumerId}`) {
             await this.handleBatchComplete(message)
           }
         } catch (error: unknown) {
@@ -349,6 +342,7 @@ export class ConsumerBase {
       JSON.stringify({
         runId: this.runId,
         consumerId: this.consumerId,
+        sessionId: this.sessionId,
         platform: this.platform,
         timestamp: new Date().toISOString()
       }),
@@ -364,30 +358,51 @@ export class ConsumerBase {
     }
     const message: RegisterAck = parsed.data
 
+    if (message.sessionId !== this.sessionId) {
+      this.log(`⚠️  Ignoring register-ack for a different consumer session`)
+      return
+    }
+
+    if (message.status === 'rejected') {
+      this.log(`❌ Registration rejected: ${message.reason}`)
+      this.shutdownRequested = true
+      await this.shutdown()
+      return
+    }
+
     this.totalTests = Math.max(this.totalTests, message.totalTests)
 
-    // Re-acks fire on every reconnect; only the first one bootstraps.
+    // Re-acks request an idempotent lifecycle replay after reconnect.
     if (this.registered) {
+      this.publishQueueReady()
+      this.replayLifecycle(message.queue)
+      this.replayFinalProfiling()
       return
     }
 
     this.registered = true
+    if (this.registrationRetryTimer) {
+      clearInterval(this.registrationRetryTimer)
+      this.registrationRetryTimer = undefined
+    }
     this.log(`🔌 Registration ack - ${this.totalTests} tests in queue\n`)
     this.updateStats({ totalTests: this.totalTests })
     this.startHeartbeat()
 
-    if (this.callbacks.onBootstrap && !this.bootstrapped) {
-      // Resolve producer's testIds against local definitions; drop ids
-      // unknown to this consumer build and tests skipped on this platform
-      // (the producer can't pre-filter per consumer). Pass undefined when
-      // the producer didn't send the field at all so callbacks fall back
-      // to their "no filter" path.
+    if (this.callbacks.onBootstrap && !this.bootstrapped && message.queue.length > 0) {
+      // Resolve the producer queue against local definitions. Bootstrap only
+      // the dependencies required by this run and platform.
       let filteredTests: TestDefinition[] | undefined
-      if (message.filteredTestIds && this.testDefinitions.size > 0) {
+      if (this.testDefinitions.size > 0) {
         filteredTests = []
         let unresolvedCount = 0
         let platformSkippedCount = 0
-        for (const testId of message.filteredTestIds) {
+        const seenTestIds = new Set<string>()
+        for (const { testId } of message.queue) {
+          if (seenTestIds.has(testId)) {
+            continue
+          }
+          seenTestIds.add(testId)
           const def = this.testDefinitions.get(testId)
           if (!def) {
             unresolvedCount++
@@ -401,7 +416,7 @@ export class ConsumerBase {
         }
         if (unresolvedCount > 0) {
           this.log(
-            `⚠️  Producer sent ${message.filteredTestIds.length} testId(s); ${unresolvedCount} don't resolve against local definitions`
+            `⚠️  Producer queued ${message.queue.length} test(s); ${unresolvedCount} test definition(s) don't resolve locally`
           )
         }
         if (platformSkippedCount > 0) {
@@ -428,84 +443,89 @@ export class ConsumerBase {
     }
 
     this.startProfilingCheckpoints()
-    this.requestNextTest()
+    this.publishQueueReady()
+    void this.executeQueue(message.queue).catch(async (error: unknown) => {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      this.log(`❌ Queue execution failed: ${errorMessage}`)
+      this.shutdownRequested = true
+      await this.finalize()
+    })
+    if (this.pendingBatchComplete) {
+      const pendingBatchComplete = this.pendingBatchComplete
+      this.pendingBatchComplete = undefined
+      await this.handleBatchComplete(pendingBatchComplete)
+    }
   }
 
-  protected async handleTestAssignment(rawAssignment: unknown) {
-    const parsed = testAssignmentSchema.safeParse(rawAssignment)
-    if (!parsed.success) {
-      this.log(`⚠️  Invalid test-assigned payload: ${parsed.error.message}`)
+  private async executeQueue(queue: TestQueueItem[]) {
+    if (this.queueExecutionStarted) {
       return
     }
+    this.queueExecutionStarted = true
 
-    const assignment: TestAssignment = parsed.data
-    if (assignment.status === 'assigned' && assignment.uniqueTestId) {
-      if (this.seenAssignmentIds.has(assignment.uniqueTestId)) {
-        this.log(
-          `⚠️  Ignoring duplicate assignment for already handled test: ${assignment.uniqueTestId}`
-        )
-        this.clearOutstandingRequest()
-        if (!this.shutdownRequested && !this.isProcessingTest) {
-          setTimeout(() => this.requestNextTest(), 100)
-        }
-        return
+    for (const item of queue) {
+      if (this.shutdownRequested) {
+        break
+      }
+      if (this.completedQueueItems.has(item.uniqueTestId)) {
+        continue
       }
 
-      if (this.isProcessingTest) {
-        this.log(
-          `⚠️  Ignoring assignment while already processing a test: ${assignment.uniqueTestId}`
-        )
-        this.clearOutstandingRequest()
-        return
-      }
-    }
-
-    // Producer replied to our request-test (whether with an assignment,
-    // queue-empty, or anything else). Clear the in-flight flag so the
-    // next requestNextTest() can publish; otherwise the flag would stick
-    // forever after queue-empty and any reconnect path would silently
-    // no-op.
-    this.clearOutstandingRequest()
-
-    if (assignment.status === 'queue-empty') {
-      this.log('📭 No more tests in queue - waiting for batch-complete')
-      return
-    }
-
-    if (assignment.status === 'assigned' && assignment.testId && assignment.uniqueTestId) {
-      this.rememberAssignment(assignment.uniqueTestId)
-      const definition = this.testDefinitions.get(assignment.testId)
+      const definition = this.testDefinitions.get(item.testId)
       if (!definition) {
-        this.log(`❌ No local test definition for: ${assignment.testId}`)
-        this.client.publish(
-          'qvac/results',
-          JSON.stringify({
-            runId: this.runId,
-            consumerId: this.consumerId,
-            testId: assignment.testId,
-            uniqueTestId: assignment.uniqueTestId,
-            outcome: 'failure',
-            duration: 0,
-            timestamp: new Date().toISOString(),
-            error: `No local test definition for: ${assignment.testId}`
-          }),
-          { qos: 1 }
-        )
-        if (!this.shutdownRequested) {
-          setTimeout(() => this.requestNextTest(), 100)
-        }
-        return
+        this.log(`❌ No local test definition for: ${item.testId}`)
+        this.publishTestStart(item.uniqueTestId)
+        this.publishTestResult({
+          runId: this.runId,
+          consumerId: this.consumerId,
+          sessionId: this.sessionId,
+          testId: item.testId,
+          uniqueTestId: item.uniqueTestId,
+          outcome: 'failure',
+          duration: 0,
+          timestamp: new Date().toISOString(),
+          error: `No local test definition for: ${item.testId}`
+        })
+        this.testsCompleted++
+        this.testsFailed++
+        this.completedQueueItems.add(item.uniqueTestId)
+        this.updateStats({
+          testsCompleted: this.testsCompleted,
+          testsFailed: this.testsFailed,
+          currentTest: ''
+        })
+        continue
       }
-      await this.executeTest(assignment.uniqueTestId, definition)
+
+      await this.executeTest(item.uniqueTestId, definition)
+      this.completedQueueItems.add(item.uniqueTestId)
+    }
+
+    if (!this.shutdownRequested) {
+      this.log('📭 Local test queue complete - waiting for batch-complete')
     }
   }
 
-  protected async handleBatchComplete(message: {
-    totalTests?: number
-    successCount?: number
-    failureCount?: number
-    duration?: number
-  }) {
+  protected async handleBatchComplete(rawMessage: unknown) {
+    const parsed = batchCompleteSchema.safeParse(rawMessage)
+    if (!parsed.success) {
+      this.log(`⚠️  Invalid batch-complete payload: ${parsed.error.message}`)
+      return
+    }
+    const message: BatchComplete = parsed.data
+    if (message.consumerId !== this.consumerId || message.sessionId !== this.sessionId) {
+      this.log(`⚠️  Ignoring batch-complete for a different consumer session`)
+      return
+    }
+    if (!this.registered) {
+      this.pendingBatchComplete = message
+      return
+    }
+    if (this.batchCompleteHandled) {
+      return
+    }
+    this.batchCompleteHandled = true
+
     this.log('\n🎉 Batch complete!')
     this.log(`📊 Total: ${message.totalTests || 0}`)
     this.log(`✅ Passed: ${message.successCount || 0}`)
@@ -521,7 +541,6 @@ export class ConsumerBase {
     this.log(`⏱️  Duration: ${((message.duration || 0) / 1000).toFixed(2)}s`)
 
     this.shutdownRequested = true
-    this.clearOutstandingRequest()
     this.updateStats({ isComplete: true })
 
     if (this.isProcessingTest) {
@@ -569,6 +588,65 @@ export class ConsumerBase {
     return null
   }
 
+  private publishTestStart(uniqueTestId: string) {
+    const message: TestStart = {
+      runId: this.runId,
+      consumerId: this.consumerId,
+      sessionId: this.sessionId,
+      uniqueTestId,
+      timestamp: new Date().toISOString()
+    }
+    const entry = this.lifecycleJournal.get(uniqueTestId) ?? {}
+    entry.start = message
+    this.lifecycleJournal.set(uniqueTestId, entry)
+    this.client.publish('qvac/test-start', JSON.stringify(message), { qos: 1 })
+  }
+
+  private publishTestReload(message: TestReload) {
+    const entry = this.lifecycleJournal.get(message.uniqueTestId) ?? {}
+    entry.reload = message
+    this.lifecycleJournal.set(message.uniqueTestId, entry)
+    this.client.publish('qvac/test-reload', JSON.stringify(message), { qos: 1 })
+  }
+
+  private publishTestResult(message: MqttTestResult) {
+    const entry = this.lifecycleJournal.get(message.uniqueTestId) ?? {}
+    entry.result = message
+    this.lifecycleJournal.set(message.uniqueTestId, entry)
+    this.client.publish('qvac/results', JSON.stringify(message), { qos: 1 })
+  }
+
+  private publishQueueReady() {
+    this.client.publish(
+      'qvac/queue-ready',
+      JSON.stringify({
+        runId: this.runId,
+        consumerId: this.consumerId,
+        sessionId: this.sessionId,
+        timestamp: new Date().toISOString()
+      }),
+      { qos: 1 }
+    )
+  }
+
+  private replayLifecycle(queue: TestQueueItem[]) {
+    for (const { uniqueTestId } of queue) {
+      const entry = this.lifecycleJournal.get(uniqueTestId)
+      if (!entry) {
+        continue
+      }
+      if (entry.start) {
+        this.client.publish('qvac/test-start', JSON.stringify(entry.start), { qos: 1 })
+      }
+      if (entry.reload) {
+        this.client.publish('qvac/test-reload', JSON.stringify(entry.reload), { qos: 1 })
+      }
+      if (entry.result) {
+        this.client.publish('qvac/results', JSON.stringify(entry.result), { qos: 1 })
+      }
+    }
+  }
+
   protected async executeTest(uniqueTestId: string, definition: TestDefinition) {
     this.isProcessingTest = true
     const { testId, params, expectation } = definition
@@ -577,6 +655,9 @@ export class ConsumerBase {
     const progress = this.totalTests > 0 ? `[${this.testsCompleted + 1}/${this.totalTests}]` : ''
     this.log(`▶️  ${progress} ${testId}`)
     this.updateStats({ currentTest: testId })
+    // Publish before setup so producer timeouts and memory attribution include
+    // model loading and any other setup work.
+    this.publishTestStart(uniqueTestId)
 
     // Check for conditional platform-based skip
     const skipReason = this.getTestSkipReason(definition)
@@ -585,30 +666,27 @@ export class ConsumerBase {
       this.testsCompleted++
       this.testsSkipped++
       this.updateStats({ testsCompleted: this.testsCompleted, testsSkipped: this.testsSkipped })
-      this.client.publish(
-        'qvac/results',
-        JSON.stringify({
-          runId: this.runId,
-          consumerId: this.consumerId,
-          testId,
-          uniqueTestId,
-          outcome: 'skipped',
-          duration: 0,
-          timestamp: new Date().toISOString(),
-          error: skipReason
-        }),
-        { qos: 1 }
-      )
+      this.publishTestResult({
+        runId: this.runId,
+        consumerId: this.consumerId,
+        sessionId: this.sessionId,
+        testId,
+        uniqueTestId,
+        outcome: 'skipped',
+        duration: 0,
+        timestamp: new Date().toISOString(),
+        error: skipReason
+      })
       this.isProcessingTest = false
-      if (!this.shutdownRequested) {
-        setTimeout(() => this.requestNextTest(), 100)
+      if (this.shutdownRequested) {
+        await this.finalize()
       }
       return
     }
 
     const context = definition.metadata || {}
 
-    // Setup phase: runs BEFORE timeout and test-start notification
+    // Setup is part of the producer-observed test window.
     if (this.executor.setup) {
       try {
         const setupStart = Date.now()
@@ -623,45 +701,29 @@ export class ConsumerBase {
         this.testsCompleted++
         this.testsFailed++
         this.updateStats({ testsCompleted: this.testsCompleted, testsFailed: this.testsFailed })
-        this.client.publish(
-          'qvac/results',
-          JSON.stringify({
-            runId: this.runId,
-            consumerId: this.consumerId,
-            testId,
-            uniqueTestId,
-            outcome: 'failure',
-            duration: 0,
-            timestamp: new Date().toISOString(),
-            error: `Setup failed: ${errorMsg}`
-          }),
-          { qos: 1 }
-        )
+        this.publishTestResult({
+          runId: this.runId,
+          consumerId: this.consumerId,
+          sessionId: this.sessionId,
+          testId,
+          uniqueTestId,
+          outcome: 'failure',
+          duration: 0,
+          timestamp: new Date().toISOString(),
+          error: `Setup failed: ${errorMsg}`
+        })
         this.isProcessingTest = false
-        if (!this.shutdownRequested) {
-          setTimeout(() => this.requestNextTest(), 100)
+        if (this.shutdownRequested) {
+          await this.finalize()
         }
         return
       }
     }
 
-    // Notify producer that test execution is starting (after setup)
-    this.client.publish(
-      'qvac/test-start',
-      JSON.stringify({
-        runId: this.runId,
-        consumerId: this.consumerId,
-        uniqueTestId,
-        timestamp: new Date().toISOString()
-      }),
-      { qos: 1 }
-    )
-
     const startTime = Date.now()
     const stopConsumerAfterTimeout = (message: string) => {
       skipTeardown = true
       this.shutdownRequested = true
-      this.clearOutstandingRequest()
       this.log(message)
     }
 
@@ -691,6 +753,7 @@ export class ConsumerBase {
       let retryPassed: boolean | undefined
       let retryOutput: string | undefined
       let attempt1DurationMs: number | undefined
+      let reloadTimestamp: number | undefined
 
       if (!result.passed && !result.skipped && definition.retryOnFailure === true) {
         retried = true
@@ -700,19 +763,16 @@ export class ConsumerBase {
         }
         this.log(`   ┄┄ reload + retry ┄┄`)
 
-        const reloadBoundaryTs = Date.now()
-        attempt1DurationMs = reloadBoundaryTs - startTime
-        this.client.publish(
-          'qvac/test-reload',
-          JSON.stringify({
-            runId: this.runId,
-            consumerId: this.consumerId,
-            uniqueTestId,
-            testId,
-            ts: reloadBoundaryTs
-          }),
-          { qos: 1 }
-        )
+        reloadTimestamp = Date.now()
+        attempt1DurationMs = reloadTimestamp - startTime
+        this.publishTestReload({
+          runId: this.runId,
+          consumerId: this.consumerId,
+          sessionId: this.sessionId,
+          uniqueTestId,
+          testId,
+          ts: reloadTimestamp
+        })
 
         if (this.executor.reload) {
           try {
@@ -801,21 +861,24 @@ export class ConsumerBase {
       })
 
       // Send result to producer
-      this.client.publish(
-        'qvac/results',
-        JSON.stringify({
-          runId: this.runId,
-          consumerId: this.consumerId,
-          testId,
-          uniqueTestId,
-          outcome,
-          duration: result.skipped ? 0 : duration,
-          timestamp: new Date().toISOString(),
-          error: result.skipped ? result.output : result.passed ? undefined : result.output,
-          ...(retried && { retried: true, retryPassed, retryOutput, attempt1DurationMs })
-        }),
-        { qos: 1 }
-      )
+      this.publishTestResult({
+        runId: this.runId,
+        consumerId: this.consumerId,
+        sessionId: this.sessionId,
+        testId,
+        uniqueTestId,
+        outcome,
+        duration: result.skipped ? 0 : duration,
+        timestamp: new Date().toISOString(),
+        error: result.skipped ? result.output : result.passed ? undefined : result.output,
+        ...(retried && {
+          retried: true,
+          retryPassed,
+          retryOutput,
+          attempt1DurationMs,
+          reloadTimestamp
+        })
+      })
     } catch (error: unknown) {
       const duration = Date.now() - startTime
       const errorMsg = error instanceof Error ? error.message : 'Unknown error'
@@ -831,20 +894,17 @@ export class ConsumerBase {
       })
 
       // Send failure result
-      this.client.publish(
-        'qvac/results',
-        JSON.stringify({
-          runId: this.runId,
-          consumerId: this.consumerId,
-          testId,
-          uniqueTestId,
-          outcome: 'failure',
-          duration,
-          timestamp: new Date().toISOString(),
-          error: errorMsg
-        }),
-        { qos: 1 }
-      )
+      this.publishTestResult({
+        runId: this.runId,
+        consumerId: this.consumerId,
+        sessionId: this.sessionId,
+        testId,
+        uniqueTestId,
+        outcome: 'failure',
+        duration,
+        timestamp: new Date().toISOString(),
+        error: errorMsg
+      })
     } finally {
       if (!skipTeardown) {
         await this.runTeardown(testId, context)
@@ -852,9 +912,7 @@ export class ConsumerBase {
 
       this.isProcessingTest = false
 
-      if (!this.shutdownRequested) {
-        setTimeout(() => this.requestNextTest(), 100)
-      } else {
+      if (this.shutdownRequested) {
         await this.finalize()
       }
     }
@@ -930,29 +988,130 @@ export class ConsumerBase {
     profilerExport: ProfilerExport,
     kind: ProfilingPublishKind = 'final'
   ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const sequence = ++this.profilingSequence
-      const payload = JSON.stringify({
-        runId: this.runId,
-        consumerId: this.consumerId,
-        timestamp: new Date().toISOString(),
-        kind,
-        sequence,
-        profilerExport
-      })
+    const sequence = ++this.profilingSequence
+    const message: ProfilingData = {
+      runId: this.runId,
+      consumerId: this.consumerId,
+      sessionId: this.sessionId,
+      timestamp: new Date().toISOString(),
+      kind,
+      sequence,
+      profilerExport
+    }
 
-      this.client.publish('qvac/profiling', payload, { qos: 1 }, (err) => {
+    if (kind === 'final') {
+      return this.publishFinalProfiling(message)
+    }
+
+    return new Promise((resolve, reject) => {
+      this.client.publish('qvac/profiling', JSON.stringify(message), { qos: 1 }, (err) => {
         if (err) {
           this.log(`⚠️  Failed to publish profiling data: ${err.message}`)
           reject(err)
         } else {
-          if (kind === 'final') {
-            this.log('📈 Profiling data published')
-          }
           resolve()
         }
       })
     })
+  }
+
+  private publishFinalProfiling(message: ProfilingData): Promise<void> {
+    if (this.pendingFinalProfiling) {
+      return Promise.reject(new Error('Final profiling publication is already in progress'))
+    }
+
+    return new Promise((resolve, reject) => {
+      const pending: PendingFinalProfiling = {
+        message,
+        published: false,
+        acknowledged: false,
+        resolve,
+        reject
+      }
+      this.pendingFinalProfiling = pending
+      pending.timer = setTimeout(() => {
+        this.finishFinalProfiling(
+          pending,
+          new TimeoutError(
+            `Producer did not acknowledge final profiling within ${Math.round(this.profilingAckTimeoutMs / 1000)}s`
+          )
+        )
+      }, this.profilingAckTimeoutMs)
+      this.publishPendingFinalProfiling(pending)
+    })
+  }
+
+  private publishPendingFinalProfiling(pending: PendingFinalProfiling) {
+    this.client.publish('qvac/profiling', JSON.stringify(pending.message), { qos: 1 }, (err) => {
+      if (this.pendingFinalProfiling !== pending) {
+        return
+      }
+      if (err) {
+        this.log(`⚠️  Failed to publish final profiling data: ${err.message}`)
+        return
+      }
+      pending.published = true
+      if (pending.acknowledged) {
+        this.finishFinalProfiling(pending)
+      }
+    })
+  }
+
+  private replayFinalProfiling() {
+    if (this.pendingFinalProfiling) {
+      this.publishPendingFinalProfiling(this.pendingFinalProfiling)
+    }
+  }
+
+  private handleProfilingAck(rawMessage: unknown) {
+    const parsed = profilingAckSchema.safeParse(rawMessage)
+    if (!parsed.success) {
+      this.log(`⚠️  Invalid profiling acknowledgment: ${parsed.error.message}`)
+      return
+    }
+    const message = parsed.data
+    const pending = this.pendingFinalProfiling
+    if (
+      !pending ||
+      (!this.isWildcard && message.runId !== this.runId) ||
+      message.consumerId !== this.consumerId ||
+      message.sessionId !== this.sessionId ||
+      message.sequence !== pending.message.sequence
+    ) {
+      return
+    }
+    pending.acknowledged = true
+    if (pending.published) {
+      this.finishFinalProfiling(pending)
+    }
+  }
+
+  private finishFinalProfiling(pending: PendingFinalProfiling, error?: Error) {
+    if (this.pendingFinalProfiling !== pending) {
+      return
+    }
+    if (pending.timer) {
+      clearTimeout(pending.timer)
+    }
+    this.pendingFinalProfiling = undefined
+    if (error) {
+      pending.reject(error)
+      return
+    }
+    this.log('📈 Profiling data acknowledged by producer')
+    pending.resolve()
+  }
+
+  private cancelFinalProfiling() {
+    const pending = this.pendingFinalProfiling
+    if (!pending) {
+      return
+    }
+    if (pending.timer) {
+      clearTimeout(pending.timer)
+    }
+    this.pendingFinalProfiling = undefined
+    pending.resolve()
   }
 
   private startHeartbeat() {
@@ -963,8 +1122,8 @@ export class ConsumerBase {
           JSON.stringify({
             runId: this.runId,
             consumerId: this.consumerId,
+            sessionId: this.sessionId,
             bootstrapped: this.bootstrapped,
-            outstandingRequest: this.outstandingRequest,
             timestamp: new Date().toISOString()
           }),
           { qos: 0 }
@@ -980,6 +1139,7 @@ export class ConsumerBase {
       return
     }
     this.shutdownStarted = true
+    this.cancelFinalProfiling()
 
     this.log('\n👋 Consumer shutting down...')
     this.stopProfilingCheckpoints()
@@ -987,7 +1147,10 @@ export class ConsumerBase {
       clearInterval(this.heartbeatTimer)
       this.heartbeatTimer = undefined
     }
-    this.clearOutstandingRequest()
+    if (this.registrationRetryTimer) {
+      clearInterval(this.registrationRetryTimer)
+      this.registrationRetryTimer = undefined
+    }
 
     if (this.callbacks.onShutdown) {
       try {
@@ -1011,6 +1174,7 @@ export class ConsumerBase {
       return
     }
     this.forceShutdownStarted = true
+    this.shutdownRequested = true
 
     this.log('⚠️  Force shutdown - closing immediately')
     this.stopProfilingCheckpoints()

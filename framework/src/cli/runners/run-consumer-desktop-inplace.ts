@@ -78,7 +78,7 @@ async function main() {
     mqttConfig.brokerUrl = mqttBrokerOverride
   }
 
-  const consumerId = `consumer-${platform}-${os.hostname()}-${Date.now()}`
+  const consumerId = `consumer-${platform}-${os.hostname()}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
   const client = createMqttClient(mqttConfig, configDir, { clientId: consumerId })
 
   if (executor.initProfiling) {
@@ -86,14 +86,7 @@ async function main() {
     console.log('📈 Profiling enabled')
   }
 
-  // Sample our process tree's RSS (parent + Bare worker + any other children)
-  // and publish to the orchestrator over MQTT. Runs alongside ConsumerBase so
-  // memory data survives a hard crash of the consumer.
-  const memoryPoller = startNodeMemoryPoller({ client, runId, consumerId, platform })
-  if (memoryPoller) {
-    console.log('📈 Memory poller enabled (publishing rss to qvac/app-memory)')
-  }
-
+  let memoryPoller: ReturnType<typeof startNodeMemoryPoller>
   const consumer = new ConsumerBase(
     client,
     consumerId,
@@ -108,6 +101,20 @@ async function main() {
     },
     testDefinitions
   )
+
+  // Sample our process tree's RSS (parent + Bare worker + any other children)
+  // and publish to the orchestrator over MQTT. Runs alongside ConsumerBase so
+  // memory data survives a hard crash of the consumer.
+  memoryPoller = startNodeMemoryPoller({
+    client,
+    runId,
+    consumerId,
+    sessionId: consumer.getSessionId(),
+    platform
+  })
+  if (memoryPoller) {
+    console.log('📈 Memory poller enabled (publishing rss to qvac/app-memory)')
+  }
 
   consumer.setupMqttHandlers()
 

@@ -11,6 +11,27 @@ Distributed MQTT-based test orchestration for desktop, Electron, Snap, and mobil
 - Typed config and message contracts with Zod
 - Producer/consumer lifecycle, reporting, and CI-friendly result comparison
 
+## Execution model
+
+The producer filters the test catalog and sends one ordered queue in
+`qvac/register-ack/{consumerId}`. The consumer resolves each queue item against
+its bundled local test definitions and executes the queue sequentially. Test
+start, result, heartbeat, profiling, memory, and batch-complete events continue
+to use MQTT; there is no per-test request/assignment handshake. Registration
+acknowledgments and lifecycle events may be replayed idempotently after an MQTT
+reconnect.
+
+One consumer owns a run queue. Additional consumers receive an explicit
+registration rejection without displacing the active consumer. Every launcher
+uses a process-unique consumer and MQTT client ID. MQTT reconnects keep that
+process's local queue in progress, and session IDs prevent stale lifecycle
+events from being applied to a different process session.
+
+Final profiling waits up to 30 seconds for a producer acknowledgment before the
+consumer shuts down. Override this in milliseconds with
+`QVAC_PROFILING_ACK_TIMEOUT_MS`, or
+`EXPO_PUBLIC_QVAC_PROFILING_ACK_TIMEOUT_MS` in generated mobile consumers.
+
 ## Installation
 
 Requires:
