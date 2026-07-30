@@ -3,10 +3,12 @@ import type { TestDefinition } from '../types/test-definition.js'
 import {
   batchCompleteSchema,
   profilingAckSchema,
+  queueAbortSchema,
   registerAckSchema,
   type BatchComplete,
   type ProfilingData,
   type ProfilerExport,
+  type QueueAbort,
   type RegisterAck,
   type TestQueueItem,
   type TestReload,
@@ -62,6 +64,7 @@ export interface ConsumerCallbacks {
 const DEFAULT_TEARDOWN_TIMEOUT_MS = 120000
 const DEFAULT_PROFILING_CHECKPOINT_INTERVAL_MS = 5000
 const DEFAULT_PROFILING_ACK_TIMEOUT_MS = 30000
+const DEFAULT_INTER_TEST_DELAY_MS = 100
 
 type ProfilingPublishKind = 'checkpoint' | 'final'
 
@@ -100,6 +103,15 @@ function readProfilingAckTimeoutMs() {
   return Number.isFinite(parsed) ? Math.max(1, parsed) : DEFAULT_PROFILING_ACK_TIMEOUT_MS
 }
 
+function readInterTestDelayMs() {
+  const raw =
+    typeof process !== 'undefined'
+      ? (process.env?.EXPO_PUBLIC_QVAC_INTER_TEST_DELAY_MS ?? process.env?.QVAC_INTER_TEST_DELAY_MS)
+      : undefined
+  const parsed = Number.parseInt(raw ?? String(DEFAULT_INTER_TEST_DELAY_MS), 10)
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : DEFAULT_INTER_TEST_DELAY_MS
+}
+
 class TimeoutError extends Error {
   constructor(message: string) {
     super(message)
@@ -133,12 +145,15 @@ export class ConsumerBase {
   private registrationRetryTimer?: ReturnType<typeof setInterval>
   private sessionId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
   private queueExecutionStarted = false
+  private queueExecutionSettled = false
   private completedQueueItems = new Set<string>()
   private lifecycleJournal = new Map<string, LifecycleJournalEntry>()
   private batchCompleteHandled = false
+  private queueAbortHandled = false
   private profilingCheckpointTimer?: ReturnType<typeof setInterval>
   private profilingCheckpointIntervalMs = readProfilingCheckpointIntervalMs()
   private profilingAckTimeoutMs = readProfilingAckTimeoutMs()
+  private interTestDelayMs = readInterTestDelayMs()
   private profilingPublishInFlight = false
   private profilingSequence = 0
   private pendingFinalProfiling?: PendingFinalProfiling
@@ -234,6 +249,7 @@ export class ConsumerBase {
         [
           `qvac/register-ack/${this.consumerId}`,
           `qvac/batch-complete/${this.consumerId}`,
+          `qvac/queue-abort/${this.consumerId}`,
           `qvac/profiling-ack/${this.consumerId}`
         ],
         { qos: 1 },
@@ -311,6 +327,8 @@ export class ConsumerBase {
             await this.handleRegistrationAck(message)
           } else if (topic === `qvac/batch-complete/${this.consumerId}`) {
             await this.handleBatchComplete(message)
+          } else if (topic === `qvac/queue-abort/${this.consumerId}`) {
+            await this.handleQueueAbort(message)
           }
         } catch (error: unknown) {
           const errorMessage = error instanceof Error ? error.message : String(error)
@@ -344,7 +362,8 @@ export class ConsumerBase {
         consumerId: this.consumerId,
         sessionId: this.sessionId,
         platform: this.platform,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        capabilities: ['queue-complete-v1']
       }),
       { qos: 1 }
     )
@@ -377,6 +396,9 @@ export class ConsumerBase {
       this.publishQueueReady()
       this.replayLifecycle(message.queue)
       this.replayFinalProfiling()
+      if (this.queueExecutionSettled) {
+        this.publishQueueComplete()
+      }
       return
     }
 
@@ -389,7 +411,7 @@ export class ConsumerBase {
     this.updateStats({ totalTests: this.totalTests })
     this.startHeartbeat()
 
-    if (this.callbacks.onBootstrap && !this.bootstrapped && message.queue.length > 0) {
+    if (this.callbacks.onBootstrap && !this.bootstrapped) {
       // Resolve the producer queue against local definitions. Bootstrap only
       // the dependencies required by this run and platform.
       let filteredTests: TestDefinition[] | undefined
@@ -450,11 +472,6 @@ export class ConsumerBase {
       this.shutdownRequested = true
       await this.finalize()
     })
-    if (this.pendingBatchComplete) {
-      const pendingBatchComplete = this.pendingBatchComplete
-      this.pendingBatchComplete = undefined
-      await this.handleBatchComplete(pendingBatchComplete)
-    }
   }
 
   private async executeQueue(queue: TestQueueItem[]) {
@@ -462,6 +479,10 @@ export class ConsumerBase {
       return
     }
     this.queueExecutionStarted = true
+
+    if (queue.length > 0 && !this.shutdownRequested) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    }
 
     for (const item of queue) {
       if (this.shutdownRequested) {
@@ -494,16 +515,32 @@ export class ConsumerBase {
           testsFailed: this.testsFailed,
           currentTest: ''
         })
+        await this.waitBeforeNextTest()
         continue
       }
 
       await this.executeTest(item.uniqueTestId, definition)
       this.completedQueueItems.add(item.uniqueTestId)
+      await this.waitBeforeNextTest()
     }
 
     if (!this.shutdownRequested) {
+      this.queueExecutionSettled = true
+      this.publishQueueComplete()
+      if (this.pendingBatchComplete) {
+        const pendingBatchComplete = this.pendingBatchComplete
+        this.pendingBatchComplete = undefined
+        await this.handleBatchComplete(pendingBatchComplete)
+      }
       this.log('📭 Local test queue complete - waiting for batch-complete')
     }
+  }
+
+  private async waitBeforeNextTest() {
+    if (this.shutdownRequested || this.interTestDelayMs <= 0) {
+      return
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, this.interTestDelayMs))
   }
 
   protected async handleBatchComplete(rawMessage: unknown) {
@@ -518,6 +555,10 @@ export class ConsumerBase {
       return
     }
     if (!this.registered) {
+      this.pendingBatchComplete = message
+      return
+    }
+    if (!this.queueExecutionSettled) {
       this.pendingBatchComplete = message
       return
     }
@@ -548,6 +589,26 @@ export class ConsumerBase {
       return
     }
 
+    await this.finalize()
+  }
+
+  private async handleQueueAbort(rawMessage: unknown) {
+    const parsed = queueAbortSchema.safeParse(rawMessage)
+    if (!parsed.success) {
+      this.log(`⚠️  Invalid queue-abort payload: ${parsed.error.message}`)
+      return
+    }
+    const message: QueueAbort = parsed.data
+    if (
+      message.consumerId !== this.consumerId ||
+      message.sessionId !== this.sessionId ||
+      this.queueAbortHandled
+    ) {
+      return
+    }
+    this.queueAbortHandled = true
+    this.shutdownRequested = true
+    this.log(`❌ Queue aborted by producer: ${message.reason}`)
     await this.finalize()
   }
 
@@ -619,6 +680,19 @@ export class ConsumerBase {
   private publishQueueReady() {
     this.client.publish(
       'qvac/queue-ready',
+      JSON.stringify({
+        runId: this.runId,
+        consumerId: this.consumerId,
+        sessionId: this.sessionId,
+        timestamp: new Date().toISOString()
+      }),
+      { qos: 1 }
+    )
+  }
+
+  private publishQueueComplete() {
+    this.client.publish(
+      'qvac/queue-complete',
       JSON.stringify({
         runId: this.runId,
         consumerId: this.consumerId,
@@ -721,6 +795,7 @@ export class ConsumerBase {
     }
 
     const startTime = Date.now()
+    let publishedOutcome: MqttTestResult['outcome'] | undefined
     const stopConsumerAfterTimeout = (message: string) => {
       skipTeardown = true
       this.shutdownRequested = true
@@ -861,6 +936,7 @@ export class ConsumerBase {
       })
 
       // Send result to producer
+      publishedOutcome = outcome
       this.publishTestResult({
         runId: this.runId,
         consumerId: this.consumerId,
@@ -894,6 +970,7 @@ export class ConsumerBase {
       })
 
       // Send failure result
+      publishedOutcome = 'failure'
       this.publishTestResult({
         runId: this.runId,
         consumerId: this.consumerId,
@@ -906,8 +983,32 @@ export class ConsumerBase {
         error: errorMsg
       })
     } finally {
+      let teardownError: string | undefined
       if (!skipTeardown) {
-        await this.runTeardown(testId, context)
+        teardownError = await this.runTeardown(testId, context)
+      }
+
+      if (teardownError) {
+        if (publishedOutcome === 'success') {
+          this.testsPassed = Math.max(0, this.testsPassed - 1)
+          this.testsFailed++
+          this.updateStats({
+            testsPassed: this.testsPassed,
+            testsFailed: this.testsFailed
+          })
+        }
+        this.publishTestResult({
+          runId: this.runId,
+          consumerId: this.consumerId,
+          sessionId: this.sessionId,
+          testId,
+          uniqueTestId,
+          outcome: 'failure',
+          duration: Date.now() - startTime,
+          timestamp: new Date().toISOString(),
+          error: `Teardown failed: ${teardownError}`,
+          teardownFailed: true
+        })
       }
 
       this.isProcessingTest = false
@@ -918,7 +1019,7 @@ export class ConsumerBase {
     }
   }
 
-  private async runTeardown(testId: string, context: unknown) {
+  private async runTeardown(testId: string, context: unknown): Promise<string | undefined> {
     if (!this.executor.teardown) {
       return
     }
@@ -932,6 +1033,11 @@ export class ConsumerBase {
     } catch (teardownError: unknown) {
       const msg = teardownError instanceof Error ? teardownError.message : String(teardownError)
       this.log(`⚠️  ${testId} teardown error: ${msg}`)
+      if (teardownError instanceof TimeoutError) {
+        this.shutdownRequested = true
+        this.log('   ⚠️  consumer will stop after teardown timeout')
+      }
+      return msg
     }
   }
 

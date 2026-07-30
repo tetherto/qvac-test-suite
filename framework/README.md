@@ -21,16 +21,31 @@ to use MQTT; there is no per-test request/assignment handshake. Registration
 acknowledgments and lifecycle events may be replayed idempotently after an MQTT
 reconnect.
 
+The producer completes the batch only after the consumer publishes
+`qvac/queue-complete`, which follows the final test teardown and settling
+interval. Consumers advertise this protocol capability during registration;
+incompatible consumers are rejected instead of being allowed to deadlock a
+batch. If an active test exceeds the producer timeout, the producer publishes
+`qvac/queue-abort`, fails the unstarted queue items, and completes the batch
+without waiting indefinitely for `qvac/queue-complete`.
+
 One consumer owns a run queue. Additional consumers receive an explicit
 registration rejection without displacing the active consumer. Every launcher
 uses a process-unique consumer and MQTT client ID. MQTT reconnects keep that
 process's local queue in progress, and session IDs prevent stale lifecycle
 events from being applied to a different process session.
 
+The consumer preserves a 100 ms settling interval after each queue item before
+starting the next one. Override this in milliseconds with
+`QVAC_INTER_TEST_DELAY_MS`, or `EXPO_PUBLIC_QVAC_INTER_TEST_DELAY_MS` in
+generated mobile consumers. Set it to `0` to disable the interval.
+
 Final profiling waits up to 30 seconds for a producer acknowledgment before the
 consumer shuts down. Override this in milliseconds with
 `QVAC_PROFILING_ACK_TIMEOUT_MS`, or
 `EXPO_PUBLIC_QVAC_PROFILING_ACK_TIMEOUT_MS` in generated mobile consumers.
+The producer waits up to 35 seconds by default; override its safety deadline
+with `QVAC_PROFILING_SAFETY_TIMEOUT_MS`.
 
 ## Installation
 

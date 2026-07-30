@@ -18,8 +18,8 @@ globs:
 ## Index Exports
 
 `src/index.ts` re-exports the public API:
-- **Types**: `QvacTestConfig`, `Expectation`, `TestDefinition`, `TestExecutor`, `TestResult`, `TestHandler`, `TestExecutorConfig`, `TestDefinitions`, `ExtractTest`, `HandlerFn`, `ProfilingAck`, `QueueReady`, `RegisterAck`, `TestQueueItem`, `MqttConnectionConfig`, `CreateMqttClientOptions`
-- **Schemas**: `expectationSchema`, `mqttConnectionSchema`, `testDefinitionSchema`, `qvacTestConfigSchema`, `consumerRegistrationSchema`, `testStartSchema`, `testReloadSchema`, `testResultSchema`, `heartbeatSchema`, `queueReadySchema`, `profilingAckSchema`, `batchCompleteSchema`, `testQueueItemSchema`, `registeredAckSchema`, `registrationRejectedSchema`, `registerAckSchema`
+- **Types**: `QvacTestConfig`, `Expectation`, `TestDefinition`, `TestExecutor`, `TestResult`, `TestHandler`, `TestExecutorConfig`, `TestDefinitions`, `ExtractTest`, `HandlerFn`, `ConsumerCapability`, `ProfilingAck`, `QueueAbort`, `QueueReady`, `QueueComplete`, `RegisterAck`, `TestQueueItem`, `MqttConnectionConfig`, `CreateMqttClientOptions`
+- **Schemas**: `expectationSchema`, `mqttConnectionSchema`, `testDefinitionSchema`, `qvacTestConfigSchema`, `consumerCapabilitySchema`, `consumerRegistrationSchema`, `testStartSchema`, `testReloadSchema`, `testResultSchema`, `heartbeatSchema`, `queueAbortSchema`, `queueReadySchema`, `queueCompleteSchema`, `profilingAckSchema`, `batchCompleteSchema`, `testQueueItemSchema`, `registeredAckSchema`, `registrationRejectedSchema`, `registerAckSchema`
 - **Core**: `BatchOrchestrator`, `ConsumerBase`, `BaseExecutor`, `SkipExecutor`, `defineTests`, `createExecutor`
 - **Helpers**: `defineConfig`
 - **Utils**: `ValidationHelpers`, `chainExpectation`, `findConfig`, `loadConfig`, `loadTests`, `createMqttClient`, `buildMqttOptions`, `buildMqttConnectionConfig`, `logMqttConnectionSecurity`

@@ -50,7 +50,7 @@ export interface ReportData {
   runId: string
   completedTests: ReportTestResult[]
   consumers: Map<string, ReportConsumerInfo>
-  startTime: number
+  duration: number
   profilingData?: ReportProfilingData[]
   /**
    * Optional aggregated in-app memory data, one entry per metric series (e.g.
@@ -175,7 +175,7 @@ export function generateHtmlReport(data: ReportData): string {
     filename = path.join(outDir, `batch-report-${data.runId}-${timestamp}.html`)
   }
 
-  const elapsed = data.startTime > 0 ? (Date.now() - data.startTime) / 1000 : 0
+  const elapsed = data.duration / 1000
   const successCount = data.completedTests.filter((t) => t.outcome === 'success').length
   const failureCount = data.completedTests.filter((t) => t.outcome === 'failure').length
   const skippedCount = data.completedTests.filter((t) => t.outcome === 'skipped').length
@@ -1058,7 +1058,7 @@ export function generateJsonReport(data: ReportData): string {
     filename = path.join(outDir, `results-${data.runId}-${timestamp}.json`)
   }
 
-  const elapsed = data.startTime > 0 ? (Date.now() - data.startTime) / 1000 : 0
+  const elapsed = data.duration / 1000
   const successCount = data.completedTests.filter((t) => t.outcome === 'success').length
   const failureCount = data.completedTests.filter((t) => t.outcome === 'failure').length
   const skippedCount = data.completedTests.filter((t) => t.outcome === 'skipped').length

@@ -1,5 +1,9 @@
 import { z } from 'zod'
 
+export const consumerCapabilitySchema = z.enum(['queue-complete-v1'])
+
+export type ConsumerCapability = z.infer<typeof consumerCapabilitySchema>
+
 /**
  * Consumer registration message schema
  */
@@ -8,7 +12,8 @@ export const consumerRegistrationSchema = z.object({
   consumerId: z.string().describe('Unique consumer identifier'),
   sessionId: z.string().min(1).describe('Consumer process session identifier'),
   platform: z.string().describe('Platform: desktop, ios, android, etc.'),
-  timestamp: z.string().describe('ISO timestamp of registration')
+  timestamp: z.string().describe('ISO timestamp of registration'),
+  capabilities: z.array(consumerCapabilitySchema).default([])
 })
 
 export type ConsumerRegistration = z.infer<typeof consumerRegistrationSchema>
@@ -58,7 +63,8 @@ export const testResultSchema = z.object({
   retryPassed: z.boolean().optional(),
   retryOutput: z.string().optional(),
   attempt1DurationMs: z.number().optional(),
-  reloadTimestamp: z.number().optional()
+  reloadTimestamp: z.number().optional(),
+  teardownFailed: z.boolean().optional()
 })
 
 export type TestResult = z.infer<typeof testResultSchema>
@@ -88,6 +94,31 @@ export const queueReadySchema = z.object({
 })
 
 export type QueueReady = z.infer<typeof queueReadySchema>
+
+/**
+ * Consumer notification that every local queue item and its teardown/settling
+ * interval have completed.
+ */
+export const queueCompleteSchema = z.object({
+  runId: z.string(),
+  consumerId: z.string(),
+  sessionId: z.string(),
+  timestamp: z.string()
+})
+
+export type QueueComplete = z.infer<typeof queueCompleteSchema>
+
+/**
+ * Producer request to terminate a queue whose active test timed out.
+ */
+export const queueAbortSchema = z.object({
+  runId: z.string(),
+  consumerId: z.string(),
+  sessionId: z.string(),
+  reason: z.string()
+})
+
+export type QueueAbort = z.infer<typeof queueAbortSchema>
 
 /**
  * Batch complete message schema

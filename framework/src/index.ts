@@ -17,7 +17,10 @@ export {
   testReloadSchema,
   testResultSchema,
   heartbeatSchema,
+  consumerCapabilitySchema,
   queueReadySchema,
+  queueCompleteSchema,
+  queueAbortSchema,
   profilingAckSchema,
   batchCompleteSchema,
   testQueueItemSchema,
@@ -25,7 +28,15 @@ export {
   registrationRejectedSchema,
   registerAckSchema
 } from './schemas/messages.js'
-export type { ProfilingAck, QueueReady, RegisterAck, TestQueueItem } from './schemas/messages.js'
+export type {
+  ConsumerCapability,
+  ProfilingAck,
+  QueueAbort,
+  QueueReady,
+  QueueComplete,
+  RegisterAck,
+  TestQueueItem
+} from './schemas/messages.js'
 
 // Helper function exports
 export { defineTests } from './core/define-tests.js'

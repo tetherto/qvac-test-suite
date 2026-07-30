@@ -9,11 +9,13 @@ import {
   testReloadSchema,
   heartbeatSchema,
   queueReadySchema,
+  queueCompleteSchema,
   profilingDataSchema,
   type TestResult as MqttTestResult,
   type TestReload,
   type ProfilerExport,
-  type BatchComplete
+  type BatchComplete,
+  type QueueAbort
 } from '../schemas/messages.js'
 import {
   generateHtmlReport,
@@ -53,6 +55,7 @@ interface ConsumerInfo {
   testsRunning: number
   bootstrapped?: boolean
   queueReady: boolean
+  queueComplete: boolean
 }
 
 interface ProfilingSnapshot {
@@ -70,11 +73,19 @@ type ProducerTestResult = Omit<MqttTestResult, 'consumerId' | 'sessionId'> & {
 }
 type TestResult = MqttTestResult | ProducerTestResult
 
-// Safety timeout for crashed consumers (normal path: all consumers publish on batch-complete)
-const PROFILING_SAFETY_TIMEOUT_MS = 180000
+// Slightly exceeds the consumer's default 30-second final-profiling ACK timeout.
+const DEFAULT_PROFILING_SAFETY_TIMEOUT_MS = 35000
 const TIMEOUT_CHECK_INTERVAL_MS = 10000
 const TIMEOUT_GRACE_MS = TIMEOUT_CHECK_INTERVAL_MS + 5000
 const MAX_PENDING_MEMORY_SAMPLES = 1000
+
+function readProfilingSafetyTimeoutMs() {
+  const parsed = Number.parseInt(
+    process.env.QVAC_PROFILING_SAFETY_TIMEOUT_MS ?? String(DEFAULT_PROFILING_SAFETY_TIMEOUT_MS),
+    10
+  )
+  return Number.isFinite(parsed) ? Math.max(1, parsed) : DEFAULT_PROFILING_SAFETY_TIMEOUT_MS
+}
 
 export class BatchOrchestrator {
   private client: MqttClient
@@ -96,6 +107,7 @@ export class BatchOrchestrator {
   private latestMemorySampleTs = new Map<string, number>()
   private profilingData = new Map<string, ProfilingSnapshot>() // consumerId -> latest profiler snapshot
   private finalProfilingConsumers = new Set<string>()
+  private profilingSafetyTimeoutMs = readProfilingSafetyTimeoutMs()
   private testSuites = new Map<string, string[]>() // testId -> suites
   private testCategories = new Map<string, string>() // testId -> metadata.category
   // Unique post-filter testIds, snapshotted in buildTestQueue and replayed
@@ -110,6 +122,8 @@ export class BatchOrchestrator {
   private batchCompleteSentSessions = new Set<string>()
   private disconnectedCompletionRecipients = new Map<string, ConsumerInfo>()
   private allConsumersDead = false
+  private queueAborted = false
+  private queueAbortSummary?: QueueAbort
   private shutdownTimer?: NodeJS.Timeout
   private consumerTimeoutTimer?: NodeJS.Timeout
 
@@ -242,6 +256,7 @@ export class BatchOrchestrator {
           'qvac/results',
           'qvac/heartbeat',
           'qvac/queue-ready',
+          'qvac/queue-complete',
           'qvac/profiling',
           'qvac/app-memory'
         ],
@@ -254,6 +269,7 @@ export class BatchOrchestrator {
           console.log('📡 Subscribed to coordination topics')
           for (const consumer of this.consumers.values()) {
             this.publishRegistrationAck(consumer)
+            this.publishQueueAbort(consumer)
             if (this.batchCompleteSummary) {
               this.publishBatchComplete(consumer, true)
             }
@@ -292,6 +308,9 @@ export class BatchOrchestrator {
           case 'qvac/queue-ready':
             this.handleQueueReady(message)
             break
+          case 'qvac/queue-complete':
+            this.handleQueueComplete(message)
+            break
           case 'qvac/profiling':
             this.handleProfilingData(message)
             break
@@ -323,8 +342,17 @@ export class BatchOrchestrator {
 
   private handleConsumerRegistration(rawMessage: unknown) {
     const message = consumerRegistrationSchema.parse(rawMessage)
-    const { consumerId, sessionId, platform } = message
+    const { consumerId, sessionId, platform, capabilities } = message
     const now = Date.now()
+
+    if (!capabilities.includes('queue-complete-v1')) {
+      this.publishRegistrationRejection(
+        consumerId,
+        sessionId,
+        'Consumer does not support the queue completion protocol'
+      )
+      return
+    }
 
     let existing = this.consumers.get(consumerId)
     if (!existing && consumerId === this.queueConsumerId) {
@@ -355,6 +383,7 @@ export class BatchOrchestrator {
 
       existing.lastSeen = now
       this.publishRegistrationAck(existing)
+      this.publishQueueAbort(existing)
       if (this.batchCompleteSummary) {
         this.publishBatchComplete(existing, true)
       } else {
@@ -386,7 +415,8 @@ export class BatchOrchestrator {
       lastSeen: now,
       testsCompleted: 0,
       testsRunning: 0,
-      queueReady: false
+      queueReady: false,
+      queueComplete: false
     }
     this.consumers.set(consumerId, consumer)
 
@@ -574,6 +604,17 @@ export class BatchOrchestrator {
 
     if (!assignment) {
       if (this.completedTests.has(uniqueTestId)) {
+        const completed = this.completedTests.get(uniqueTestId)
+        if (
+          message.teardownFailed === true &&
+          completed?.consumerId === consumerId &&
+          completed.sessionId === sessionId
+        ) {
+          this.completedTests.set(uniqueTestId, message)
+          console.error(
+            `❌ Test ${message.testId} corrected to failure after teardown error - ${consumerId}`
+          )
+        }
         return
       }
       if (this.testQueue.some((test) => test.id === uniqueTestId)) {
@@ -679,6 +720,21 @@ export class BatchOrchestrator {
     this.checkBatchComplete()
   }
 
+  private handleQueueComplete(rawMessage: unknown) {
+    const message = queueCompleteSchema.parse(rawMessage)
+    const { consumerId, sessionId } = message
+    if (!this.isCurrentConsumerSession(consumerId, sessionId)) {
+      return
+    }
+    const consumer = this.consumers.get(consumerId)
+    if (!consumer) {
+      return
+    }
+    consumer.queueComplete = true
+    consumer.lastSeen = Date.now()
+    this.checkBatchComplete()
+  }
+
   private handleProfilingData(rawMessage: unknown) {
     const message = profilingDataSchema.parse(rawMessage)
     const { consumerId, sessionId, profilerExport } = message
@@ -754,8 +810,11 @@ export class BatchOrchestrator {
     const queueOwnerReady =
       this.queueConsumerId !== undefined &&
       this.consumers.get(this.queueConsumerId)?.queueReady === true
+    const queueOwnerComplete =
+      this.queueConsumerId !== undefined &&
+      this.consumers.get(this.queueConsumerId)?.queueComplete === true
 
-    if (queueEmpty && noRunningTests && queueOwnerReady) {
+    if (queueEmpty && noRunningTests && queueOwnerReady && queueOwnerComplete) {
       this.completeBatch()
     }
   }
@@ -823,7 +882,7 @@ export class BatchOrchestrator {
         }
       }
 
-      this.checkBatchComplete()
+      this.abortQueue(`Test timed out: ${timeouts.join(', ')}`)
     }
 
     // Check consumer liveness (heartbeat-based)
@@ -910,6 +969,59 @@ export class BatchOrchestrator {
     }
   }
 
+  private abortQueue(reason: string) {
+    if (this.queueAborted || this.batchCompleting) {
+      return
+    }
+    this.queueAborted = true
+
+    while (this.testQueue.length > 0) {
+      const testCase = this.testQueue.shift()!
+      const failResult: TestResult = {
+        runId: this.runId,
+        consumerId: 'none',
+        testId: testCase.testId,
+        uniqueTestId: testCase.id,
+        outcome: 'failure',
+        duration: 0,
+        timestamp: new Date().toISOString(),
+        error: `Queue aborted because an active test timed out: ${reason}`
+      }
+      this.completedTests.set(testCase.id, failResult)
+    }
+
+    if (this.queueConsumerId) {
+      const consumer =
+        this.consumers.get(this.queueConsumerId) ??
+        this.disconnectedCompletionRecipients.get(this.queueConsumerId)
+      if (consumer) {
+        this.queueAbortSummary = {
+          runId: this.runId,
+          consumerId: consumer.consumerId,
+          sessionId: consumer.sessionId,
+          reason
+        }
+        this.publishQueueAbort(consumer)
+      }
+    }
+
+    this.completeBatch()
+  }
+
+  private publishQueueAbort(consumer: ConsumerInfo) {
+    const message = this.queueAbortSummary
+    if (
+      !message ||
+      message.consumerId !== consumer.consumerId ||
+      message.sessionId !== consumer.sessionId
+    ) {
+      return
+    }
+    this.client.publish(`qvac/queue-abort/${consumer.consumerId}`, JSON.stringify(message), {
+      qos: 1
+    })
+  }
+
   private displayStatus() {
     const total = this.testQueue.length + this.runningTests.size + this.completedTests.size
     const completed = this.completedTests.size
@@ -991,7 +1103,11 @@ export class BatchOrchestrator {
       this.publishBatchComplete(consumer)
     }
 
-    this.waitForProfilingData(new Set(completionRecipients.keys()))
+    // Disconnected recipients still receive batch-complete through their
+    // persistent MQTT sessions, but they were already declared dead after the
+    // heartbeat timeout and cannot be required to finish report generation.
+    // Their latest checkpoint remains available as incomplete profiling data.
+    this.waitForProfilingData(new Set(this.consumers.keys()))
   }
 
   private publishBatchComplete(consumer: ConsumerInfo, force = false) {
@@ -1029,8 +1145,10 @@ export class BatchOrchestrator {
 
     const startTime = Date.now()
     const timer = setInterval(() => {
-      const pending = [...expectedIds].filter((id) => !this.finalProfilingConsumers.has(id))
-      const timedOut = Date.now() - startTime >= PROFILING_SAFETY_TIMEOUT_MS
+      const pending = [...expectedIds].filter(
+        (id) => this.consumers.has(id) && !this.finalProfilingConsumers.has(id)
+      )
+      const timedOut = Date.now() - startTime >= this.profilingSafetyTimeoutMs
 
       if (pending.length === 0 || timedOut) {
         clearInterval(timer)
@@ -1090,7 +1208,7 @@ export class BatchOrchestrator {
         runId: this.runId,
         completedTests,
         consumers: this.getCompletionRecipients(),
-        startTime: this.startTime,
+        duration: this.batchCompleteSummary?.duration ?? 0,
         profilingData: profilingDataArray.length > 0 ? profilingDataArray : undefined,
         memorySummaries: memorySummaries.length > 0 ? memorySummaries : undefined,
         reportDir: this.reportDir

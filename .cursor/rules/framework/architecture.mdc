@@ -66,6 +66,8 @@ qvac/test-start         # Consumer → Producer: test started before setup
 qvac/results            # Consumer → Producer: test result
 qvac/heartbeat          # Consumer → Producer: keepalive
 qvac/queue-ready        # Consumer → Producer: bootstrap complete
+qvac/queue-complete     # Consumer → Producer: queue teardown/settling complete
+qvac/queue-abort        # Producer → Consumer: terminate queue after producer timeout
 qvac/profiling          # Consumer → Producer: profiler export data
 qvac/profiling-ack/{id} # Producer → Consumer: final profiler export stored
 qvac/app-memory         # Consumer → Producer: runtime memory samples
