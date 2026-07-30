@@ -201,7 +201,11 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
         const consumerPlatform = `mobile-${Platform.OS}`
         // Generate consumer ID early so we can use it as MQTT clientId
         const consumerRunId = runId === '*' ? 'wildcard' : runId
-        const consumerId = `consumer-mobile-${Constants.deviceName || Constants.sessionId || 'unknown'}-${consumerRunId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+        const consumerNonce = globalThis.crypto?.randomUUID?.() ?? Constants.sessionId
+        if (!consumerNonce) {
+          throw new Error('Secure consumer identity is unavailable')
+        }
+        const consumerId = `consumer-mobile-${Constants.deviceName || 'unknown'}-${consumerRunId}-${consumerNonce}`
 
         // Build connection options
         const connectOptions: IClientOptions = {

@@ -1,4 +1,5 @@
 import { config as loadDotenv } from 'dotenv'
+import { randomUUID } from 'node:crypto'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -78,7 +79,7 @@ async function main() {
     mqttConfig.brokerUrl = mqttBrokerOverride
   }
 
-  const consumerId = `consumer-${platform}-${os.hostname()}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  const consumerId = `consumer-${platform}-${os.hostname()}-${randomUUID()}`
   const client = createMqttClient(mqttConfig, configDir, { clientId: consumerId })
 
   if (executor.initProfiling) {

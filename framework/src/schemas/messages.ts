@@ -7,13 +7,17 @@ export type ConsumerCapability = z.infer<typeof consumerCapabilitySchema>
 /**
  * Consumer registration message schema
  */
-export const consumerRegistrationSchema = z.object({
+export const consumerRegistrationEnvelopeSchema = z.object({
   runId: z.string().describe('Run identifier for this test batch'),
   consumerId: z.string().describe('Unique consumer identifier'),
-  sessionId: z.string().min(1).describe('Consumer process session identifier'),
+  sessionId: z.string().optional().describe('Consumer process session identifier'),
   platform: z.string().describe('Platform: desktop, ios, android, etc.'),
   timestamp: z.string().describe('ISO timestamp of registration'),
-  capabilities: z.array(consumerCapabilitySchema).default([])
+  capabilities: z.array(z.string()).default([])
+})
+
+export const consumerRegistrationSchema = consumerRegistrationEnvelopeSchema.extend({
+  sessionId: z.string().min(1).describe('Consumer process session identifier')
 })
 
 export type ConsumerRegistration = z.infer<typeof consumerRegistrationSchema>
@@ -64,7 +68,8 @@ export const testResultSchema = z.object({
   retryOutput: z.string().optional(),
   attempt1DurationMs: z.number().optional(),
   reloadTimestamp: z.number().optional(),
-  teardownFailed: z.boolean().optional()
+  teardownFailed: z.boolean().optional(),
+  queueAborted: z.boolean().optional()
 })
 
 export type TestResult = z.infer<typeof testResultSchema>

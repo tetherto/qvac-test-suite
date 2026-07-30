@@ -143,7 +143,7 @@ export class ConsumerBase {
   private pendingBatchComplete?: BatchComplete
   private heartbeatTimer?: ReturnType<typeof setInterval>
   private registrationRetryTimer?: ReturnType<typeof setInterval>
-  private sessionId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  private sessionId: string
   private queueExecutionStarted = false
   private queueExecutionSettled = false
   private completedQueueItems = new Set<string>()
@@ -158,6 +158,7 @@ export class ConsumerBase {
   private profilingSequence = 0
   private pendingFinalProfiling?: PendingFinalProfiling
   private finalProfilingPublished = false
+  private finalizePromise?: Promise<void>
   // Guards forceShutdown() so its body runs at most once (double-Ctrl-C,
   // overlapping signal + React unmount).
   private forceShutdownStarted = false
@@ -166,6 +167,7 @@ export class ConsumerBase {
   // React unmount -> forceShutdown() -> shutdown() would otherwise fire
   // onShutdown twice.
   private shutdownStarted = false
+  private exitCode = 0
   protected teardownTimeoutMs = DEFAULT_TEARDOWN_TIMEOUT_MS
 
   constructor(
@@ -179,6 +181,7 @@ export class ConsumerBase {
   ) {
     this.client = client
     this.consumerId = consumerId
+    this.sessionId = `session-${consumerId}`
     this.platform = platform
     this.runId = runId
     this.isWildcard = runId === '*'
@@ -384,6 +387,7 @@ export class ConsumerBase {
 
     if (message.status === 'rejected') {
       this.log(`❌ Registration rejected: ${message.reason}`)
+      this.exitCode = 1
       this.shutdownRequested = true
       await this.shutdown()
       return
@@ -612,12 +616,14 @@ export class ConsumerBase {
     await this.finalize()
   }
 
-  protected async finalize() {
-    if (this.finalProfilingPublished) {
-      await this.shutdown()
-      return
+  protected finalize() {
+    if (!this.finalizePromise) {
+      this.finalizePromise = this.performFinalize()
     }
+    return this.finalizePromise
+  }
 
+  private async performFinalize() {
     this.finalProfilingPublished = true
     this.stopProfilingCheckpoints()
 
@@ -639,7 +645,7 @@ export class ConsumerBase {
       this.log(`⚠️  Failed to publish profiling data: ${e}`)
     }
 
-    this.shutdown()
+    await this.shutdown()
   }
 
   protected getTestSkipReason(definition: TestDefinition): string | null {
@@ -795,9 +801,11 @@ export class ConsumerBase {
     }
 
     const startTime = Date.now()
-    let publishedOutcome: MqttTestResult['outcome'] | undefined
+    let pendingResult: MqttTestResult | undefined
+    let abortQueueAfterResult = false
     const stopConsumerAfterTimeout = (message: string) => {
       skipTeardown = true
+      abortQueueAfterResult = true
       this.shutdownRequested = true
       this.log(message)
     }
@@ -817,11 +825,10 @@ export class ConsumerBase {
           `Test timeout after ${timeoutMs / 1000}s`
         )
       } catch (attemptError: unknown) {
-        if (attemptError instanceof TimeoutError && definition.retryOnFailure === true) {
-          result = { passed: false, output: attemptError.message }
-        } else {
-          throw attemptError
+        if (attemptError instanceof TimeoutError) {
+          stopConsumerAfterTimeout(`   ⚠️  consumer will stop after test timeout`)
         }
+        throw attemptError
       }
 
       let retried = false
@@ -935,9 +942,7 @@ export class ConsumerBase {
         testsSkipped: this.testsSkipped
       })
 
-      // Send result to producer
-      publishedOutcome = outcome
-      this.publishTestResult({
+      pendingResult = {
         runId: this.runId,
         consumerId: this.consumerId,
         sessionId: this.sessionId,
@@ -947,17 +952,23 @@ export class ConsumerBase {
         duration: result.skipped ? 0 : duration,
         timestamp: new Date().toISOString(),
         error: result.skipped ? result.output : result.passed ? undefined : result.output,
-        ...(retried && {
-          retried: true,
-          retryPassed,
-          retryOutput,
-          attempt1DurationMs,
-          reloadTimestamp
-        })
-      })
+        ...(retried
+          ? {
+              retried: true,
+              retryPassed,
+              retryOutput,
+              attempt1DurationMs,
+              reloadTimestamp
+            }
+          : {}),
+        ...(abortQueueAfterResult ? { queueAborted: true } : {})
+      }
     } catch (error: unknown) {
       const duration = Date.now() - startTime
       const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      if (error instanceof TimeoutError && !abortQueueAfterResult) {
+        stopConsumerAfterTimeout(`   ⚠️  consumer will stop after test timeout`)
+      }
 
       this.log(`❌ ${testId} failed: ${errorMsg}`)
 
@@ -969,9 +980,7 @@ export class ConsumerBase {
         testsFailed: this.testsFailed
       })
 
-      // Send failure result
-      publishedOutcome = 'failure'
-      this.publishTestResult({
+      pendingResult = {
         runId: this.runId,
         consumerId: this.consumerId,
         sessionId: this.sessionId,
@@ -980,35 +989,42 @@ export class ConsumerBase {
         outcome: 'failure',
         duration,
         timestamp: new Date().toISOString(),
-        error: errorMsg
-      })
-    } finally {
-      let teardownError: string | undefined
-      if (!skipTeardown) {
-        teardownError = await this.runTeardown(testId, context)
+        error: errorMsg,
+        ...(abortQueueAfterResult ? { queueAborted: true } : {})
       }
+    } finally {
+      let teardownResult: { error: string; timedOut: boolean } | undefined
+      if (!skipTeardown) {
+        teardownResult = await this.runTeardown(testId, context)
+      }
+      const teardownError = teardownResult?.error
 
-      if (teardownError) {
-        if (publishedOutcome === 'success') {
+      if (teardownError && pendingResult) {
+        if (pendingResult.outcome === 'success') {
           this.testsPassed = Math.max(0, this.testsPassed - 1)
           this.testsFailed++
-          this.updateStats({
-            testsPassed: this.testsPassed,
-            testsFailed: this.testsFailed
-          })
+        } else if (pendingResult.outcome === 'skipped') {
+          this.testsSkipped = Math.max(0, this.testsSkipped - 1)
+          this.testsFailed++
         }
-        this.publishTestResult({
-          runId: this.runId,
-          consumerId: this.consumerId,
-          sessionId: this.sessionId,
-          testId,
-          uniqueTestId,
+        pendingResult = {
+          ...pendingResult,
           outcome: 'failure',
           duration: Date.now() - startTime,
           timestamp: new Date().toISOString(),
           error: `Teardown failed: ${teardownError}`,
-          teardownFailed: true
+          teardownFailed: true,
+          ...(teardownResult?.timedOut ? { queueAborted: true } : {})
+        }
+        this.updateStats({
+          testsPassed: this.testsPassed,
+          testsFailed: this.testsFailed,
+          testsSkipped: this.testsSkipped
         })
+      }
+
+      if (pendingResult) {
+        this.publishTestResult(pendingResult)
       }
 
       this.isProcessingTest = false
@@ -1019,7 +1035,10 @@ export class ConsumerBase {
     }
   }
 
-  private async runTeardown(testId: string, context: unknown): Promise<string | undefined> {
+  private async runTeardown(
+    testId: string,
+    context: unknown
+  ): Promise<{ error: string; timedOut: boolean } | undefined> {
     if (!this.executor.teardown) {
       return
     }
@@ -1037,7 +1056,7 @@ export class ConsumerBase {
         this.shutdownRequested = true
         this.log('   ⚠️  consumer will stop after teardown timeout')
       }
-      return msg
+      return { error: msg, timedOut: teardownError instanceof TimeoutError }
     }
   }
 
@@ -1269,7 +1288,7 @@ export class ConsumerBase {
     this.client.end(false, {}, () => {
       // Only call process.exit in Node.js environment, not React Native
       if (typeof process !== 'undefined' && typeof process.exit === 'function') {
-        process.exit(0)
+        process.exit(this.exitCode)
       }
     })
   }

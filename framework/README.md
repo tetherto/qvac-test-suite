@@ -47,6 +47,11 @@ consumer shuts down. Override this in milliseconds with
 The producer waits up to 35 seconds by default; override its safety deadline
 with `QVAC_PROFILING_SAFETY_TIMEOUT_MS`.
 
+Consumer bootstrap must publish `qvac/queue-ready` within 20 minutes. Override
+this producer-side deadline in milliseconds with `QVAC_BOOTSTRAP_TIMEOUT_MS`.
+If it expires, the producer aborts the queue instead of waiting indefinitely
+while a stuck consumer continues to send heartbeats.
+
 ## Installation
 
 Requires:

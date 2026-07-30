@@ -3,6 +3,7 @@ import * as path from 'node:path'
 import type { MqttClient } from 'mqtt'
 import type { TestDefinition } from '../types/test-definition.js'
 import {
+  consumerRegistrationEnvelopeSchema,
   consumerRegistrationSchema,
   testStartSchema,
   testResultSchema,
@@ -75,6 +76,7 @@ type TestResult = MqttTestResult | ProducerTestResult
 
 // Slightly exceeds the consumer's default 30-second final-profiling ACK timeout.
 const DEFAULT_PROFILING_SAFETY_TIMEOUT_MS = 35000
+const DEFAULT_BOOTSTRAP_TIMEOUT_MS = 20 * 60 * 1000
 const TIMEOUT_CHECK_INTERVAL_MS = 10000
 const TIMEOUT_GRACE_MS = TIMEOUT_CHECK_INTERVAL_MS + 5000
 const MAX_PENDING_MEMORY_SAMPLES = 1000
@@ -85,6 +87,14 @@ function readProfilingSafetyTimeoutMs() {
     10
   )
   return Number.isFinite(parsed) ? Math.max(1, parsed) : DEFAULT_PROFILING_SAFETY_TIMEOUT_MS
+}
+
+function readBootstrapTimeoutMs() {
+  const parsed = Number.parseInt(
+    process.env.QVAC_BOOTSTRAP_TIMEOUT_MS ?? String(DEFAULT_BOOTSTRAP_TIMEOUT_MS),
+    10
+  )
+  return Number.isFinite(parsed) ? Math.max(1, parsed) : DEFAULT_BOOTSTRAP_TIMEOUT_MS
 }
 
 export class BatchOrchestrator {
@@ -108,6 +118,7 @@ export class BatchOrchestrator {
   private profilingData = new Map<string, ProfilingSnapshot>() // consumerId -> latest profiler snapshot
   private finalProfilingConsumers = new Set<string>()
   private profilingSafetyTimeoutMs = readProfilingSafetyTimeoutMs()
+  private bootstrapTimeoutMs = readBootstrapTimeoutMs()
   private testSuites = new Map<string, string[]>() // testId -> suites
   private testCategories = new Map<string, string>() // testId -> metadata.category
   // Unique post-filter testIds, snapshotted in buildTestQueue and replayed
@@ -122,6 +133,7 @@ export class BatchOrchestrator {
   private batchCompleteSentSessions = new Set<string>()
   private disconnectedCompletionRecipients = new Map<string, ConsumerInfo>()
   private allConsumersDead = false
+  private fatalBatchFailure = false
   private queueAborted = false
   private queueAbortSummary?: QueueAbort
   private shutdownTimer?: NodeJS.Timeout
@@ -341,18 +353,26 @@ export class BatchOrchestrator {
   }
 
   private handleConsumerRegistration(rawMessage: unknown) {
-    const message = consumerRegistrationSchema.parse(rawMessage)
-    const { consumerId, sessionId, platform, capabilities } = message
-    const now = Date.now()
+    const envelope = consumerRegistrationEnvelopeSchema.parse(rawMessage)
+    const { consumerId, sessionId, capabilities } = envelope
 
-    if (!capabilities.includes('queue-complete-v1')) {
+    if (!sessionId || !capabilities.includes('queue-complete-v1')) {
+      const rejectionSessionId = sessionId ?? 'incompatible'
       this.publishRegistrationRejection(
         consumerId,
-        sessionId,
+        rejectionSessionId,
         'Consumer does not support the queue completion protocol'
       )
+      if (!this.queueConsumerId) {
+        this.fatalBatchFailure = true
+        this.abortQueue(`Incompatible consumer registration: ${consumerId}`)
+      }
       return
     }
+
+    const message = consumerRegistrationSchema.parse(envelope)
+    const { platform } = message
+    const now = Date.now()
 
     let existing = this.consumers.get(consumerId)
     if (!existing && consumerId === this.queueConsumerId) {
@@ -688,7 +708,11 @@ export class BatchOrchestrator {
     }
 
     this.displayStatus()
-    this.checkBatchComplete()
+    if (message.queueAborted) {
+      this.abortQueue(`Consumer aborted after ${message.testId}: ${message.error ?? 'timeout'}`)
+    } else {
+      this.checkBatchComplete()
+    }
   }
 
   private handleHeartbeat(rawMessage: unknown) {
@@ -833,6 +857,23 @@ export class BatchOrchestrator {
   private checkTimeouts() {
     const now = Date.now()
     const timeouts: string[] = []
+    const queueOwner =
+      this.queueConsumerId !== undefined ? this.consumers.get(this.queueConsumerId) : undefined
+
+    if (
+      queueOwner &&
+      !queueOwner.queueReady &&
+      now - queueOwner.registeredAt > this.bootstrapTimeoutMs
+    ) {
+      console.error(
+        `\n⏱️  Consumer bootstrap timed out after ${Math.round(this.bootstrapTimeoutMs / 1000)}s: ${queueOwner.consumerId}`
+      )
+      this.fatalBatchFailure = true
+      this.abortQueue(
+        `Consumer bootstrap timed out after ${Math.round(this.bootstrapTimeoutMs / 1000)}s`
+      )
+      return
+    }
 
     for (const [uniqueTestId, assignment] of this.runningTests) {
       const elapsed = now - assignment.startedAt
@@ -1248,7 +1289,7 @@ export class BatchOrchestrator {
   }
 
   private scheduleShutdown() {
-    const exitCode = this.allConsumersDead ? 1 : 0
+    const exitCode = this.allConsumersDead || this.fatalBatchFailure ? 1 : 0
     this.shutdownTimer = setTimeout(() => {
       console.log('\n👋 Shutting down producer...\n')
       this.client.end(false, {}, () => process.exit(exitCode))
