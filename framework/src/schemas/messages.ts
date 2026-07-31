@@ -89,7 +89,6 @@ export const heartbeatSchema = z.object({
   runId: z.string(),
   consumerId: z.string(),
   bootstrapped: z.boolean().optional(),
-  outstandingRequest: z.boolean().optional(),
   timestamp: z.string().optional()
 })
 

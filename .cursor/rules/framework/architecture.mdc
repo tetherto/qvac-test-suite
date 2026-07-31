@@ -72,6 +72,9 @@ qvac/app-memory         # Consumer → Producer: runtime memory samples
 qvac/batch-complete     # Producer → All: batch done
 ```
 
+The first consumer registered for a run owns its queue. Additional consumers receive an empty queue
+and are not tracked as run participants.
+
 ## Consumer Build Process
 
 ### Desktop

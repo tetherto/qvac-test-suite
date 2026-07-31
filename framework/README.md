@@ -10,7 +10,8 @@ Distributed MQTT-based test orchestration for desktop, Electron, Snap, and mobil
 - Mobile consumers for `ios` and `android`
 - Typed config and message contracts with Zod
 - Producer/consumer lifecycle, reporting, and CI-friendly result comparison
-- One-shot queue delivery; consumers execute locally while preserving existing lifecycle events
+- Single-consumer one-shot queue delivery; the first registrant executes locally while preserving
+  existing lifecycle events
 
 ## Installation
 

@@ -49,7 +49,6 @@ interface ConsumerInfo {
   testsCompleted: number
   testsRunning: number
   bootstrapped?: boolean
-  outstandingRequest?: boolean
 }
 
 interface ProfilingSnapshot {
@@ -528,7 +527,6 @@ export class BatchOrchestrator {
     if (consumer) {
       consumer.lastSeen = Date.now()
       consumer.bootstrapped = message.bootstrapped
-      consumer.outstandingRequest = message.outstandingRequest
     }
   }
 
@@ -732,10 +730,7 @@ export class BatchOrchestrator {
     }
     if (this.consumers.size > 0) {
       const consumerStates = Array.from(this.consumers.values())
-        .map(
-          (c) =>
-            `${c.consumerId} <bootstrapped=${c.bootstrapped ?? false}, outstandingRequest=${c.outstandingRequest ?? false}>`
-        )
+        .map((c) => `${c.consumerId} <bootstrapped=${c.bootstrapped ?? false}>`)
         .join(', ')
       console.log(`   🫀 ${consumerStates}`)
     }

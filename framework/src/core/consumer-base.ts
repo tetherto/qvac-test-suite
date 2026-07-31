@@ -275,7 +275,7 @@ export class ConsumerBase {
 
     this.totalTests = Math.max(this.totalTests, message.totalTests)
 
-    // Re-acks fire on every reconnect; only the first one bootstraps.
+    // Ignore duplicate acknowledgments; only the first one bootstraps.
     if (this.registered) {
       return
     }
@@ -863,7 +863,6 @@ export class ConsumerBase {
             runId: this.runId,
             consumerId: this.consumerId,
             bootstrapped: this.bootstrapped,
-            outstandingRequest: false,
             timestamp: new Date().toISOString()
           }),
           { qos: 0 }
