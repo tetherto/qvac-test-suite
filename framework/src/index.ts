@@ -13,30 +13,19 @@ export { testDefinitionSchema } from './types/test-definition.js'
 export { qvacTestConfigSchema } from './types/config.js'
 export {
   consumerRegistrationSchema,
+  testRequestSchema,
+  testPrepareSchema,
   testStartSchema,
   testReloadSchema,
   testResultSchema,
   heartbeatSchema,
-  consumerCapabilitySchema,
-  queueReadySchema,
-  queueCompleteSchema,
-  queueAbortSchema,
-  profilingAckSchema,
+  queueEmptySchema,
   batchCompleteSchema,
   testQueueItemSchema,
-  registeredAckSchema,
-  registrationRejectedSchema,
-  registerAckSchema
+  registerAckSchema,
+  testAssignmentSchema
 } from './schemas/messages.js'
-export type {
-  ConsumerCapability,
-  ProfilingAck,
-  QueueAbort,
-  QueueReady,
-  QueueComplete,
-  RegisterAck,
-  TestQueueItem
-} from './schemas/messages.js'
+export type { QueueEmpty, RegisterAck, TestPrepare, TestQueueItem } from './schemas/messages.js'
 
 // Helper function exports
 export { defineTests } from './core/define-tests.js'

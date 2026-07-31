@@ -53,11 +53,9 @@ export interface MemorySample {
 export interface TimelineEvent {
   ts: number
   consumerId: string
-  sessionId?: string
   testId: string
   uniqueTestId: string
   phase: 'start' | 'end' | 'reload'
-  incomplete?: boolean
 }
 
 export interface PerTestMemory {
@@ -258,19 +256,18 @@ function aggregatePerTest(samples: MemorySample[], timeline: TimelineEvent[]): P
   const reloads = new Map<string, TimelineEvent>()
   const windows: { start: TimelineEvent; end: TimelineEvent | null }[] = []
   for (const ev of timeline) {
-    const key = `${ev.uniqueTestId}:${ev.sessionId ?? ''}`
     if (ev.phase === 'start') {
-      starts.set(key, ev)
+      starts.set(ev.uniqueTestId, ev)
       continue
     }
     if (ev.phase === 'reload') {
-      reloads.set(key, ev)
+      reloads.set(ev.uniqueTestId, ev)
       continue
     }
     // phase === 'end'
-    const start = starts.get(key)
+    const start = starts.get(ev.uniqueTestId)
     if (!start) continue
-    starts.delete(key)
+    starts.delete(ev.uniqueTestId)
     windows.push({ start, end: ev })
   }
   // Keep orphan starts so crashed tests still appear in the table.
@@ -284,11 +281,11 @@ function aggregatePerTest(samples: MemorySample[], timeline: TimelineEvent[]): P
 
   for (const w of windows) {
     const start = w.start
-    const incomplete = w.end === null || w.end.incomplete === true
+    const incomplete = w.end === null
     // For incomplete tests, use the last sample timestamp as the synthetic end.
     const endTs = w.end ? w.end.ts : lastSampleTs
 
-    const reloadEv = reloads.get(`${start.uniqueTestId}:${start.sessionId ?? ''}`)
+    const reloadEv = reloads.get(start.uniqueTestId)
     if (reloadEv) {
       const splitTs = Math.max(start.ts, Math.min(reloadEv.ts, endTs))
       if (splitTs > start.ts && splitTs < endTs) {

@@ -27,7 +27,6 @@ export interface NodeMemoryPollerOptions {
   client: MqttClient
   runId: string
   consumerId: string
-  sessionId: string
   intervalMs?: number
   /** Platform label to write into app-mem.ndjson. Defaults to "node". */
   platform?: string
@@ -69,8 +68,7 @@ export function startNodeMemoryPoller(
       metric: 'rss',
       platform,
       runId: opts.runId,
-      consumerId: opts.consumerId,
-      sessionId: opts.sessionId
+      consumerId: opts.consumerId
     }
     try {
       opts.client.publish('qvac/app-memory', JSON.stringify(sample), { qos: 0 })

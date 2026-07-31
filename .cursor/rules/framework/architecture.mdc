@@ -61,28 +61,16 @@ String/number config fields support `{ env: "VAR_NAME" }` to read from environme
 
 ```
 qvac/register           # Consumer → Producer: registration
-qvac/register-ack/{id}  # Producer → Consumer: ordered queue or rejection
-qvac/test-start         # Consumer → Producer: test started before setup
+qvac/register-ack/{id}  # Producer → Consumer: ack with the complete test queue
+qvac/test-prepare       # Consumer → Producer: test setup is about to begin
+qvac/test-start         # Consumer → Producer: test started
 qvac/results            # Consumer → Producer: test result
 qvac/heartbeat          # Consumer → Producer: keepalive
-qvac/queue-ready        # Consumer → Producer: bootstrap complete
-qvac/queue-complete     # Consumer → Producer: queue teardown/settling complete
-qvac/queue-abort        # Producer → Consumer: terminate queue after producer timeout
+qvac/queue-empty        # Consumer → Producer: an empty queue finished bootstrap
 qvac/profiling          # Consumer → Producer: profiler export data
-qvac/profiling-ack/{id} # Producer → Consumer: final profiler export stored
 qvac/app-memory         # Consumer → Producer: runtime memory samples
-qvac/batch-complete/{id} # Producer → Consumer session: batch done
+qvac/batch-complete     # Producer → All: batch done
 ```
-
-The producer applies filters and producer-side skips once, then transfers the
-ordered `{ uniqueTestId, testId }[]` queue in the registration acknowledgment.
-The single registered consumer resolves those IDs against its bundled local
-definitions and executes them sequentially. QoS 1 reconnects replay lifecycle
-events from the consumer's in-memory journal without requiring a per-test
-request/assignment handshake. Registration and lifecycle messages carry a
-consumer process session ID so stale events are ignored. Launcher-generated
-consumer and MQTT client IDs are process-unique, so an additional process cannot
-displace the active queue owner at the broker.
 
 ## Consumer Build Process
 

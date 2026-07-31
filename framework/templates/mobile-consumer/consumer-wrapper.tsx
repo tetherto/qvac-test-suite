@@ -139,7 +139,7 @@ try {
   const testDefsModule = require('./test-definitions')
   testDefinitions = testDefsModule.tests || testDefsModule.default
 } catch {
-  // test definitions not bundled — consumer will fail on queued test resolution
+  // test definitions not bundled — consumer will fail on test assignment
 }
 
 interface ConsumerWrapperProps {
@@ -198,14 +198,8 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
         // Build broker URL with path for WebSocket
         const brokerUrl = `${mqttConfig.protocol}://${mqttConfig.host}:${mqttConfig.port}${mqttConfig.path}`
 
-        const consumerPlatform = `mobile-${Platform.OS}`
         // Generate consumer ID early so we can use it as MQTT clientId
-        const consumerRunId = runId === '*' ? 'wildcard' : runId
-        const consumerNonce = globalThis.crypto?.randomUUID?.() ?? Constants.sessionId
-        if (!consumerNonce) {
-          throw new Error('Secure consumer identity is unavailable')
-        }
-        const consumerId = `consumer-mobile-${Constants.deviceName || 'unknown'}-${consumerRunId}-${consumerNonce}`
+        const consumerId = `consumer-mobile-${Constants.deviceName || Constants.sessionId || 'unknown'}-${runId === '*' ? Date.now() : runId}`
 
         // Build connection options
         const connectOptions: IClientOptions = {
@@ -258,14 +252,14 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
         }
 
         if (!testDefinitions) {
-          log('⚠️  No test definitions bundled — consumer will fail on queued test resolution')
+          log('⚠️  No test definitions bundled — consumer will fail on test assignment')
         }
 
         // Create consumer using framework's ConsumerBase
         const consumer = new ConsumerBase(
           client,
           consumerId,
-          consumerPlatform,
+          `mobile-${Platform.OS}`,
           runId,
           executor,
           {
@@ -283,7 +277,6 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
           },
           testDefinitions
         )
-        const consumerSessionId = consumer.getSessionId()
 
         consumerRef.current = consumer
         consumer.setupMqttHandlers()
@@ -412,7 +405,6 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
                   JSON.stringify({
                     runId,
                     consumerId,
-                    sessionId: consumerSessionId,
                     ts: sample.ts,
                     memoryKb: Math.round(sample.value),
                     metric,
@@ -490,7 +482,6 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
                     JSON.stringify({
                       runId,
                       consumerId,
-                      sessionId: consumerSessionId,
                       ts: typeof s.ts === 'number' ? s.ts : Date.now(),
                       memoryKb: s.value,
                       metric: s.metric,
