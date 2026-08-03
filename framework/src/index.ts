@@ -14,15 +14,18 @@ export { qvacTestConfigSchema } from './types/config.js'
 export {
   consumerRegistrationSchema,
   testRequestSchema,
+  testPrepareSchema,
   testStartSchema,
   testReloadSchema,
   testResultSchema,
   heartbeatSchema,
+  queueEmptySchema,
   batchCompleteSchema,
+  testQueueItemSchema,
   registerAckSchema,
   testAssignmentSchema
 } from './schemas/messages.js'
-export type { RegisterAck } from './schemas/messages.js'
+export type { QueueEmpty, RegisterAck, TestPrepare, TestQueueItem } from './schemas/messages.js'
 
 // Helper function exports
 export { defineTests } from './core/define-tests.js'

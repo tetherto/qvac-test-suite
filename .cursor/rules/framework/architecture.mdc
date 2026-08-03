@@ -61,16 +61,19 @@ String/number config fields support `{ env: "VAR_NAME" }` to read from environme
 
 ```
 qvac/register           # Consumer → Producer: registration
-qvac/register-ack/{id}  # Producer → Consumer: ack with filteredTestIds
-qvac/request-test       # Consumer → Producer: request next test
-qvac/test-assigned/{id} # Producer → Consumer: test assignment or queue-empty
+qvac/register-ack/{id}  # Producer → Consumer: ack with the complete test queue
+qvac/test-prepare       # Consumer → Producer: test setup is about to begin
 qvac/test-start         # Consumer → Producer: test started
 qvac/results            # Consumer → Producer: test result
 qvac/heartbeat          # Consumer → Producer: keepalive
+qvac/queue-empty        # Consumer → Producer: an empty queue finished bootstrap
 qvac/profiling          # Consumer → Producer: profiler export data
 qvac/app-memory         # Consumer → Producer: runtime memory samples
 qvac/batch-complete     # Producer → All: batch done
 ```
+
+The first consumer registered for a run owns its queue. Additional consumers receive an empty queue
+and are not tracked as run participants.
 
 ## Consumer Build Process
 

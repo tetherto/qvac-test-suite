@@ -24,6 +24,19 @@ export const testRequestSchema = z.object({
 export type TestRequest = z.infer<typeof testRequestSchema>
 
 /**
+ * Consumer notification that it is about to process a queued test.
+ * This preserves the producer's pre-setup timeout and memory window.
+ */
+export const testPrepareSchema = z.object({
+  runId: z.string(),
+  consumerId: z.string(),
+  uniqueTestId: z.string(),
+  timestamp: z.string()
+})
+
+export type TestPrepare = z.infer<typeof testPrepareSchema>
+
+/**
  * Test start notification schema
  */
 export const testStartSchema = z.object({
@@ -76,7 +89,6 @@ export const heartbeatSchema = z.object({
   runId: z.string(),
   consumerId: z.string(),
   bootstrapped: z.boolean().optional(),
-  outstandingRequest: z.boolean().optional(),
   timestamp: z.string().optional()
 })
 
@@ -97,6 +109,21 @@ export const batchCompleteSchema = z.object({
 
 export type BatchComplete = z.infer<typeof batchCompleteSchema>
 
+export const testQueueItemSchema = z.object({
+  uniqueTestId: z.string(),
+  testId: z.string()
+})
+
+export type TestQueueItem = z.infer<typeof testQueueItemSchema>
+
+export const queueEmptySchema = z.object({
+  runId: z.string(),
+  consumerId: z.string(),
+  timestamp: z.string()
+})
+
+export type QueueEmpty = z.infer<typeof queueEmptySchema>
+
 /**
  * Registration acknowledgment schema
  */
@@ -104,6 +131,7 @@ export const registerAckSchema = z.object({
   runId: z.string(),
   status: z.literal('registered'),
   totalTests: z.number(),
+  queue: z.array(testQueueItemSchema),
   // Unique testIds left in the producer queue after --filter/--suite/--exclude-suite/skip.
   // Consumers can use this to scope bootstrap. Optional for back-compat with older producers.
   filteredTestIds: z.array(z.string()).optional()

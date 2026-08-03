@@ -4,11 +4,12 @@ import type { MqttClient } from 'mqtt'
 import type { TestDefinition } from '../types/test-definition.js'
 import {
   consumerRegistrationSchema,
-  testRequestSchema,
+  testPrepareSchema,
   testStartSchema,
   testResultSchema,
   testReloadSchema,
   heartbeatSchema,
+  queueEmptySchema,
   profilingDataSchema,
   type TestResult as MqttTestResult,
   type ProfilerExport
@@ -48,7 +49,6 @@ interface ConsumerInfo {
   testsCompleted: number
   testsRunning: number
   bootstrapped?: boolean
-  outstandingRequest?: boolean
 }
 
 interface ProfilingSnapshot {
@@ -80,6 +80,7 @@ export class BatchOrchestrator {
   private assignedTests = new Map<string, TestAssignment>() // uniqueTestId -> assignment
   private completedTests = new Map<string, TestResult>() // uniqueTestId -> result
   private consumers = new Map<string, ConsumerInfo>() // consumerId -> info
+  private queueConsumerId?: string
   private profilingData = new Map<string, ProfilingSnapshot>() // consumerId -> latest profiler snapshot
   private finalProfilingConsumers = new Set<string>()
   private testSuites = new Map<string, string[]>() // testId -> suites
@@ -174,11 +175,12 @@ export class BatchOrchestrator {
       this.client.subscribe(
         [
           'qvac/register',
-          'qvac/request-test',
+          'qvac/test-prepare',
           'qvac/test-start',
           'qvac/test-reload',
           'qvac/results',
           'qvac/heartbeat',
+          'qvac/queue-empty',
           'qvac/profiling',
           'qvac/app-memory'
         ],
@@ -208,8 +210,8 @@ export class BatchOrchestrator {
           case 'qvac/register':
             this.handleConsumerRegistration(message)
             break
-          case 'qvac/request-test':
-            this.handleTestRequest(message)
+          case 'qvac/test-prepare':
+            this.handleTestPrepare(message)
             break
           case 'qvac/test-start':
             this.handleTestStart(message)
@@ -222,6 +224,9 @@ export class BatchOrchestrator {
             break
           case 'qvac/heartbeat':
             this.handleHeartbeat(message)
+            break
+          case 'qvac/queue-empty':
+            this.handleQueueEmpty(message)
             break
           case 'qvac/profiling':
             this.handleProfilingData(message)
@@ -261,16 +266,21 @@ export class BatchOrchestrator {
     if (existing) {
       existing.lastSeen = now
       // Always re-send ack (consumer may not have received it yet)
-      this.client.publish(
-        `qvac/register-ack/${consumerId}`,
-        JSON.stringify({
-          runId: this.runId,
-          status: 'registered',
-          totalTests: this.initialTotalTests,
-          filteredTestIds: this.filteredTestIds
-        }),
-        { qos: 1 }
-      )
+      this.publishRegistrationAck(existing)
+      return
+    }
+
+    const consumer: ConsumerInfo = {
+      consumerId,
+      platform,
+      registeredAt: now,
+      lastSeen: now,
+      testsCompleted: 0,
+      testsRunning: 0
+    }
+    if (this.queueConsumerId) {
+      console.warn(`⚠️  Additional consumer ${consumerId} will not receive the active run queue`)
+      this.publishRegistrationAck(consumer)
       return
     }
 
@@ -280,83 +290,66 @@ export class BatchOrchestrator {
       this.consumerTimeoutTimer = undefined
     }
 
-    this.consumers.set(consumerId, {
-      consumerId,
-      platform,
-      registeredAt: now,
-      lastSeen: now,
-      testsCompleted: 0,
-      testsRunning: 0
-    })
+    this.consumers.set(consumerId, consumer)
+    this.queueConsumerId = consumerId
 
     console.log(`\n🔌 Consumer registered: ${consumerId} (${platform})`)
     this.displayStatus()
 
     // Send acknowledgment with initial total (not current queue length, which shrinks as tests are assigned)
     // filteredTestIds lets the consumer scope its bootstrap to only the deps these tests will hit.
+    this.publishRegistrationAck(consumer)
+  }
+
+  private publishRegistrationAck(consumer: ConsumerInfo) {
+    const queue =
+      consumer.consumerId === this.queueConsumerId
+        ? this.testQueue.map(({ id, testId }) => ({ uniqueTestId: id, testId }))
+        : []
     this.client.publish(
-      `qvac/register-ack/${consumerId}`,
+      `qvac/register-ack/${consumer.consumerId}`,
       JSON.stringify({
         runId: this.runId,
         status: 'registered',
         totalTests: this.initialTotalTests,
+        queue,
         filteredTestIds: this.filteredTestIds
       }),
       { qos: 1 }
     )
   }
 
-  private handleTestRequest(rawMessage: unknown) {
-    const message = testRequestSchema.parse(rawMessage)
-    const { consumerId } = message
+  private handleTestPrepare(rawMessage: unknown) {
+    const message = testPrepareSchema.parse(rawMessage)
+    const { consumerId, uniqueTestId } = message
     const consumer = this.consumers.get(consumerId)
 
-    if (!consumer) {
-      console.warn(`⚠️  Test request from unregistered consumer: ${consumerId}`)
+    if (!consumer || consumerId !== this.queueConsumerId) {
+      console.warn(`⚠️  Test prepare from unregistered consumer: ${consumerId}`)
       return
     }
 
     consumer.lastSeen = Date.now()
+    const timelineTs = Date.parse(message.timestamp)
+    this.prepareTest(
+      consumerId,
+      uniqueTestId,
+      Number.isFinite(timelineTs) ? timelineTs : Date.now()
+    )
+  }
 
-    // Idempotent request handling: duplicate request-test publishes
-    // (consumer-side retry, broker QoS-1 duplicate, future regression)
-    // must not hand out a second test while the consumer still has one
-    // outstanding. Re-send the current assignment instead, so a consumer can
-    // recover if the original test-assigned reply was lost in transit.
-    for (const existing of this.assignedTests.values()) {
-      if (existing.consumerId === consumerId) {
-        console.warn(
-          `⚠️  Re-sending assignment to ${consumerId}: already has ${existing.testCase.testId} (${existing.testCase.id}) assigned`
-        )
-        this.client.publish(
-          `qvac/test-assigned/${consumerId}`,
-          JSON.stringify({
-            runId: this.runId,
-            status: 'assigned',
-            uniqueTestId: existing.testCase.id,
-            testId: existing.testCase.testId
-          }),
-          { qos: 1 }
-        )
-        return
-      }
+  private prepareTest(consumerId: string, uniqueTestId: string, timelineTs: number) {
+    const existing = this.assignedTests.get(uniqueTestId)
+    if (existing || this.completedTests.has(uniqueTestId)) {
+      return existing
     }
-
-    // Find next available test in queue
-    const nextTest = this.getNextTestForConsumer(consumerId)
-
-    if (!nextTest) {
-      // No more tests - signal queue empty
-      this.client.publish(
-        `qvac/test-assigned/${consumerId}`,
-        JSON.stringify({ runId: this.runId, status: 'queue-empty' }),
-        { qos: 1 }
-      )
-      console.log(`📭 No more tests for ${consumerId} (completed: ${consumer.testsCompleted})`)
+    const consumer = this.consumers.get(consumerId)
+    const nextTest = this.testQueue.find((test) => test.id === uniqueTestId)
+    if (!consumer || consumerId !== this.queueConsumerId || !nextTest) {
+      console.warn(`⚠️  Test prepare for unknown test: ${uniqueTestId}`)
       return
     }
 
-    // Assign test
     const assignment: TestAssignment = {
       testCase: nextTest,
       consumerId,
@@ -372,39 +365,39 @@ export class BatchOrchestrator {
     // Remove from queue
     this.testQueue = this.testQueue.filter((t) => t.id !== nextTest.id)
 
-    // Send test assignment — consumer resolves full definition locally
-    this.client.publish(
-      `qvac/test-assigned/${consumerId}`,
-      JSON.stringify({
-        runId: this.runId,
-        status: 'assigned',
-        uniqueTestId: nextTest.id,
-        testId: nextTest.testId
-      }),
-      { qos: 1 }
-    )
-
     // Memory timeline `start` fires at assignment time, not when the
     // consumer sends test-start. The window between assignment and
     // consumer-reported start is the setup phase (model loading etc.) --
     // exactly where OOM crashes during model load happen, and where we
     // most want to attribute memory usage to the test responsible.
     this.appendTimeline({
-      ts: assignment.assignedAt,
+      ts: timelineTs,
       consumerId,
       testId: nextTest.testId,
       uniqueTestId: nextTest.id,
       phase: 'start'
     })
 
-    console.log(`📤 Assigned ${nextTest.testId} (${nextTest.id}) to ${consumerId}`)
+    console.log(`📥 Consumer prepared ${nextTest.testId} (${nextTest.id})`)
     this.displayStatus()
+    return assignment
+  }
+
+  private handleQueueEmpty(rawMessage: unknown) {
+    const message = queueEmptySchema.parse(rawMessage)
+    if (message.consumerId !== this.queueConsumerId || !this.consumers.has(message.consumerId)) {
+      return
+    }
+    this.checkBatchComplete()
   }
 
   private handleTestStart(rawMessage: unknown) {
     const message = testStartSchema.parse(rawMessage)
     const { consumerId, uniqueTestId } = message
-    const assignment = this.assignedTests.get(uniqueTestId)
+    const startTs = Date.parse(message.timestamp)
+    const assignment =
+      this.assignedTests.get(uniqueTestId) ??
+      this.prepareTest(consumerId, uniqueTestId, Number.isFinite(startTs) ? startTs : Date.now())
 
     if (!assignment) {
       console.warn(`⚠️  Test start for unknown test: ${uniqueTestId}`)
@@ -419,7 +412,9 @@ export class BatchOrchestrator {
     const message = testReloadSchema.parse(rawMessage)
     const { consumerId, uniqueTestId, testId, ts } = message
 
-    const assignment = this.assignedTests.get(uniqueTestId)
+    const assignment =
+      this.assignedTests.get(uniqueTestId) ??
+      this.prepareTest(consumerId, uniqueTestId, Number.isFinite(ts) ? ts : Date.now())
 
     if (!assignment) {
       console.warn(`⚠️  Reload boundary for unknown/timed-out test: ${uniqueTestId}`)
@@ -451,7 +446,14 @@ export class BatchOrchestrator {
   private handleTestResult(rawMessage: unknown) {
     const message = testResultSchema.parse(rawMessage)
     const { consumerId, uniqueTestId, outcome, duration } = message
-    const assignment = this.assignedTests.get(uniqueTestId)
+    const resultTs = Date.parse(message.timestamp)
+    const assignment =
+      this.assignedTests.get(uniqueTestId) ??
+      this.prepareTest(
+        consumerId,
+        uniqueTestId,
+        Number.isFinite(resultTs) ? resultTs - duration : Date.now()
+      )
 
     if (!assignment) {
       console.warn(`⚠️  Result for unknown test: ${uniqueTestId}`)
@@ -525,7 +527,6 @@ export class BatchOrchestrator {
     if (consumer) {
       consumer.lastSeen = Date.now()
       consumer.bootstrapped = message.bootstrapped
-      consumer.outstandingRequest = message.outstandingRequest
     }
   }
 
@@ -584,11 +585,6 @@ export class BatchOrchestrator {
     console.log(
       `📈 Received ${kind} profiling data from ${consumerId.split('-').slice(1, 3).join('-')} (${metricLabel})`
     )
-  }
-
-  private getNextTestForConsumer(_consumerId: string): TestCase | null {
-    // Simple FIFO for now - could be enhanced with dependency-aware scheduling
-    return this.testQueue.length > 0 ? this.testQueue[0] : null
   }
 
   private checkBatchComplete() {
@@ -734,10 +730,7 @@ export class BatchOrchestrator {
     }
     if (this.consumers.size > 0) {
       const consumerStates = Array.from(this.consumers.values())
-        .map(
-          (c) =>
-            `${c.consumerId} <bootstrapped=${c.bootstrapped ?? false}, outstandingRequest=${c.outstandingRequest ?? false}>`
-        )
+        .map((c) => `${c.consumerId} <bootstrapped=${c.bootstrapped ?? false}>`)
         .join(', ')
       console.log(`   🫀 ${consumerStates}`)
     }
