@@ -157,7 +157,15 @@ export function createMqttClient(
 
   if (opts?.clientId) {
     options.clientId = opts.clientId
-    options.clean = false
+    // Ephemeral CI clients must use a clean session. A persistent session
+    // (clean=false) paired with a unique per-run clientId is never reused, so
+    // the broker keeps the session — and its queued messages — alive forever.
+    // Accumulated leaked sessions grew mosquitto.db to ~3.26 GB and took the
+    // broker down (it stopped accepting connections). Consumers and producers
+    // already re-subscribe in their own `connect` handler, so no server-side
+    // session state is needed. For MQTT 5 this is equivalent to
+    // sessionExpiryInterval: 0.
+    options.clean = true
   }
 
   logMqttConnectionSecurity(config.brokerUrl, options)
