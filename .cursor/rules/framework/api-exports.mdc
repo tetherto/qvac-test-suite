@@ -22,7 +22,7 @@ globs:
 - **Schemas**: `expectationSchema`, `mqttConnectionSchema`, `testDefinitionSchema`, `qvacTestConfigSchema`, `consumerRegistrationSchema`, `testRequestSchema`, `testPrepareSchema`, `testStartSchema`, `testResultSchema`, `heartbeatSchema`, `queueEmptySchema`, `batchCompleteSchema`, `testQueueItemSchema`, `registerAckSchema`, `testAssignmentSchema`
 - **Core**: `BatchOrchestrator`, `ConsumerBase`, `BaseExecutor`, `SkipExecutor`, `defineTests`, `createExecutor`
 - **Helpers**: `defineConfig`
-- **Utils**: `ValidationHelpers`, `chainExpectation`, `findConfig`, `loadConfig`, `loadTests`, `createMqttClient`, `buildMqttOptions`, `buildMqttConnectionConfig`, `logMqttConnectionSecurity`
+- **Utils**: `ValidationHelpers`, `chainExpectation`, `findConfig`, `loadConfig`, `loadTests`, `createMqttClient`, `buildMqttOptions`, `buildMqttConnectionConfig`, `logMqttConnectionSecurity`, `buildMqttSessionOptions`, `buildMqttSessionEndOptions`, `MQTT_SESSION_EXPIRY_SECONDS`
 
 ## Adding Expectation Types
 

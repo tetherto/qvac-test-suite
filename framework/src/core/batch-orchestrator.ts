@@ -22,6 +22,7 @@ import {
 } from '../utils/report-generator.js'
 import { getMetricCount } from '../utils/profiler-adapter.js'
 import { aggregateMemory, type MemorySummary } from '../utils/memory-aggregator.js'
+import { buildMqttSessionEndOptions } from '../utils/mqtt-session.js'
 
 interface TestCase {
   id: string // Unique test ID
@@ -900,7 +901,9 @@ export class BatchOrchestrator {
     const exitCode = this.allConsumersDead ? 1 : 0
     this.shutdownTimer = setTimeout(() => {
       console.log('\n👋 Shutting down producer...\n')
-      this.client.end(false, {}, () => process.exit(exitCode))
+      this.client.end(false, buildMqttSessionEndOptions(this.client.options.protocolVersion), () =>
+        process.exit(exitCode)
+      )
     }, 2000)
   }
 
@@ -1061,7 +1064,11 @@ export class BatchOrchestrator {
       if (this.consumers.size === 0) {
         console.error(`\n❌ No consumers connected within ${this.consumerTimeoutSec}s timeout`)
         console.error('   Make sure the consumer is running with the same --runId')
-        this.client.end(false, {}, () => process.exit(1))
+        this.client.end(
+          false,
+          buildMqttSessionEndOptions(this.client.options.protocolVersion),
+          () => process.exit(1)
+        )
       }
     }, this.consumerTimeoutSec * 1000)
 
@@ -1078,7 +1085,9 @@ export class BatchOrchestrator {
 
   public shutdown() {
     console.log('\n⚠️  Shutting down...')
-    this.client.end(false, {}, () => process.exit(0))
+    this.client.end(false, buildMqttSessionEndOptions(this.client.options.protocolVersion), () =>
+      process.exit(0)
+    )
   }
 }
 

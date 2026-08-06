@@ -1,6 +1,6 @@
 {
   "name": "@tetherto/qvac-test-suite",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Generic distributed testing framework for multi-platform execution",
   "type": "module",
   "main": "./dist/index.js",
@@ -31,10 +31,11 @@
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc",
     "dev": "tsc --watch",
+    "test": "node --test test/*.test.mjs",
     "lint": "lunte && eslint src/",
     "lint:fix": "lunte --fix && eslint --fix src/",
-    "format": "prettier --check 'src/**/*.{ts,tsx,js,json}' 'templates/**/*.{ts,tsx,js,json}'",
-    "format:fix": "prettier --write 'src/**/*.{ts,tsx,js,json}' 'templates/**/*.{ts,tsx,js,json}'",
+    "format": "prettier --check 'src/**/*.{ts,tsx,js,json}' 'templates/**/*.{ts,tsx,js,json}' 'test/**/*.{js,mjs}'",
+    "format:fix": "prettier --write 'src/**/*.{ts,tsx,js,json}' 'templates/**/*.{ts,tsx,js,json}' 'test/**/*.{js,mjs}'",
     "check": "npm run lint && npm run format"
   },
   "lint-staged": {

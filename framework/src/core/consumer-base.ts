@@ -6,6 +6,7 @@ import {
   type RegisterAck,
   type TestQueueItem
 } from '../schemas/messages.js'
+import { buildMqttSessionEndOptions } from '../utils/mqtt-session.js'
 
 export interface TestResult {
   passed: boolean
@@ -893,7 +894,7 @@ export class ConsumerBase {
       }
     }
 
-    this.client.end(false, {}, () => {
+    this.client.end(false, buildMqttSessionEndOptions(this.client.options.protocolVersion), () => {
       // Only call process.exit in Node.js environment, not React Native
       if (typeof process !== 'undefined' && typeof process.exit === 'function') {
         process.exit(0)

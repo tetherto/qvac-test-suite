@@ -71,6 +71,17 @@ function generateMobileConfigFile(
 
   // Resolve TLS config
   const rejectUnauthorized = mqttConfig.rejectUnauthorized ?? true
+  const rawSessionExpiryInterval = resolveConfigValue(mqttConfig.sessionExpiryInterval)
+  const sessionExpiryInterval =
+    rawSessionExpiryInterval === undefined ? undefined : Number(rawSessionExpiryInterval)
+  if (
+    sessionExpiryInterval !== undefined &&
+    (!Number.isInteger(sessionExpiryInterval) ||
+      sessionExpiryInterval < 1 ||
+      sessionExpiryInterval > 0xfffffffe)
+  ) {
+    throw new Error('mqtt.sessionExpiryInterval must be an integer between 1 and 4294967294')
+  }
 
   // Read and inline CA certificate if specified
   let caCert: string | undefined
@@ -98,6 +109,7 @@ export interface MobileConsumerConfig {
     password?: string;
     ca?: string;
     rejectUnauthorized: boolean;
+    sessionExpiryInterval?: number;
   };
   runId: string;
 }
@@ -112,6 +124,7 @@ export const config: MobileConsumerConfig = {
     password: ${JSON.stringify(password)},
     ca: ${JSON.stringify(caCert)},
     rejectUnauthorized: ${rejectUnauthorized},
+    sessionExpiryInterval: ${JSON.stringify(sessionExpiryInterval)},
   },
   runId: ${JSON.stringify(runId)},
 };
