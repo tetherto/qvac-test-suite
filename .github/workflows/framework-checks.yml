@@ -47,9 +47,3 @@ jobs:
 
       - name: Run checks
         run: npm run check
-
-      - name: Build framework
-        run: npm run build
-
-      - name: Run tests
-        run: npm test

@@ -139,12 +139,6 @@ export function logMqttConnectionSecurity(brokerUrl: string, options: IClientOpt
   if (options.clientId) {
     console.log(`   Client ID: ${options.clientId}`)
     console.log(`   Clean session: ${options.clean ?? true}`)
-    console.log(`   MQTT protocol: ${options.protocolVersion === 5 ? '5' : '3.1.1'}`)
-    if (options.properties?.sessionExpiryInterval !== undefined) {
-      console.log(
-        `   Session expiry: ${options.properties.sessionExpiryInterval}s after disconnect`
-      )
-    }
   }
 
   console.log(

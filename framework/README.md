@@ -99,23 +99,6 @@ qvac-test run:local:desktop
 
 This starts an embedded broker, runs the consumer and producer, and prints results. No external MQTT broker needed.
 
-## Bounded MQTT sessions
-
-External MQTT 5 brokers can retain QoS 1 messages across transient disconnects without keeping abandoned CI sessions forever:
-
-```js
-import { MQTT_SESSION_EXPIRY_SECONDS } from '@tetherto/qvac-test-suite'
-
-export default {
-  mqtt: {
-    brokerUrl: { env: 'MQTT_BROKER_URL' },
-    sessionExpiryInterval: MQTT_SESSION_EXPIRY_SECONDS
-  }
-}
-```
-
-The expiry countdown starts only while a client is disconnected; it does not limit the test run duration. A graceful shutdown clears the session immediately. Omit `sessionExpiryInterval` for MQTT 3.1.1 brokers, including the embedded Aedes broker used by `run:local`.
-
 ## Electron packaged app flow
 
 Electron consumers run as packaged Electron Forge apps. The framework packages the configured app, launches the

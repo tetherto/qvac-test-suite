@@ -58,8 +58,3 @@ export {
   logMqttConnectionSecurity
 } from './utils/mqtt-connection.js'
 export type { MqttConnectionConfig, CreateMqttClientOptions } from './utils/mqtt-connection.js'
-export {
-  buildMqttSessionOptions,
-  buildMqttSessionEndOptions,
-  MQTT_SESSION_EXPIRY_SECONDS
-} from './utils/mqtt-session.js'

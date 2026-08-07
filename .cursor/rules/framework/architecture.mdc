@@ -42,7 +42,6 @@ globs:
     certPath?: string | { env: string };
     keyPath?: string | { env: string };
     rejectUnauthorized?: boolean;
-    sessionExpiryInterval?: number | { env: string };
   };
   testDir: string;
   runIdStrategy?: 'auto' | 'manual' | Function;

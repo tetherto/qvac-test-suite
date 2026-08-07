@@ -513,11 +513,6 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
         const errorMessage = error instanceof Error ? error.message : String(error)
         log(`❌ Fatal error: ${errorMessage}`)
         console.error(error)
-        isShuttingDown = true
-        if (memMeasureHandle) clearInterval(memMeasureHandle)
-        if (memReportHandle) clearInterval(memReportHandle)
-        stopProcMemWorklet()
-        client?.end(true)
       }
     })()
 
