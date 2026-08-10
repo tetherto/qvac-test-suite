@@ -42,7 +42,7 @@ export interface MobileBuildOptions {
 }
 
 function resolveConfigValue(value: unknown): unknown {
-  if (value === undefined) return undefined
+  if (!value) return undefined
   if (typeof value === 'object' && value !== null && 'env' in value) {
     const envVar = (value as { env: string }).env
     return process.env[envVar]
@@ -71,7 +71,13 @@ function generateMobileConfigFile(
 
   // Resolve TLS config
   const rejectUnauthorized = mqttConfig.rejectUnauthorized ?? true
-  const rawSessionExpiryInterval = resolveConfigValue(mqttConfig.sessionExpiryInterval)
+  const sessionExpiryIntervalConfig = mqttConfig.sessionExpiryInterval
+  const rawSessionExpiryInterval =
+    typeof sessionExpiryIntervalConfig === 'object' &&
+    sessionExpiryIntervalConfig !== null &&
+    'env' in sessionExpiryIntervalConfig
+      ? process.env[(sessionExpiryIntervalConfig as { env: string }).env]
+      : sessionExpiryIntervalConfig
   if (
     rawSessionExpiryInterval !== undefined &&
     typeof rawSessionExpiryInterval !== 'number' &&
