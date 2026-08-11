@@ -2,6 +2,7 @@ import mqtt, { type IClientOptions } from 'mqtt'
 import { mqttConnectionSchema, type MqttConnectionConfig } from '../schemas/mqtt-config.js'
 import * as path from 'node:path'
 import * as fs from 'node:fs'
+import { buildMqttProtocolOptions, buildMqttSessionOptions } from './mqtt-session.js'
 
 export type { MqttConnectionConfig } from '../schemas/mqtt-config.js'
 
@@ -50,7 +51,8 @@ export function buildMqttConnectionConfig(config: any): MqttConnectionConfig {
     rejectUnauthorized: resolved.rejectUnauthorized,
     keepalive: resolved.keepalive,
     reconnectPeriod: resolved.reconnectPeriod,
-    connectTimeout: resolved.connectTimeout
+    connectTimeout: resolved.connectTimeout,
+    sessionExpiryInterval: resolved.sessionExpiryInterval
   })
 }
 
@@ -58,7 +60,8 @@ export function buildMqttOptions(config: MqttConnectionConfig, configDir?: strin
   const options: IClientOptions = {
     keepalive: config.keepalive ?? 30,
     reconnectPeriod: config.reconnectPeriod ?? 3000,
-    connectTimeout: config.connectTimeout ?? 15000
+    connectTimeout: config.connectTimeout ?? 15000,
+    ...buildMqttProtocolOptions(config.sessionExpiryInterval)
   }
 
   const username = config.username || process.env.MQTT_USERNAME
@@ -156,8 +159,7 @@ export function createMqttClient(
   const options = buildMqttOptions(config, configDir)
 
   if (opts?.clientId) {
-    options.clientId = opts.clientId
-    options.clean = false
+    Object.assign(options, buildMqttSessionOptions(opts.clientId, config.sessionExpiryInterval))
   }
 
   logMqttConnectionSecurity(config.brokerUrl, options)

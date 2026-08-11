@@ -240,6 +240,13 @@ const mqttConfigSchema = z.object({
     .default(true)
     .describe(
       'Verify TLS certificates (default: true). Set to false to disable certificate validation (testing only)'
+    ),
+
+  sessionExpiryInterval: z
+    .union([z.number().int().min(1).max(0xfffffffe), z.object({ env: z.string() })])
+    .optional()
+    .describe(
+      'MQTT 5 persistent-session expiry in seconds. Omit to retain MQTT 3.1.1 compatibility'
     )
 })
 

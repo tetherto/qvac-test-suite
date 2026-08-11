@@ -17,7 +17,11 @@ if (process.env.EXPO_PUBLIC_MQTT_DEBUG === 'true') {
 }
 
 import mqtt from 'mqtt'
-import { ConsumerBase } from '@tetherto/qvac-test-suite/mobile'
+import {
+  ConsumerBase,
+  buildMqttSessionEndOptions,
+  buildMqttSessionOptions
+} from '@tetherto/qvac-test-suite/mobile'
 import type { IClientOptions, MqttClient } from 'mqtt'
 import { executor } from './executor'
 import { config as consumerConfig } from './consumer-config'
@@ -203,11 +207,10 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
 
         // Build connection options
         const connectOptions: IClientOptions = {
-          clientId: consumerId,
+          ...buildMqttSessionOptions(consumerId, mqttConfig.sessionExpiryInterval),
           connectTimeout: 15000,
           reconnectPeriod: 3000,
-          keepalive: 30,
-          clean: false
+          keepalive: 30
         }
 
         // Add authentication if provided
@@ -532,7 +535,7 @@ export function ConsumerWrapper({ log, updateStats }: ConsumerWrapperProps) {
         consumerRef.current.forceShutdown().catch(() => {})
       } else if (client) {
         // Fallback teardown only when there is no consumer to own it.
-        client.end()
+        client.end(false, buildMqttSessionEndOptions(client.options.protocolVersion))
       }
     }
   }, [])

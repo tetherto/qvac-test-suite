@@ -25,3 +25,4 @@ export { defineTests } from './core/define-tests.js'
 
 // Utility exports (mobile-compatible only)
 export { ValidationHelpers, chainExpectation } from './utils/validation-helpers.js'
+export { buildMqttSessionOptions, buildMqttSessionEndOptions } from './utils/mqtt-session.js'
