@@ -63,13 +63,24 @@ jobs:
         id: check
         if: github.ref == 'refs/heads/main'
         working-directory: framework
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # @tetherto packages live on GPR, so the `npm view` lookup must query
+          # GPR (not the public default registry) or it always reports "not
+          # found" and we try to republish an existing version. GITHUB_TOKEN can
+          # read this repo's own package. Scope only @tetherto to GPR so the
+          # public default registry is untouched.
+          cat > .npmrc <<'NPMRC'
+          @tetherto:registry=https://npm.pkg.github.com/
+          //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+          NPMRC
           BASE_VERSION=$(node -p "require('./package.json').version")
           if npm view "@tetherto/qvac-test-suite@${BASE_VERSION}" version 2>/dev/null; then
             echo "Version ${BASE_VERSION} already published, skipping"
-            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           else
-            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
     outputs:
