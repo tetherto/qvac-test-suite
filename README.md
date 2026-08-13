@@ -19,4 +19,4 @@ Package-level documentation and usage examples live in `framework/README.md`.
 
 ## License
 
-Proprietary — Tether
+Apache-2.0. See [LICENSE](./LICENSE).
