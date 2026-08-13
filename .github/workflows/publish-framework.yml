@@ -1,12 +1,13 @@
 name: Build and Publish Framework
 
 # Publishing runs ONLY from trusted refs. We intentionally do NOT use
-# `pull_request_target`: that trigger runs with the base repo's secrets
-# (NPM_TOKEN, PAT_TOKEN) while it is able to check out untrusted PR-head code,
-# which — on a public repo — lets any fork PR exfiltrate those secrets. Fork PRs
-# are validated by framework-checks.yml instead (plain `pull_request`, read-only,
-# no secrets). Build/publish here only ever sees code from branches that live in
-# this repo (push) or an explicit maintainer-triggered run (workflow_dispatch).
+# `pull_request_target`: that trigger runs with the base repo's write-capable
+# token/secrets while it is able to check out untrusted PR-head code, which — on
+# a public repo — lets any fork PR exfiltrate them. Fork PRs are validated by
+# framework-checks.yml instead (plain `pull_request`, read-only, no secrets).
+# Build/publish here only ever sees code from branches that live in this repo
+# (push) or an explicit maintainer-triggered run (workflow_dispatch), and it
+# authenticates only with the automatic GITHUB_TOKEN.
 on:
   push:
     branches: ['main', 'feature/**', 'fix/**']
@@ -38,36 +39,14 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Configure scoped registry for @tetherto and @qvac packages
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          GIT_PAT: ${{ secrets.PAT_TOKEN }}
-        shell: bash
-        run: |
-          echo "Configuring scoped registry for @tetherto and @qvac packages..."
-          set -eu
-          echo "Writing .npmrc for dual registry install..."
-          cat > .npmrc << 'EOF'
-          always-auth=true
-          ignore-scripts=true
-          foreground-scripts=true
-          registry=https://registry.npmjs.org/
-          @qvac:registry=https://registry.npmjs.org/
-          @tetherto:registry=https://npm.pkg.github.com/
-          //registry.npmjs.org/:_authToken=${NPM_TOKEN}
-          //npm.pkg.github.com/:_authToken=${GIT_PAT}
-          EOF
-
-          # Configure git for private deps
-          if [ -n "${GIT_PAT:-}" ]; then
-            git config --global url."https://${GIT_PAT}:@github.com/".insteadOf "https://github.com/"
-          else
-            git config --global url."https://${{ github.token }}:@github.com/".insteadOf "https://github.com/"
-          fi
-
+      # framework has no @tetherto/@qvac dependencies — every dependency is
+      # public — so no scoped registry or PAT/NPM_TOKEN auth is needed here.
+      # --ignore-scripts: the build never needs dependency lifecycle scripts
+      # (esbuild ships prebuilt binaries via optionalDependencies), so disable
+      # them to avoid running arbitrary code from a dependency in CI.
       - name: Install dependencies
         working-directory: framework
-        run: npm install
+        run: npm install --ignore-scripts --no-fund --no-audit
 
       - name: Build
         working-directory: framework
@@ -105,9 +84,13 @@ jobs:
       packages: write
     steps:
       - name: Checkout repository
+        # Self-checkout only. The token persists credentials for the vendored
+        # action's `git push` of the release tag; GITHUB_TOKEN + contents:write
+        # can push tags to this repo (tag refs aren't covered by the main
+        # ruleset). PAT_TOKEN is no longer used here (it has been invalidated).
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
         with:
-          token: ${{ secrets.PAT_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           ref: ${{ github.sha }}
 
       - name: Download build artifacts
