@@ -254,4 +254,4 @@ CI orchestration is consumer-repository specific. This package provides the CLI 
 
 ## License
 
-Proprietary - Tether
+Apache-2.0. See [LICENSE](./LICENSE).
