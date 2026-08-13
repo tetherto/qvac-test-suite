@@ -1,13 +1,16 @@
 name: Build and Publish Framework
 
+# Publishing runs ONLY from trusted refs. We intentionally do NOT use
+# `pull_request_target`: that trigger runs with the base repo's write-capable
+# token/secrets while it is able to check out untrusted PR-head code, which — on
+# a public repo — lets any fork PR exfiltrate them. Fork PRs are validated by
+# framework-checks.yml instead (plain `pull_request`, read-only, no secrets).
+# Build/publish here only ever sees code from branches that live in this repo
+# (push) or an explicit maintainer-triggered run (workflow_dispatch), and it
+# authenticates only with the automatic GITHUB_TOKEN.
 on:
   push:
     branches: ['main', 'feature/**', 'fix/**']
-    paths:
-      - 'framework/**'
-      - '.github/workflows/publish-framework.yml'
-  pull_request_target:
-    branches: ['main']
     paths:
       - 'framework/**'
       - '.github/workflows/publish-framework.yml'
@@ -21,58 +24,36 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Build only reads source and uploads an artifact; it never pushes.
     permissions:
-      contents: write
-      packages: write
+      contents: read
+      packages: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # 6.3.0
         with:
           node-version: '22'
 
-      - name: Configure scoped registry for @tetherto and @qvac packages
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          GIT_PAT: ${{ secrets.PAT_TOKEN }}
-        shell: bash
-        run: |
-          echo "Configuring scoped registry for @tetherto and @qvac packages..."
-          set -eu
-          echo "Writing .npmrc for dual registry install..."
-          cat > .npmrc << 'EOF'
-          always-auth=true
-          ignore-scripts=true
-          foreground-scripts=true
-          registry=https://registry.npmjs.org/
-          @qvac:registry=https://registry.npmjs.org/
-          @tetherto:registry=https://npm.pkg.github.com/
-          //registry.npmjs.org/:_authToken=${NPM_TOKEN}
-          //npm.pkg.github.com/:_authToken=${GIT_PAT}
-          EOF
-
-          # Configure git for private deps
-          if [ -n "${GIT_PAT:-}" ]; then
-            git config --global url."https://${GIT_PAT}:@github.com/".insteadOf "https://github.com/"
-          else
-            git config --global url."https://${{ github.token }}:@github.com/".insteadOf "https://github.com/"
-          fi
-
+      # framework has no @tetherto/@qvac dependencies — every dependency is
+      # public — so no scoped registry or PAT/NPM_TOKEN auth is needed here.
+      # --ignore-scripts: the build never needs dependency lifecycle scripts
+      # (esbuild ships prebuilt binaries via optionalDependencies), so disable
+      # them to avoid running arbitrary code from a dependency in CI.
       - name: Install dependencies
         working-directory: framework
-        run: npm install
+        run: npm install --ignore-scripts --no-fund --no-audit
 
       - name: Build
         working-directory: framework
         run: npm run build
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dist
           path: framework/dist/
@@ -103,19 +84,26 @@ jobs:
       packages: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        # Self-checkout only. The token persists credentials for the vendored
+        # action's `git push` of the release tag; GITHUB_TOKEN + contents:write
+        # can push tags to this repo (tag refs aren't covered by the main
+        # ruleset). PAT_TOKEN is no longer used here (it has been invalidated).
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
         with:
-          token: ${{ secrets.PAT_TOKEN }}
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.sha }}
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: dist
           path: framework/dist/
 
       - name: Publish to GitHub Package Registry
-        uses: tetherto/qvac-devops/.github/actions/publish-library-to-gpr@v1.1.1
+        # Vendored copy of tetherto/qvac-devops publish-library-to-gpr@v1.1.1.
+        # A public repo cannot resolve a composite action that lives in a private
+        # repo, so the action is checked in locally under .github/actions/.
+        uses: ./.github/actions/publish-library-to-gpr
         with:
           secret-token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.event.inputs.tag || '' }}
