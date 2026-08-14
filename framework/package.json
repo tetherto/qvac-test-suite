@@ -1,5 +1,5 @@
 {
-  "name": "@tetherto/qvac-test-suite",
+  "name": "@qvac/qvac-test-suite",
   "version": "0.10.2",
   "description": "Generic distributed testing framework for multi-platform execution",
   "type": "module",
@@ -59,10 +59,6 @@
     "type": "git",
     "url": "git+https://github.com/tetherto/qvac-test-suite.git",
     "directory": "framework"
-  },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com",
-    "access": "restricted"
   },
   "dependencies": {
     "aedes": "^0.51.3",

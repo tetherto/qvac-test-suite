@@ -50,7 +50,10 @@ export async function loadTests(
         format: 'esm',
         write: false,
         target: 'node18',
-        external: ['@tetherto/qvac-test-suite']
+        // The framework ships under two names (public npm @qvac, GPR @tetherto);
+        // externalize both so consumer test files resolve the installed package
+        // regardless of which registry they pulled it from.
+        external: ['@qvac/qvac-test-suite', '@tetherto/qvac-test-suite']
       })
 
       if (result.outputFiles && result.outputFiles.length > 0) {

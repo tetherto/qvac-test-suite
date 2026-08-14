@@ -21,7 +21,7 @@ import {
   ConsumerBase,
   buildMqttSessionEndOptions,
   buildMqttSessionOptions
-} from '@tetherto/qvac-test-suite/mobile'
+} from '@qvac/qvac-test-suite/mobile'
 import type { IClientOptions, MqttClient } from 'mqtt'
 import { executor } from './executor'
 import { config as consumerConfig } from './consumer-config'
