@@ -164,16 +164,40 @@ jobs:
           name: dist
           path: framework/dist/
 
+      # Idempotency guard: a release branch keeps receiving commits (fixes,
+      # changelog, review feedback) after the first publish. Without this, each
+      # such push re-runs the job and `npm publish` 403s on the already-live
+      # version, leaving the branch permanently red. Mirrors the GPR path's
+      # version check in the build job, but against the public npm registry.
+      - name: Skip if version already on npm
+        id: npmcheck
+        working-directory: framework
+        run: |
+          set -euo pipefail
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "${NAME}@${VERSION} already on npm; skipping publish."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # Resolves the npm dist-tag from package.json version vs the registry
       # (new package -> 0.0.0 baseline -> "latest"; higher patch on an existing
-      # minor -> "latest"; otherwise "release-<major.minor>").
+      # minor -> "latest"; otherwise "release-<major.minor>"). The dispatch `tag`
+      # input is forwarded so a `dev`/`tmp` manual run is honoured by the
+      # publish gate (graceful skip) instead of silently publishing to public npm.
       - name: Determine dist-tag
         id: dist-tag
+        if: steps.npmcheck.outputs.exists != 'true'
         uses: tetherto/qvac-actions/npm-dist-tag-determination@38693d9315c5fb6bba1354d8d1ef9823bf6c10a3 # 0.1.0
         with:
           workdir: framework
+          tag: ${{ github.event.inputs.tag || '' }}
 
       - name: Publish to npm
+        if: steps.npmcheck.outputs.exists != 'true'
         uses: tetherto/qvac-actions/publish-library-to-npm@38693d9315c5fb6bba1354d8d1ef9823bf6c10a3 # 0.1.0
         with:
           tag: ${{ steps.dist-tag.outputs.tag }}
