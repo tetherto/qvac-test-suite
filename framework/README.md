@@ -15,13 +15,19 @@ Distributed MQTT-based test orchestration for desktop, Electron, Snap, and mobil
 
 ## Installation
 
-Requires:
+Node `22.18+` is required.
 
-- Node `22.18+`
-- access to GitHub Packages for the `@tetherto` scope
-- an `.npmrc` that points `@tetherto` to `https://npm.pkg.github.com/`
+### From public npm (recommended)
 
-Example `.npmrc`:
+The framework is published to the public npm registry as `@qvac/qvac-test-suite`; no auth or registry config is needed.
+
+```bash
+npm install @qvac/qvac-test-suite
+```
+
+### From GitHub Packages
+
+The same framework is also published to GitHub Packages as `@tetherto/qvac-test-suite`. This path needs an `.npmrc` that points the `@tetherto` scope at GitHub Packages:
 
 ```text
 @tetherto:registry=https://npm.pkg.github.com/
@@ -29,7 +35,7 @@ Example `.npmrc`:
 ```
 
 ```bash
-npm install @qvac/qvac-test-suite
+npm install @tetherto/qvac-test-suite
 ```
 
 ## Minimal desktop flow
