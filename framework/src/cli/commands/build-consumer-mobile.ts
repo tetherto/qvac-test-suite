@@ -484,6 +484,35 @@ function copyQvacConfigFiles(configDir: string, outputDir: string, explicitPath?
   }
 }
 
+// The framework is published under two names — @qvac/qvac-test-suite (public
+// npm) and @tetherto/qvac-test-suite (GitHub Packages) — from the same source.
+// Templates copied verbatim into a generated app can only import whatever name
+// the consumer actually installed, so resolve that here and rewrite the import
+// specifier at scaffold time. Prefer the consumer's declared dependency, fall
+// back to what's on disk, then to the canonical public name.
+const FRAMEWORK_PACKAGE_NAMES = ['@qvac/qvac-test-suite', '@tetherto/qvac-test-suite'] as const
+const FRAMEWORK_SPECIFIER_RE = /@(?:qvac|tetherto)\/qvac-test-suite/g
+
+function resolveFrameworkPackageName(configDir?: string): string {
+  if (configDir) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(configDir, 'package.json'), 'utf-8'))
+      const deps = {
+        ...(pkg.dependencies || {}),
+        ...(pkg.devDependencies || {}),
+        ...(pkg.peerDependencies || {})
+      }
+      for (const name of FRAMEWORK_PACKAGE_NAMES) {
+        if (deps[name]) return name
+      }
+    } catch {}
+    for (const name of FRAMEWORK_PACKAGE_NAMES) {
+      if (fs.existsSync(path.join(configDir, 'node_modules', ...name.split('/')))) return name
+    }
+  }
+  return FRAMEWORK_PACKAGE_NAMES[0]
+}
+
 function copyTemplateFiles(
   templateDir: string,
   outputDir: string,
@@ -491,6 +520,10 @@ function copyTemplateFiles(
   metroConfigPath?: string,
   configDir?: string
 ): void {
+  // Generated apps only have the framework under the name the consumer
+  // installed; rewrite template import specifiers to match it.
+  const frameworkPackage = resolveFrameworkPackageName(configDir)
+
   const files = [
     'App.tsx',
     'batch-consumer.tsx',
@@ -529,6 +562,14 @@ function copyTemplateFiles(
         content = content.replace('  // MOBILE_INIT_REFERENCE_PLACEHOLDER\n', '')
       }
 
+      fs.writeFileSync(dest, content)
+    } else if (file === 'consumer-wrapper.tsx') {
+      // Copied verbatim into the generated app, which only has the framework
+      // under the installed name — rewrite the import specifier to match so both
+      // the @qvac (npm) and @tetherto (GPR) tarballs stay self-consistent.
+      const content = fs
+        .readFileSync(src, 'utf-8')
+        .replace(FRAMEWORK_SPECIFIER_RE, frameworkPackage)
       fs.writeFileSync(dest, content)
     } else {
       fs.copyFileSync(src, dest)
