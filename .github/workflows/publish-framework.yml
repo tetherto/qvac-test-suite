@@ -6,11 +6,15 @@ name: Build and Publish Framework
 # a public repo — lets any fork PR exfiltrate them. Fork PRs are validated by
 # framework-checks.yml instead (plain `pull_request`, read-only, no secrets).
 # Build/publish here only ever sees code from branches that live in this repo
-# (push) or an explicit maintainer-triggered run (workflow_dispatch), and it
-# authenticates only with the automatic GITHUB_TOKEN.
+# (push) or an explicit maintainer-triggered run (workflow_dispatch). It uses no
+# long-lived publish secrets: GPR auth is the automatic GITHUB_TOKEN, and the
+# public npm release authenticates via short-lived OIDC (Trusted Publishing).
 on:
   push:
-    branches: ['main', 'feature/**', 'fix/**']
+    # main/feature/**/fix/** feed the GPR (@tetherto) flow; release-* feeds the
+    # public npm (@qvac) flow (see publish-npm below), mirroring the monorepo's
+    # release-branch publishing model.
+    branches: ['main', 'feature/**', 'fix/**', 'release-*']
     paths:
       - 'framework/**'
       - '.github/workflows/publish-framework.yml'
@@ -119,3 +123,82 @@ jobs:
           secret-token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.event.inputs.tag || '' }}
           path: framework
+
+  # Public npm release via npm Trusted Publishing (OIDC) — no long-lived token.
+  # Reuses the shared, PUBLIC tetherto/qvac-actions composite actions (the same
+  # ones publish-sdk.yml uses in the monorepo), so publish behaviour and the
+  # dist-tag policy stay in lockstep with @qvac/sdk and @qvac/inference.
+  #
+  # publish-library-to-npm embeds npm-publish-gate, which HARD-FAILS on any ref
+  # that is not refs/heads/release-*. That is why this job (and the release-*
+  # push trigger) exist: npm releases are cut from release-* branches, while the
+  # GPR (@tetherto) flow above continues to run from main/feature/**/fix/**.
+  #
+  # Requires a Trusted Publisher on npmjs.com for @qvac/qvac-test-suite:
+  #   - organization: tetherto
+  #   - repository:   qvac-test-suite
+  #   - workflow:     publish-framework.yml   (this file's name — must match exactly)
+  #   - environment:  npm
+  # framework/package.json is named @qvac/qvac-test-suite (the GPR action rewrites
+  # it to @tetherto for GitHub Packages), so no scope rewrite is needed here.
+  publish-npm:
+    name: Publish to npm (Trusted Publishing)
+    needs: build
+    if: startsWith(github.ref, 'refs/heads/release-')
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      # REQUIRED for OIDC: lets the runner mint the id-token npm exchanges for a
+      # short-lived publish credential (also drives automatic provenance).
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist
+          path: framework/dist/
+
+      # Idempotency guard: a release branch keeps receiving commits (fixes,
+      # changelog, review feedback) after the first publish. Without this, each
+      # such push re-runs the job and `npm publish` 403s on the already-live
+      # version, leaving the branch permanently red. Mirrors the GPR path's
+      # version check in the build job, but against the public npm registry.
+      - name: Skip if version already on npm
+        id: npmcheck
+        working-directory: framework
+        run: |
+          set -euo pipefail
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "${NAME}@${VERSION} already on npm; skipping publish."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Resolves the npm dist-tag from package.json version vs the registry
+      # (new package -> 0.0.0 baseline -> "latest"; higher patch on an existing
+      # minor -> "latest"; otherwise "release-<major.minor>"). The dispatch `tag`
+      # input is forwarded so a `dev`/`tmp` manual run is honoured by the
+      # publish gate (graceful skip) instead of silently publishing to public npm.
+      - name: Determine dist-tag
+        id: dist-tag
+        if: steps.npmcheck.outputs.exists != 'true'
+        uses: tetherto/qvac-actions/npm-dist-tag-determination@38693d9315c5fb6bba1354d8d1ef9823bf6c10a3 # 0.1.0
+        with:
+          workdir: framework
+          tag: ${{ github.event.inputs.tag || '' }}
+
+      - name: Publish to npm
+        if: steps.npmcheck.outputs.exists != 'true'
+        uses: tetherto/qvac-actions/publish-library-to-npm@38693d9315c5fb6bba1354d8d1ef9823bf6c10a3 # 0.1.0
+        with:
+          tag: ${{ steps.dist-tag.outputs.tag }}
+          workdir: framework

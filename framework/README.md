@@ -1,4 +1,4 @@
-# @tetherto/qvac-test-suite
+# @qvac/qvac-test-suite
 
 Distributed MQTT-based test orchestration for desktop, Electron, Snap, and mobile consumers.
 
@@ -15,13 +15,19 @@ Distributed MQTT-based test orchestration for desktop, Electron, Snap, and mobil
 
 ## Installation
 
-Requires:
+Node `22.18+` is required.
 
-- Node `22.18+`
-- access to GitHub Packages for the `@tetherto` scope
-- an `.npmrc` that points `@tetherto` to `https://npm.pkg.github.com/`
+### From public npm (recommended)
 
-Example `.npmrc`:
+The framework is published to the public npm registry as `@qvac/qvac-test-suite`; no auth or registry config is needed.
+
+```bash
+npm install @qvac/qvac-test-suite
+```
+
+### From GitHub Packages
+
+The same framework is also published to GitHub Packages as `@tetherto/qvac-test-suite`. This path needs an `.npmrc` that points the `@tetherto` scope at GitHub Packages:
 
 ```text
 @tetherto:registry=https://npm.pkg.github.com/
@@ -38,7 +44,7 @@ npm install @tetherto/qvac-test-suite
 
 ```ts
 // tests/test-definitions.ts
-import type { TestDefinition } from '@tetherto/qvac-test-suite'
+import type { TestDefinition } from '@qvac/qvac-test-suite'
 
 export const tests: TestDefinition[] = [
   {
@@ -54,7 +60,7 @@ export const tests: TestDefinition[] = [
 
 ```ts
 // tests/desktop/consumer.ts
-import { createExecutor } from '@tetherto/qvac-test-suite'
+import { createExecutor } from '@qvac/qvac-test-suite'
 import { ApiExecutor } from './executors/api-executor.js'
 
 export const executor = createExecutor({
@@ -66,7 +72,7 @@ export const executor = createExecutor({
 
 ```js
 // qvac-test.config.js
-/** @type {import('@tetherto/qvac-test-suite').QvacTestConfig} */
+/** @type {import('@qvac/qvac-test-suite').QvacTestConfig} */
 export default {
   mqtt: {
     broker: {
@@ -245,7 +251,7 @@ qvac-test report:format --input comparison.json --format markdown --output comme
   `QVAC_TEST_*` environment variables and should import/start the configured `entry` from its main process.
 - Snap consumers build, install, and launch a Linux Snap whose packaged entry receives mounted
   `QVAC_TEST_*` paths.
-- Mobile consumers use the `@tetherto/qvac-test-suite/mobile` runtime and generated Expo scaffolding
+- Mobile consumers use the `@qvac/qvac-test-suite/mobile` runtime and generated Expo scaffolding
 - `.env` files are loaded automatically before config resolution
 
 ## CI integration
